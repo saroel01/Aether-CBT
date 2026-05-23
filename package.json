@@ -1,0 +1,19 @@
+{
+  "name": "aether-cbt",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aether CBT - Multi-Tenant Computer-Based Testing Platform",
+  "scripts": {
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "go run cmd/server/main.go",
+    "dev:frontend": "cd web && npm run dev",
+    "dev:backend-only": "go run cmd/server/main.go",
+    "dev:frontend-only": "cd web && npm run dev",
+    "seed": "go run cmd/seed/main.go",
+    "build": "cd web && npm run build",
+    "clean": "rm -rf web/.svelte-kit web/node_modules bin data/cbt_aether.db"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
