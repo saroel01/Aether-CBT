@@ -25,5 +25,5 @@ Make Aether CBT's iSpring result handling robust, testable, and aligned with the
 
 1. Add real iSpring QuizMaker fixture XML files and acceptance tests for each question family used by schools.
 2. Add operational tests for backup, restore, and concurrent exam submission.
-3. Add login rate limiting and production CORS allow-list configuration.
+3. Add full login rate limiting (webhook rate limiting + body limit already implemented; CORS allow-list already enforced).
 4. Rotate all default credentials during deployment handoff.

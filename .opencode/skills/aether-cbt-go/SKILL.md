@@ -28,8 +28,8 @@ This skill helps develop and maintain the Go + Fiber backend for the Aether CBT 
 
 ## Important Files
 - `cmd/server/main.go` — route registration (watch for unexported handler bugs)
-- `internal/api/middleware/tenant.go` — currently defaults to tenant 1
-- `internal/api/middleware/auth.go` — validates JWT (hardcoded secret)
+- `internal/api/middleware/tenant.go` — defaults to tenant 1 only in development; rejects in production if no valid tenant provided
+- `internal/api/middleware/auth.go` — validates JWT with algorithm check (no hardcoded secret)
 - `internal/db/migrations/` — SQL files (no auto-runner yet)
 
 ## Common Tasks
@@ -37,10 +37,28 @@ This skill helps develop and maintain the Go + Fiber backend for the Aether CBT 
 - Fixing multi-tenant isolation: ensure every query has `WHERE tenant_id = ?`
 - Auth changes: update `utils/auth.go` and middleware together
 
-## Known Issues (as of handoff)
-- Compile error: `handlers.iSpringWebhook` is unexported (lowercase)
-- No migration runner on startup
-- Database may be empty (0-byte file possible)
-- Hardcoded JWT secret
+## Security Hardening (Updated May 2026)
+- JWT: Algorithm validation enforced in `AuthMiddleware` (prevents algorithm confusion attacks)
+- `JWT_SECRET`: Strictly required from environment variable. Application will panic if missing.
+- CORS: Changed from wildcard (`*`) to allow-list via `CORS_ALLOWED_ORIGINS`
+- Webhook Protection: Rate limiting (10 req/min per IP) + 5MB BodyLimit
+- TenantMiddleware: No longer silently defaults to tenant 1 in non-development environments
+- Passwords: New and CSV-imported students always use bcrypt (cost 14)
+
+## Available Global Skills (Superpowers)
+
+Skill global berikut tersedia di proyek dan dapat digunakan untuk tugas kompleks:
+
+- `superpowers-executing-plans`
+- `superpowers-writing-plans`
+- `superpowers-subagent-driven-development`
+- `superpowers-verification-before-completion`
+- `superpowers-systematic-debugging`
+- `superpowers-writing-skills`
+
+**Rekomendasi:**
+- Gunakan `superpowers-writing-plans` dan `superpowers-executing-plans` saat menyusun serta menjalankan roadmap proyek.
+- Gunakan `superpowers-systematic-debugging` untuk investigasi mendalam.
+- Gunakan `superpowers-verification-before-completion` sebelum menandai pekerjaan selesai.
 
 Always check `HANDOFF.md` and `docs/Database_Schema.md` before making schema or auth changes.

@@ -11,7 +11,7 @@ This skill guides all database work for the Aether CBT multi-tenant platform.
 - Engine: SQLite 3 with WAL mode (`_journal_mode=WAL`)
 - File: `data/cbt_aether.db`
 - Connection: `internal/db/sqlite.go`
-- Current status (handoff): file may be 0 bytes — tables not created
+- Migrations run automatically on server start via `db.RunMigrations()` in `cmd/server/main.go`
 
 ## Core Tables (from docs/Database_Schema.md)
 - `tenants` (id, slug, name, ...)
@@ -25,29 +25,47 @@ Every table except `tenants` **must** have `tenant_id`.
 
 ## Migration System
 - Location: `internal/db/migrations/`
-- Files use `+goose Up` format (but no goose runner is active yet)
-- Current migrations:
-  - 001_create_tenants.sql (includes default tenant id=1)
-  - 002_create_users.sql
-  - 003_create_default_admin.sql (broken hash)
-  - 004_create_admin_user.sql (also broken hash)
+- Migrations run automatically on startup (`internal/db/migrate.go`)
+- Important recent migrations:
+  - 017_create_exam_upsert_indexes.sql (unique constraints for cek_login and hasil_tes)
+  - 018_alter_cek_login_attempt_token.sql (added attempt_token for anti-cheat)
 
-## How to Apply Migrations Manually
-Use `cmd/createadmin/main.go` as reference or run raw SQL via a temporary Go script or sqlite3 CLI.
+## How to Apply Migrations
+Migrations are applied automatically when the server starts (`go run cmd/server/main.go` or the compiled binary).
 
-Recommended first steps after fresh clone:
-1. Run `go run cmd/createadmin/main.go` (after fixing DB connection)
-2. Seed sample kelas, mapel, ruang, peserta for tenant 1
+For development:
+- Run `npm run dev` (it starts the Go backend)
+- Or manually: `go run cmd/server/main.go`
+
+Use `npm run seed` or `go run cmd/seed/main.go` to populate sample data.
 
 ## Important Rules
 - Always include `tenant_id` filter in every query
 - Use soft delete (`deleted_at IS NULL`)
-- Passwords: bcrypt (cost 14) via `internal/utils/auth.go`
+- Passwords: bcrypt (cost 14) for new/imported users via `internal/utils/auth.go`. Legacy plaintext still accepted for migration.
 - Settings table stores global exam `token` per tenant
 
-## Known Problems
-- No automatic migration on server start
-- Default admin password hashes in migrations are placeholders (not real bcrypt)
-- `peserta.password` column stores plaintext (security risk)
+## Security Hardening (Updated May 2026)
+- `JWT_SECRET` is now strictly required from environment (no hardcoded fallback)
+- Tenant isolation strengthened: TenantMiddleware no longer silently defaults to tenant 1 in production
+- Legacy plaintext passwords still supported temporarily (documented trade-off)
+
+## Available Global Skills (Superpowers)
+
+Skill global berikut tersedia di proyek:
+
+- `superpowers-executing-plans`
+- `superpowers-writing-plans`
+- `superpowers-subagent-driven-development`
+- `superpowers-verification-before-completion`
+- `superpowers-systematic-debugging`
+- `superpowers-writing-skills`
+
+Gunakan skill ini terutama saat menyusun rencana migrasi database, backup strategy, atau debugging isu data yang kompleks.
+
+## Known Problems / Current State
+- `peserta.password` supports both bcrypt and legacy plaintext (for migration compatibility)
+- New/imported students are always stored with bcrypt (cost 14)
+- JWT secret is now strictly enforced via environment (no hardcoded fallback)
 
 When editing schema, always update both the migration file **and** `docs/Database_Schema.md`.

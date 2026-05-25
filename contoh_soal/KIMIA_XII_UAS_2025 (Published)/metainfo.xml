@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<presentation availableOffline="1" guid="A0ACE0AC-16F0-47F2-A901-3E536F6D436A" version="0">
+	<info>
+		<title>KIMIA_XII_UAS_2025</title>
+		<description/>
+	</info>
+	<files index="id86" thumbnail="id82" totalSize="7319950">
+		<file id="id0">data/apple-touch-icon.png</file>
+		<file id="id1">data/browsersupport.js</file>
+		<file id="id2">data/favicon.ico</file>
+		<file id="id3">data/fonts/fnt0.woff</file>
+		<file id="id4">data/fonts/fnt1.woff</file>
+		<file id="id5">data/fonts/fnt10.woff</file>
+		<file id="id6">data/fonts/fnt11.woff</file>
+		<file id="id7">data/fonts/fnt12.woff</file>
+		<file id="id8">data/fonts/fnt13.woff</file>
+		<file id="id9">data/fonts/fnt2.woff</file>
+		<file id="id10">data/fonts/fnt3.woff</file>
+		<file id="id11">data/fonts/fnt4.woff</file>
+		<file id="id12">data/fonts/fnt5.woff</file>
+		<file id="id13">data/fonts/fnt6.woff</file>
+		<file id="id14">data/fonts/fnt7.woff</file>
+		<file id="id15">data/fonts/fnt8.woff</file>
+		<file id="id16">data/fonts/fnt9.woff</file>
+		<file id="id17">data/html5-unsupported.html</file>
+		<file id="id18">data/images/img-01e60880b8d8905733fa1aaa5391621438cbd855.png</file>
+		<file id="id19">data/images/img-0365726b5327697b6b1f9470b1e0db6f79b5d080.png</file>
+		<file id="id20">data/images/img-03f08817101edaf8151dbe82542f6496dfbfb758.png</file>
+		<file id="id21">data/images/img-0a82bc1ec47334eeefb7ee4fc8c634c8e70c5b66.png</file>
+		<file id="id22">data/images/img-0d602e4982efbc9ecb97d7822674e69385a2d1f0.png</file>
+		<file id="id23">data/images/img-0d887494113ee05e53026c215e22d05ec5d7b4b2.jpg</file>
+		<file id="id24">data/images/img-104de0bd79c4552f37ee96f858595ba72da490aa.png</file>
+		<file id="id25">data/images/img-10ae35d4b295373008be8950e3ce04102f63f685.jpg</file>
+		<file id="id26">data/images/img-11b443effd4b43cf85e14f6e6972b7b46f63ea69.png</file>
+		<file id="id27">data/images/img-1d9e0bc91cfbf0ac8eb124346477b27a0688a601.png</file>
+		<file id="id28">data/images/img-257c116401db879dfe3f00227e380c9987795658.png</file>
+		<file id="id29">data/images/img-273d12f46834bda8698bd1c209ff8c9fc15c93fe.png</file>
+		<file id="id30">data/images/img-2797a3f9577cf9d435d91cf9964ac9d5b80d97d7.png</file>
+		<file id="id31">data/images/img-2b60ffde7ab1f125ab3e8adc7f2403c88eb8fb53.png</file>
+		<file id="id32">data/images/img-3889d92a92b288a08ce38ce474cb87c2a4adebc6.png</file>
+		<file id="id33">data/images/img-38d45a81e92b9f6b2df4ba3bee79f32077a4ac60.png</file>
+		<file id="id34">data/images/img-38e7aaf17812523f596cddd4899e6335c169cdb7.png</file>
+		<file id="id35">data/images/img-39c3dd9f44762517c932a010b499da619c428b63.png</file>
+		<file id="id36">data/images/img-3c4224d95bd668c3e35aefd4568d88e0a822bf23.png</file>
+		<file id="id37">data/images/img-438b478eb4bcef77107f30e989eae0e26f1e33d9.png</file>
+		<file id="id38">data/images/img-44449352b849757365f76c3b513fd67adb0842a5.png</file>
+		<file id="id39">data/images/img-477bbd3f5d12bac9bbedb04ec749f98b5595db8e.png</file>
+		<file id="id40">data/images/img-47b114f208f7a7fa5f322e43aa045089729292a4.png</file>
+		<file id="id41">data/images/img-48ab415b6c1a407c77907a44f0127210bae762f0.png</file>
+		<file id="id42">data/images/img-4a88781f71f4f34749dc03f7e44d01ecefd4a3f7.png</file>
+		<file id="id43">data/images/img-57cac091cec3bd85299aa6d2bc16e40a8a9c5409.png</file>
+		<file id="id44">data/images/img-5ade7153df512ce4492629ea10c65b95a9d29670.png</file>
+		<file id="id45">data/images/img-5c5f18230a582d69d2002f750a821dac5057a7f0.png</file>
+		<file id="id46">data/images/img-632e81b43e09146ffd1f9f88f0d91f61cdb233e1.png</file>
+		<file id="id47">data/images/img-64320db831c18f1e55f4f9e11066b8d2795162b4.png</file>
+		<file id="id48">data/images/img-698a208c9d89c38412e82bf4ac0af9507b82e89c.png</file>
+		<file id="id49">data/images/img-70114373a25ee88bf42ec22c5d57ef819bcacfc3.png</file>
+		<file id="id50">data/images/img-71cc812b98d72902741508ef910d545d525e0cc6.png</file>
+		<file id="id51">data/images/img-746d4fc0387e6ad789d4fca7e3d640e2466f8638.png</file>
+		<file id="id52">data/images/img-771bf5d482d48074d762bba15057302aa324b635.png</file>
+		<file id="id53">data/images/img-77b98d7338308a849cb2b56b7913e643ae214e2d.jpg</file>
+		<file id="id54">data/images/img-77dd8465bda10bfecff1f3604fcb7e0ba518e4de.png</file>
+		<file id="id55">data/images/img-7a075fb8a2339e24cc550c90ab7bd4dea2165653.jpg</file>
+		<file id="id56">data/images/img-7b7a02f866a7219cf431e26158dee7ab1d917dcb.png</file>
+		<file id="id57">data/images/img-7bbeec4bb31b5dcce1e20443f26beb9d0d17f0cc.png</file>
+		<file id="id58">data/images/img-8077cc43d00bdc3a988ee6feae45ce4d51545ea8.jpg</file>
+		<file id="id59">data/images/img-881a322f143cecbc56a1c770b78f8b35a86a93c5.png</file>
+		<file id="id60">data/images/img-8b69fa7b222f0be10fe4b9e269f5e8e180053239.png</file>
+		<file id="id61">data/images/img-960d199acbd712dbc1a128729041bef6441a86a4.png</file>
+		<file id="id62">data/images/img-a576518f6e8ded6fbd9ac256cc1bbc4ba9e3fa55.png</file>
+		<file id="id63">data/images/img-ab1e86d46f0c2a6e402f0b30f9e3e864a5873f7e.png</file>
+		<file id="id64">data/images/img-ac5c096b6af0adc69392a32909226d57d0caeae7.jpg</file>
+		<file id="id65">data/images/img-aeb3ee404175a7d60e51630961cfda9c75a3110d.png</file>
+		<file id="id66">data/images/img-aebfe20e7276c7a1fa5830f8ecdae056c48ef6b9.png</file>
+		<file id="id67">data/images/img-b5f4a91945a22022653d781e409bb3aba32cbcf1.png</file>
+		<file id="id68">data/images/img-ba93bb5ab0eb39166389da51c01a6daa6a8fe9d9.png</file>
+		<file id="id69">data/images/img-bfe94f68132b414abbe8f2fc47ef4a81a652909e.png</file>
+		<file id="id70">data/images/img-c95e897e90e5673f89cb8ba66ca1ac5443a2d156.png</file>
+		<file id="id71">data/images/img-ce662128cf887aeb7683a008db4f0c5ee4e17eb3.png</file>
+		<file id="id72">data/images/img-d1bacee1eb0551e93000e6a0d933190604dbf7cf.jpg</file>
+		<file id="id73">data/images/img-d48fbe365e502acd7a4aeca7e1b0795fc2b8acd2.png</file>
+		<file id="id74">data/images/img-d69ed40058919ef5b9badfc8fb80aa32af803a00.png</file>
+		<file id="id75">data/images/img-e5ee71801e16045619f2d41b37d89bb930d6670d.png</file>
+		<file id="id76">data/images/img-ea6986f569808a56e2b1b7efe8882f7faa8574fa.png</file>
+		<file id="id77">data/images/img-eb2cb431fbf2869e6971609161331002685f82f6.png</file>
+		<file id="id78">data/images/img-f0603bb745e3efb29eb5c33096ae33bd72d44d8e.png</file>
+		<file id="id79">data/images/img-fe16110d9e672c521c605f6a678b702b4102843b.png</file>
+		<file id="id80">data/ismplayer/app_store2x.png</file>
+		<file id="id81">data/ismplayer/play.svg</file>
+		<file id="id82">data/ismplayer/preview.png</file>
+		<file id="id83">data/ismplayer/style.css</file>
+		<file id="id84">data/ismplayer/style_mini.css</file>
+		<file id="id85">data/player.js</file>
+		<file id="id86">index.html</file>
+		<file id="id87">ismplayer.html</file>
+		<file id="id88">preview.png</file>
+	</files>
+</presentation>
+

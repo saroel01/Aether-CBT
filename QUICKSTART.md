@@ -101,9 +101,18 @@ Authorization: Bearer <token>
 
 Login first to get token.
 
-## Environment
+## Environment Variables (PENTING!)
 
-Copy `.env.example` to `.env` if you want to change JWT secret or port.
+Beberapa variabel lingkungan sekarang **WAJIB** diisi untuk menjalankan aplikasi dengan aman:
+
+| Variable                  | Wajib?     | Keterangan |
+|---------------------------|------------|----------|
+| `JWT_SECRET`              | **Ya**     | Rahasia untuk JWT. Harus diisi dengan string panjang & acak. Aplikasi akan **gagal start** jika kosong. |
+| `CORS_ALLOWED_ORIGINS`    | Direkomendasikan di production | Daftar origin yang diizinkan (pisah dengan koma). Contoh: `https://cbt.sekolah.sch.id` |
+| `PORT`                    | Opsional   | Default: 3000 |
+| `DATABASE_URL`            | Opsional   | Default: `data/cbt_aether.db` |
+
+**Peringatan Keamanan**: Jangan pernah menggunakan secret lemah atau default di lingkungan produksi.
 
 ## Next Steps
 

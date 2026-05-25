@@ -1,6 +1,9 @@
 package ispring
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestParseDetailedResultsReadsOfficialQuizReportSummaryAndQuestionAnswers(t *testing.T) {
 	xml := `<?xml version="1.0" encoding="UTF-8"?>
@@ -161,5 +164,33 @@ func TestParseDetailedResultsUsesISpringDefaultEvaluationWhenAttributeIsMissing(
 	}
 	if report.Questions[1].EvaluationEnabled {
 		t.Fatalf("essayQuestion should not be graded by default")
+	}
+}
+
+func TestParseDetailedResultsHandlesRealProductionFixture(t *testing.T) {
+	data, err := os.ReadFile("../../tests/fixtures/ispring/kimia-xii-uas-2025-real-20260525.xml")
+	if err != nil {
+		t.Fatalf("failed to read real fixture: %v", err)
+	}
+
+	report, err := ParseDetailedResults(string(data))
+	if err != nil {
+		t.Fatalf("ParseDetailedResults on real fixture returned error: %v", err)
+	}
+
+	if report.Version != "2" {
+		t.Fatalf("expected version 2, got %q", report.Version)
+	}
+	if report.Summary == nil {
+		t.Fatalf("expected summary to be parsed")
+	}
+	if report.Summary.Passed || report.Summary.Percent != 21.9 {
+		t.Fatalf("summary mismatch: %+v", report.Summary)
+	}
+	if len(report.Questions) < 40 {
+		t.Fatalf("expected >=40 questions from real quiz, got %d", len(report.Questions))
+	}
+	if report.PassingPercent == nil || *report.PassingPercent != 25 {
+		t.Fatalf("expected passingPercent 25 from quizSettings, got %v", report.PassingPercent)
 	}
 }

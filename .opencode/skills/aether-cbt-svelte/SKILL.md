@@ -9,18 +9,20 @@ This skill supports building the SvelteKit + TypeScript + Tailwind frontend for 
 
 ## Current State
 - Location: `web/`
-- Framework: SvelteKit 2 + Vite
-- Styling: Tailwind CSS (assumed, add if missing)
-- Current pages (minimal):
-  - `web/src/routes/(admin)/+page.svelte` — Admin dashboard (dummy stats)
-  - `web/src/routes/(student)/login/+page.svelte` — Student login
-  - `web/src/routes/(supervisor)/` — empty
+- Framework: Svelte 5 + SvelteKit + Vite
+- Styling: Tailwind CSS
+- Key centralized file: `web/src/lib/api.ts` (API base, auth headers, tenant handling)
+- Major pages:
+  - Admin, Supervisor, and Student sections
+  - Student exam flow with iSpring integration
+  - Real-time supervisor monitoring (SSE)
 
 ## Integration Points
-- Backend runs on `http://localhost:3000/api/*`
-- All protected calls require `Authorization: Bearer <jwt>`
-- Student exam flow uses separate login (`/api/auth/student-login`)
-- iSpring results come via webhook (no direct frontend call)
+- Backend API: controlled via `web/src/lib/api.ts`
+- Uses `VITE_API_BASE` and `VITE_TENANT_ID` environment variables
+- All protected routes use JWT (stored in localStorage as `aether_token`)
+- Student flow: Login → Select Subject → Start (gets `attempt_token`) → iSpring exam
+- Results submitted to `/api/ispring/webhook` with `attempt_token` for anti-cheat
 
 ## Recommended Structure
 ```
@@ -40,11 +42,32 @@ web/src/
 │       └── exam/
 ```
 
+## Security Hardening Awareness (Frontend)
+- All authenticated requests must include JWT via `Authorization: Bearer` header
+- Student exam flow requires `attempt_token` (obtained from `/api/student/start`)
+- Results submission to iSpring webhook must carry the correct `attempt_token`
+- Frontend respects `CORS_ALLOWED_ORIGINS` configured on backend
+- Use `web/src/lib/api.ts` helpers to avoid leaking credentials or tenant assumptions
+
+## Available Global Skills (Superpowers)
+
+Skill global berikut tersedia dan dapat digunakan:
+
+- `superpowers-executing-plans`
+- `superpowers-writing-plans`
+- `superpowers-subagent-driven-development`
+- `superpowers-verification-before-completion`
+- `superpowers-systematic-debugging`
+- `superpowers-writing-skills`
+
+Gunakan skill ini untuk perencanaan fitur frontend besar, refactoring, atau saat membuat dokumentasi UI yang kompleks.
+
 ## Best Practices
-- Use SvelteKit server load functions to fetch from Go API (avoid CORS issues)
-- Store JWT in httpOnly cookie or localStorage (with care)
-- Follow UI_Component_Library.md in docs/ for design system
-- Keep exam UI offline-capable (store answers in IndexedDB if needed)
+- Use centralized helpers in `web/src/lib/api.ts` (apiUrl, authHeaders, qrCodeUrl)
+- Follow the UI components in `web/src/lib/components/ui/`
+- Always send `X-Tenant-ID` header
+- Student exam pages must handle `attempt_token` correctly
+- Refer to `HANDOFF.md` for current security requirements (JWT + attempt_token flow)
 
 ## Common Tasks
 - Building admin CRUD for students/classes/subjects/rooms

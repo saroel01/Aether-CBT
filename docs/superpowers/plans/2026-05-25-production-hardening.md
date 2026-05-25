@@ -27,6 +27,14 @@
 
 - [ ] Add acceptance fixture XML files exported from real iSpring QuizMaker projects used by the school.
 - [ ] Add backup/restore rehearsal documentation and a tested restore command for `data/cbt_aether.db`.
-- [ ] Add login rate limiting and production CORS allow-list configuration.
+- [ ] Add full login rate limiting (currently only webhook has rate limiting).
 - [ ] Run concurrent exam/load tests using realistic student counts, result payload sizes, and SQLite WAL settings.
 - [ ] Rotate default admin/supervisor/student credentials before each deployment.
+
+## Additional Security Hardening Completed (Post-Initial Plan)
+
+- [x] Fixed JWT algorithm confusion vulnerability in AuthMiddleware.
+- [x] Removed hardcoded weak JWT secret; enforced strict environment-only secret with panic on missing value.
+- [x] Added BodyLimit (5MB) and per-IP rate limiting specifically on the iSpring webhook endpoint.
+- [x] Replaced wildcard CORS (`*`) with proper allow-list via `CORS_ALLOWED_ORIGINS` (required in production).
+- [x] Strengthened TenantMiddleware: no longer silently defaults to tenant 1 in non-development environments.

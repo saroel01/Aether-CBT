@@ -7,6 +7,7 @@
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
+  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
   import { toast } from '$lib/stores/toast';
 
   let students: any[] = [];
@@ -27,7 +28,7 @@
   let newNama = '';
   let newKelas = 1;
   let newRuang = 1;
-  let newPass = 'siswa123';
+  let newPass = '';
   let newJK: 'L' | 'P' = 'L';
   let createLoading = false;
 
@@ -78,7 +79,7 @@
       showAddModal = false;
       
       // Clear form
-      newNoID = ''; newNama = ''; newPass = 'siswa123';
+      newNoID = ''; newNama = ''; newPass = '';
       
       // reload
       await loadInitialData();
@@ -294,11 +295,11 @@
           </select>
         </div>
 
-        <Input 
-          id="pass"
-          label="Kata Sandi Login" 
-          placeholder="siswa123" 
-          bind:value={newPass}
+        <PasswordGenerator 
+          bind:value={newPass} 
+          length={10}
+          label="Kata Sandi Login"
+          placeholder="Klik Generate untuk membuat password"
         />
       </div>
     </div>

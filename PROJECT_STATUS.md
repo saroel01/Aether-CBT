@@ -29,5 +29,5 @@ Important database guarantees now present in migrations:
 
 1. Add real iSpring fixture tests from published QuizMaker output used by the school.
 2. Complete deployment, backup, restore, and load-test evidence.
-3. Configure production CORS, secrets, and credential rotation.
+3. Configure full production login rate limiting + credential rotation (CORS allow-list and JWT secret enforcement already implemented).
 4. Review npm audit advisories before internet-facing development server use.

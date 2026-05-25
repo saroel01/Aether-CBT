@@ -37,7 +37,46 @@ Gunakan mode ini jika Anda ingin berkontribusi pada pengembangan aplikasi atau m
 *   **Pengawas Ruang**: Username: `ruang_a` | Password: `ruang123`
 *   **Siswa/Peserta**: Username: `2024001` | Password: `siswa123` (Token Ujian: `ujian2026`)
 
-Ganti seluruh kredensial dan token default sebelum pilot sekolah atau ujian nyata.
+**PERINGATAN PENTING:**
+Semua akun di atas menggunakan password default yang sangat lemah. **WAJIB** diganti sebelum digunakan untuk ujian nyata.
+
+### Untuk Admin Sekolah (Hanya Pakai Hasil Build)
+Jika Anda hanya menerima file aplikasi (bukan source code), gunakan:
+
+- `aether-password-generator.exe` → untuk membuat password kuat
+- `PANDUAN_ROTASI_KREDENSIAL_PRODUKSI.txt` → panduan singkat dalam bahasa Indonesia
+
+File-file ini sebaiknya disertakan dalam setiap paket rilis oleh tim pengembang.
+
+Lihat prosedur lengkap di:
+→ `docs/credential-rotation.md`
+
+### Untuk Developer
+Gunakan tool berikut untuk membuat password yang kuat:
+- `scripts/generate-password.ps1` (PowerShell)
+- `scripts/generate-password.go` (Go)
+
+---
+
+## 1.1. VARIABEL LINGKUNGAN PENTING (ENVIRONMENT VARIABLES)
+
+Untuk menjalankan Aether CBT di lingkungan produksi, beberapa variabel berikut **sangat dianjurkan** bahkan **wajib**:
+
+| Nama Variabel            | Status          | Penjelasan |
+|--------------------------|------------------|----------|
+| `JWT_SECRET`             | **Wajib**        | Rahasia penandatanganan JWT. Aplikasi **akan crash** jika tidak diisi. Gunakan string panjang minimal 32 karakter acak. |
+| `CORS_ALLOWED_ORIGINS`   | **Wajib di produksi** | Daftar domain yang diizinkan mengakses API (dipisah koma). Contoh: `https://cbt.sekolah.sch.id,https://admin.sekolah.sch.id` |
+| `PORT`                   | Opsional         | Port aplikasi (default: 3000) |
+| `DATABASE_URL`           | Opsional         | Lokasi file SQLite (default: `data/cbt_aether.db`) |
+| `ENV`                    | Opsional         | `development` atau `production`. Mempengaruhi perilaku default tenant dan error message. |
+
+**Contoh .env di produksi:**
+```bash
+JWT_SECRET=KunciSangatPanjangDanAcak2026Min32Karakter
+CORS_ALLOWED_ORIGINS=https://cbt.sekolah.sch.id
+PORT=3000
+ENV=production
+```
 
 ---
 

@@ -2,7 +2,11 @@
 
 **Modern Computer-Based Testing Platform with Multi-Tenant Architecture**
 
-Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant yang sedang dipersiapkan untuk penggunaan sekolah. Platform ini memakai Go (Fiber) di sisi backend, SQLite (WAL mode) untuk penyimpanan lokal, dan SvelteKit di sisi frontend. Status saat ini adalah hardened MVP: alur inti sudah diperkuat, tetapi deployment ujian nyata tetap membutuhkan fixture iSpring sekolah, backup/restore rehearsal, load test, dan rotasi kredensial.
+Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant yang sedang dipersiapkan untuk penggunaan sekolah. Platform ini memakai Go (Fiber) di sisi backend, SQLite (WAL mode) untuk penyimpanan lokal, dan SvelteKit di sisi frontend. 
+
+**Status saat ini:** Hardened MVP dengan peningkatan keamanan signifikan (JWT dengan validasi algoritma ketat, secret wajib dari environment, CORS allow-list, rate limiting + body limit pada webhook, serta validasi tenant yang lebih ketat di produksi). 
+
+Namun, deployment ujian nyata tetap membutuhkan fixture iSpring sekolah asli, backup/restore rehearsal, load test, dan rotasi kredensial default.
 
 ---
 
@@ -15,6 +19,12 @@ Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant yang sedang
     *   Menyimpan XML mentah untuk audit serta menormalisasi jawaban per soal ke tabel `hasil_tes_detail`.
 *   **Proteksi Keamanan Anti-Cheat**: Validasi sesi ujian secara langsung di monitor ruang pengawas (`cek_login`). Pengiriman hasil kuis di luar sesi aktif atau tanpa `attempt_token` yang sesuai otomatis ditolak dengan kode **`403 Forbidden`**.
 *   **Kontrol Akses Berbasis Role**: Route admin, supervisor, superadmin, dan siswa dipisahkan dengan JWT dan middleware role.
+*   **Keamanan yang Diperkuat**:
+    - JWT divalidasi dengan pengecekan algoritma (mencegah algorithm confusion).
+    - `JWT_SECRET` **wajib** dari environment (tidak ada fallback lemah).
+    - CORS menggunakan allow-list ketat (`CORS_ALLOWED_ORIGINS`), bukan wildcard.
+    - Webhook iSpring dilindungi rate limiting + body size limit.
+    - TenantMiddleware tidak lagi default ke tenant 1 di lingkungan produksi.
 *   **Kredensial Siswa Lebih Aman**: Siswa baru dan impor CSV disimpan dengan bcrypt, sementara data lama plaintext masih dapat login untuk migrasi bertahap.
 *   **Ekspor Lembar Jawaban Esai Multi-Format (CSV, XLSX, PDF)**:
     *   *CSV*: Rekapan cepat grid data.
@@ -80,6 +90,10 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
     ```bash
     npm run seed
     ```
+
+**Peringatan Keamanan Penting**:
+- `JWT_SECRET` **wajib** diisi melalui environment variable. Aplikasi akan menolak berjalan jika tidak ada.
+- Untuk deployment produksi, set juga `CORS_ALLOWED_ORIGINS` agar hanya domain yang diizinkan yang bisa mengakses.
 
 ### Konfigurasi Frontend
 

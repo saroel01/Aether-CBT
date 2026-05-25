@@ -21,6 +21,7 @@ func main() {
 	}
 
 	// Create admin user
+	// PERINGATAN: Jangan pernah menggunakan password default ini di produksi!
 	password := "admin123"
 	hash, err := utils.HashPassword(password)
 	if err != nil {

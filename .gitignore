@@ -5,6 +5,11 @@
 *.so
 *.dylib
 aether-cbt
+server
+load
+
+# Test binaries
+tests/load/load
 
 # Database
 *.db
@@ -17,10 +22,12 @@ data/
 .vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Logs
 *.log
@@ -28,6 +35,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.production
 
 # Node & Frontend
 node_modules/
@@ -37,3 +45,15 @@ web/.svelte-kit/
 web/build/
 bin/
 dist/
+
+# Go
+vendor/
+
+# Coverage & Test output
+*.out
+*.prof
+coverage.txt
+coverage.html
+
+# opencode local config
+opencode.json

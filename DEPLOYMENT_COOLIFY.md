@@ -40,7 +40,8 @@ Coolify akan menangani konfigurasi *reverse proxy* dan sertifikat SSL secara oto
 2.  Tambahkan tiga variabel penting berikut:
     *   **`PORT`**: Isi dengan nilai `3000`.
     *   **`DATABASE_URL`**: Isi dengan nilai `data/cbt_aether.db`.
-    *   **`JWT_SECRET`**: Isi dengan kunci token rahasia acak yang sangat kuat (misalnya: `KunciRahasiaTokenJWT2026SuperSecure`).
+    *   **`JWT_SECRET`**: **WAJIB**. Isi dengan kunci token rahasia acak yang sangat kuat (minimal 32 karakter).
+    *   **`CORS_ALLOWED_ORIGINS`**: **Sangat direkomendasikan di produksi**. Contoh: `https://cbt.sekolah.sch.id,https://admin.sekolah.sch.id`
 3.  Klik tombol **Save** di bagian bawah kolom variabel.
 
 ### Langkah 5: Konfigurasi Volume Persisten (SANGAT PENTING!)

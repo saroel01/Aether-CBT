@@ -10,7 +10,9 @@
 
 Aether CBT has moved beyond a raw MVP. The main issues found during the iSpring/CBT review have been hardened: iSpring parsing is now parser-backed and tested, protected routes are role-scoped, student login issues JWTs, exam result submission requires an active per-attempt token, newly created/imported student passwords are bcrypt-hashed, and the frontend no longer keeps critical API/tenant assumptions scattered across pages.
 
-Do not claim final production readiness yet. Before a real exam day, the project still needs real iSpring QuizMaker XML fixtures from the school, backup/restore rehearsal, realistic load testing, production CORS/secrets, and credential rotation.
+Do not claim final production readiness yet. Before a real exam day, the project still needs real iSpring QuizMaker XML fixtures from the school, backup/restore rehearsal, realistic load testing, full login rate limiting, and proper credential rotation procedures (lihat docs/credential-rotation.md).
+
+**Recent progress (after initial handoff):** Additional security hardening has been implemented, including JWT algorithm protection, removal of hardcoded secrets, webhook rate limiting + body limits, production CORS allow-list, and stricter tenant isolation in middleware.
 
 ## Verification Evidence
 
@@ -250,7 +252,7 @@ These are intentionally not hidden:
 1. Real iSpring QuizMaker XML fixtures from the school are still needed.
 2. Backup and restore rehearsal for `data/cbt_aether.db` is not yet automated/proven.
 3. Realistic load test is not yet run.
-4. Production CORS should be allow-listed instead of wildcard.
+4. ~~Production CORS should be allow-listed instead of wildcard.~~ (Completed — now uses `CORS_ALLOWED_ORIGINS` with strict production enforcement)
 5. Default JWT secret/admin/supervisor/student credentials must be rotated before deployment.
 6. `npm audit` still reports frontend toolchain advisories that require a deliberate breaking upgrade plan.
 7. Legacy plaintext student rows remain accepted for migration compatibility; eventually add a migration/rotation workflow to replace them.
@@ -273,9 +275,9 @@ These are intentionally not hidden:
    - Use realistic payload sizes.
    - Verify SQLite WAL behavior under concurrent submits.
 
-4. Harden deployment config:
-   - Set `JWT_SECRET`.
-   - Restrict CORS.
+4. Harden deployment config (partially completed):
+   - [x] Set `JWT_SECRET` (now strictly enforced at startup).
+   - [x] Restrict CORS (now uses allow-list via `CORS_ALLOWED_ORIGINS`).
    - Rotate default accounts.
    - Ensure Vite dev server is never public.
 
@@ -296,7 +298,7 @@ npm audit --audit-level=moderate
 
 ## Git State at Handoff
 
-There are many modified and new files. Nothing has been staged or committed by this handoff.
+**Note:** This document was originally written at the initial hardening phase. Subsequent security improvements (JWT protection, secret enforcement, webhook hardening, CORS allow-list, and tenant validation) have since been implemented, committed, and pushed (see commit history after 2026-05-25).
 
 High-signal new files include:
 

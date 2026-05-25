@@ -17,7 +17,7 @@ This skill covers the iSpring QuizMaker external quiz engine integration.
 - Handler: `internal/api/handlers/ispring.go`
   - Function `iSpringWebhook` (note: currently unexported — causes compile error)
 - Route registered in `cmd/server/main.go:74` (public, no auth)
-- Tenant resolved via `TenantMiddleware` (currently always tenant 1)
+- Tenant resolved via `TenantMiddleware` (defaults to 1 only in dev; requires explicit tenant in production)
 
 ## Data Mapping
 - `peserta.no_id` ↔ `sid` from iSpring
@@ -29,10 +29,26 @@ This skill covers the iSpring QuizMaker external quiz engine integration.
 - Pass `sid` (student no_id) to iSpring player
 - After completion, iSpring auto-posts to webhook — no extra frontend call needed
 
-## Security & Validation Notes
-- Webhook is currently unauthenticated (anyone can post results)
-- Add HMAC or shared secret validation in production
-- `hasil_tes.validasi` field is used to mark the result as coming from specific student
+## Security Hardening (Updated May 2026)
+- Webhook is protected with:
+  - Per-IP rate limiting (10 requests per minute)
+  - Body size limit (5MB)
+- Strong anti-cheat: Requires matching `attempt_token` from active `cek_login` session
+- Submission rejected if outside grace period or without valid session
+- Tenant resolution is stricter in production (no silent default to tenant 1)
+
+## Available Global Skills (Superpowers)
+
+Skill global berikut tersedia dan dapat digunakan:
+
+- `superpowers-executing-plans`
+- `superpowers-writing-plans`
+- `superpowers-subagent-driven-development`
+- `superpowers-verification-before-completion`
+- `superpowers-systematic-debugging`
+- `superpowers-writing-skills`
+
+Gunakan skill ini untuk tugas perencanaan, eksekusi roadmap, dan debugging yang kompleks.
 
 ## Related Tables
 - `peserta`

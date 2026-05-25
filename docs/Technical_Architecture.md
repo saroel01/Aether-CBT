@@ -215,7 +215,8 @@ aether-cbt/
 - Role middleware enforces route-level access boundaries.
 - Student exam starts generate a per-attempt token stored in `cek_login`; result submission must echo this token.
 - Newly created/imported student passwords are stored with bcrypt; legacy plaintext rows are accepted for migration compatibility.
-- Production deployment must still add login rate limiting and CORS allow-list configuration.
+- Production deployment must still add full login rate limiting (webhook already has rate limiting + body limits).
+- CORS is now enforced via allow-list (`CORS_ALLOWED_ORIGINS`); wildcard is no longer used.
 - All user inputs sanitized
 - SQL queries use prepared statements only
 - File uploads validated (type, size, content)

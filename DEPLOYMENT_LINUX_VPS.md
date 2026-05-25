@@ -58,7 +58,10 @@ Agar aplikasi Aether CBT berjalan otomatis di latar belakang (*background servic
     ExecStart=/var/www/aether-cbt/aether-cbt
     Restart=always
     RestartSec=5
-    Environment=PORT=3000 DATABASE_URL=data/cbt_aether.db JWT_SECRET=supersecurejwtkey2026
+    Environment=PORT=3000 DATABASE_URL=data/cbt_aether.db JWT_SECRET=IsiDenganSecretPanjangAcakMinimal32Karakter CORS_ALLOWED_ORIGINS=https://cbt.sekolah.sch.id
+
+# PENTING: JWT_SECRET HARUS sangat kuat dan acak. Aplikasi akan menolak start jika kosong atau lemah.
+# CORS_ALLOWED_ORIGINS wajib diisi di produksi untuk mencegah akses dari origin lain.
 
     [Install]
     WantedBy=multi-user.target

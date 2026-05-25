@@ -78,6 +78,16 @@ func main() {
 	// Public QR Code generator
 	api.Get("/qrcode", handlers.GetTokenQRCode)
 
+	// iSpring Webhook (public) - registered BEFORE protected group to avoid auth middleware
+	webhookLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Minute,
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many submissions. Please try again later.")
+		},
+	})
+	api.Post("/ispring/webhook", webhookLimiter, handlers.ISpringWebhook)
+
 	// Protected routes (require login)
 	protected := api.Group("", middleware.AuthMiddleware())
 
@@ -132,6 +142,7 @@ func main() {
 
 	// Current user
 	protected.Get("/me", handlers.Me)
+	protected.Put("/me", adminOnly, handlers.UpdateMyProfile)
 
 	// Student routes
 	protected.Get("/students", adminOnly, handlers.GetStudents)
@@ -146,16 +157,6 @@ func main() {
 	// Room routes
 	protected.Get("/rooms", adminOnly, handlers.GetRooms)
 	protected.Post("/rooms", adminOnly, handlers.CreateRoom)
-
-	// iSpring Webhook (public) - dengan proteksi ketat
-	webhookLimiter := limiter.New(limiter.Config{
-		Max:        10,              // maksimal 10 request
-		Expiration: 1 * time.Minute, // per menit per IP
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(fiber.StatusTooManyRequests).SendString("Too many submissions. Please try again later.")
-		},
-	})
-	api.Post("/ispring/webhook", webhookLimiter, handlers.ISpringWebhook)
 
 	// Serve static frontend from built assets in production
 	app.Static("/", "./web/build")

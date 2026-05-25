@@ -1,0 +1,106 @@
+================================================================================
+           PANDUAN ROTASI KREDENSIAL - AETHER CBT (Versi Produksi)
+================================================================================
+
+PERINGATAN PENTING
+------------------
+Semua password default di Aether CBT (admin123, ruang123, siswa123) 
+SANGAT BERBAHAYA jika digunakan di ujian nyata.
+
+WAJIB lakukan rotasi kredensial sebelum pilot atau ujian sekolah.
+
+--------------------------------------------------------------------------------
+1. KAPAN HARUS MELAKUKAN ROTASI
+--------------------------------------------------------------------------------
+
+- Sebelum ujian pilot pertama
+- Sebelum deployment ke server sekolah
+- Setelah pergantian admin atau pengawas
+- Setiap 3-6 bulan (jadwal rutin)
+
+--------------------------------------------------------------------------------
+2. KREDENSIAL YANG HARUS DIROTASI
+--------------------------------------------------------------------------------
+
+1. Password Admin (Super Admin)
+2. Password Pengawas Ruang (semua ruang)
+3. Password Siswa / Peserta
+4. Global Token Ujian (di menu Settings)
+5. JWT_SECRET (di environment variable server)
+
+--------------------------------------------------------------------------------
+3. CARA MEMBUAT PASSWORD YANG KUAT
+--------------------------------------------------------------------------------
+
+Gunakan tool yang disertakan:
+
+   aether-password-generator.exe
+
+Cara menjalankan:
+- Double click file tersebut, atau
+- Jalankan dari Command Prompt:
+
+  aether-password-generator.exe -count 10 -length 16
+
+Hasilnya akan muncul beberapa password kuat yang aman digunakan.
+
+Rekomendasi:
+- Admin & Pengawas Ruang → minimal 14 karakter
+- Siswa → minimal 8-10 karakter (sesuaikan kemampuan siswa)
+
+--------------------------------------------------------------------------------
+4. LANGKAH ROTASI SEDERHANA
+--------------------------------------------------------------------------------
+
+Langkah 1: Backup Database
+   - Jalankan scripts/backup.ps1 (jika tersedia)
+   - Atau salin file data/cbt_aether.db ke tempat aman
+
+Langkah 2: Ganti Password Admin
+   - Masuk sebagai admin lama
+   - Buat admin baru dengan password kuat
+   - Nonaktifkan atau hapus admin lama
+
+Langkah 3: Ganti Password Ruang
+   - Buka menu Ruang
+   - Edit setiap ruang dan ganti passwordnya
+   - Berikan password berbeda untuk tiap ruang
+
+Langkah 4: Ganti Password Siswa
+   - Saat import CSV, isi kolom password dengan nilai yang berbeda
+   - Hindari menggunakan password yang sama untuk semua siswa
+
+Langkah 5: Ganti Global Token
+   - Masuk ke menu Settings
+   - Ganti nilai "Token Ujian Global"
+
+Langkah 6: Ganti JWT_SECRET (Paling Penting)
+   - Edit file .env di server
+   - Isi dengan string acak minimal 32 karakter
+   - Restart aplikasi
+
+--------------------------------------------------------------------------------
+5. CHECKLIST SEBELUM UJIAN
+--------------------------------------------------------------------------------
+
+[ ] Database sudah di-backup
+[ ] Password Admin sudah diganti (bukan admin123)
+[ ] Password semua Ruang sudah diganti
+[ ] Password siswa tidak menggunakan nilai default
+[ ] Global Token sudah diubah
+[ ] JWT_SECRET sudah diubah (minimal 32 karakter)
+[ ] Semua password baru sudah dicatat di tempat aman
+[ ] Tim pengawas sudah diberitahu password baru melalui cara aman
+
+--------------------------------------------------------------------------------
+6. CATATAN KEAMANAN
+--------------------------------------------------------------------------------
+
+- Jangan kirim password melalui WhatsApp group atau chat biasa.
+- Gunakan cara aman (misalnya disampaikan langsung atau melalui aplikasi chat terenkripsi).
+- Simpan daftar password di tempat yang terkunci (bukan di komputer biasa).
+
+================================================================================
+Dokumen ini disertakan dalam setiap rilis Aether CBT.
+Versi lengkap: docs/credential-rotation.md
+================================================================================

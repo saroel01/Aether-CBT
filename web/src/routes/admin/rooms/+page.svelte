@@ -5,12 +5,13 @@
   import Card from '$lib/components/ui/Card.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import Table from '$lib/components/ui/Table.svelte';
+  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
   import { toast } from '$lib/stores/toast';
 
   let items: any[] = [];
   let newName = '';
   let newUsername = '';
-  let newPassword = 'ruang123';
+  let newPassword = '';
   let loading = true;
   let createLoading = false;
 
@@ -44,7 +45,7 @@
       toast.success(`Ruang Ujian "${newName}" berhasil terdaftar!`);
       newName = '';
       newUsername = '';
-      newPassword = 'ruang123';
+      newPassword = '';
       await loadRooms();
     } catch (e: any) {
       toast.error('Gagal menyimpan ruangan: ' + e.message);
@@ -172,12 +173,11 @@
             disabled={createLoading}
           />
 
-          <Input 
-            id="password_ruang"
-            label="Password Pengawas" 
-            placeholder="ruang123" 
-            bind:value={newPassword}
-            disabled={createLoading}
+          <PasswordGenerator 
+            bind:value={newPassword} 
+            length={12}
+            label="Password Pengawas"
+            placeholder="Klik Generate untuk password kuat"
           />
 
           <Button 

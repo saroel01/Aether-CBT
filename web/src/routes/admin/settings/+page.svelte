@@ -4,6 +4,10 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import Input from '$lib/components/ui/Input.svelte';
+  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
+  import Modal from '$lib/components/ui/Modal.svelte';
+  import { authStore } from '$lib/stores/auth';
+  import { goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
 
   let examTitle = '';
@@ -13,6 +17,16 @@
   let isExamActive = false;
   let loading = true;
   let saveLoading = false;
+
+  // My Profile (self update)
+  let currentPassword = '';
+  let newUsername = '';
+  let newPassword = '';
+  let confirmNewPassword = '';
+  let profileLoading = false;
+
+  // Confirmation modal
+  let showConfirmModal = false;
 
   onMount(async () => {
     await loadSettings();
@@ -69,6 +83,65 @@
     }
     activeToken = code;
     toast.info(`Token diubah menjadi: "${code}". Simpan perubahan untuk mengaktifkannya.`);
+  }
+
+  function prepareUpdateProfile() {
+    if (!currentPassword) {
+      toast.warning('Masukkan password saat ini untuk verifikasi');
+      return;
+    }
+
+    if (newPassword && newPassword !== confirmNewPassword) {
+      toast.warning('Password baru dan konfirmasi tidak sama');
+      return;
+    }
+
+    if (newPassword && newPassword.length < 6) {
+      toast.warning('Password baru minimal 6 karakter');
+      return;
+    }
+
+    showConfirmModal = true;
+  }
+
+  async function confirmAndUpdateProfile() {
+    showConfirmModal = false;
+    profileLoading = true;
+
+    try {
+      const payload: any = {
+        current_password: currentPassword
+      };
+
+      if (newUsername.trim()) payload.new_username = newUsername.trim();
+      if (newPassword) payload.new_password = newPassword;
+
+      const isChangingPassword = !!newPassword;
+
+      await api('/me', {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      if (isChangingPassword) {
+        toast.success('Password berhasil diubah. Anda akan di-logout otomatis...');
+        
+        // Logout otomatis + redirect ke halaman login admin
+        setTimeout(() => {
+          authStore.logout();
+          goto('/admin');
+        }, 1200);
+      } else {
+        toast.success('Username berhasil diperbarui!');
+        // Reset form jika hanya ganti username
+        currentPassword = '';
+        newUsername = '';
+      }
+    } catch (e: any) {
+      toast.error('Gagal memperbarui profil: ' + e.message);
+    }
+
+    profileLoading = false;
   }
 </script>
 
@@ -197,5 +270,97 @@
         </Card>
       </div>
     </div>
+
+    <!-- === AKUN SAYA (Self Profile Update) === -->
+    <div class="mt-8">
+      <Card padding="lg" class="border-slate-200 bg-white shadow-sm max-w-2xl">
+        <h3 class="text-lg font-bold text-slate-800 mb-1">Akun Saya</h3>
+        <p class="text-sm text-slate-500 mb-6">Ubah username atau password Anda sendiri. Masukkan password saat ini untuk verifikasi keamanan.</p>
+
+        <div class="space-y-5">
+          <Input 
+            label="Password Saat Ini *" 
+            type="password" 
+            bind:value={currentPassword} 
+            placeholder="Masukkan password Anda saat ini"
+            disabled={profileLoading}
+          />
+
+          <Input 
+            label="Username Baru (opsional)" 
+            bind:value={newUsername} 
+            placeholder="Kosongkan jika tidak ingin mengubah"
+            disabled={profileLoading}
+          />
+
+          <PasswordGenerator 
+            bind:value={newPassword} 
+            length={12}
+            label="Password Baru (opsional)"
+            placeholder="Klik Generate atau ketik manual"
+          />
+
+          {#if newPassword}
+            <Input 
+              label="Konfirmasi Password Baru" 
+              type="password" 
+              bind:value={confirmNewPassword} 
+              placeholder="Ulangi password baru"
+              disabled={profileLoading}
+            />
+          {/if}
+
+          <div class="pt-2">
+            <Button 
+              variant="primary" 
+              size="md" 
+              class="w-full bg-indigo-600 hover:bg-indigo-700" 
+              on:click={prepareUpdateProfile}
+              loading={profileLoading}
+              disabled={!currentPassword || profileLoading}
+            >
+              Simpan Perubahan Akun
+            </Button>
+          </div>
+
+          <p class="text-[11px] text-amber-600 leading-relaxed">
+            ⚠️ Jika Anda mengubah password, Anda akan diminta login ulang pada sesi berikutnya.
+          </p>
+        </div>
+      </Card>
+    </div>
   {/if}
+
+  <!-- Confirmation Modal -->
+  <Modal show={showConfirmModal} title="Konfirmasi Perubahan Akun" size="sm">
+    <div class="space-y-4 text-slate-700">
+      <p>Apakah Anda yakin ingin menyimpan perubahan pada akun Anda?</p>
+      
+      {#if newPassword}
+        <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+          <strong>Peringatan:</strong> Anda akan mengubah password. Setelah berhasil, Anda akan <strong>otomatis di-logout</strong> dan harus login kembali.
+        </div>
+      {/if}
+    </div>
+
+    <div slot="footer" class="flex gap-2 justify-end">
+      <Button 
+        variant="secondary" 
+        size="sm" 
+        on:click={() => showConfirmModal = false}
+        disabled={profileLoading}
+      >
+        Batal
+      </Button>
+      <Button 
+        variant="primary" 
+        size="sm" 
+        class="bg-indigo-600 hover:bg-indigo-700"
+        on:click={confirmAndUpdateProfile}
+        loading={profileLoading}
+      >
+        Ya, Simpan Perubahan
+      </Button>
+    </div>
+  </Modal>
 </div>

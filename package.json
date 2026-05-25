@@ -14,6 +14,7 @@
     "clean": "rm -rf web/.svelte-kit web/node_modules bin data/cbt_aether.db"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "puppeteer": "^25.0.4"
   }
 }

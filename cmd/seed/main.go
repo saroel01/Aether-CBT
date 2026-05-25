@@ -42,6 +42,8 @@ func main() {
 	}
 
 	// Sample Rooms + hashed password for room supervisor
+	// PERINGATAN: Password di bawah ini hanya untuk data contoh.
+	// WAJIB diganti sebelum digunakan di lingkungan nyata (lihat docs/credential-rotation.md)
 	rooms := []struct {
 		nama, user, pass string
 	}{
@@ -62,6 +64,7 @@ func main() {
 	db.DB.QueryRow(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang B'`).Scan(&ruangB)
 
 	// Sample Students (password is plaintext for easy student login in this version)
+	// PERINGATAN: Jangan gunakan password 'siswa123' di data produksi!
 	students := []struct {
 		no_id, nama string
 		kelas, ruang int
