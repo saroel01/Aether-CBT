@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 
 	"github.com/saroel01/aether-cbt/internal/api/handlers"
 	"github.com/saroel01/aether-cbt/internal/api/middleware"
@@ -30,12 +32,22 @@ func main() {
 	}
 
 	app := fiber.New(fiber.Config{
-		AppName: "Aether CBT v1.0",
+		AppName:   "Aether CBT v1.0",
+		BodyLimit: 5 * 1024 * 1024, // 5MB - cukup untuk iSpring XML hasil ujian
 	})
 
-	// CORS - allow frontend (Vite on 5173) during development
+	// CORS - menggunakan allow-list (bukan wildcard)
+	corsOrigins := cfg.CORSAllowedOrigins
+	if corsOrigins == "" {
+		if cfg.Environment == "development" || cfg.Environment == "dev" {
+			corsOrigins = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+		} else {
+			log.Fatal("FATAL: CORS_ALLOWED_ORIGINS wajib diisi di production (contoh: https://app.sekolah.id,https://admin.sekolah.id)")
+		}
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: corsOrigins,
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Tenant-ID, X-Tenant-Slug",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 	}))
@@ -135,8 +147,15 @@ func main() {
 	protected.Get("/rooms", adminOnly, handlers.GetRooms)
 	protected.Post("/rooms", adminOnly, handlers.CreateRoom)
 
-	// iSpring Webhook (public)
-	api.Post("/ispring/webhook", handlers.ISpringWebhook)
+	// iSpring Webhook (public) - dengan proteksi ketat
+	webhookLimiter := limiter.New(limiter.Config{
+		Max:        10,              // maksimal 10 request
+		Expiration: 1 * time.Minute, // per menit per IP
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many submissions. Please try again later.")
+		},
+	})
+	api.Post("/ispring/webhook", webhookLimiter, handlers.ISpringWebhook)
 
 	// Serve static frontend from built assets in production
 	app.Static("/", "./web/build")

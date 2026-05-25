@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,7 +15,8 @@ import (
 //   - X-Tenant-ID: 2
 //   - X-Tenant-Slug: sman1kluet
 //   - Subdomain: sman1kluet.aethercbt.id
-// Falls back to tenant 1 (default) for development.
+// In development: falls back to tenant 1 for convenience.
+// In production: requires explicit tenant identifier (returns 400 if missing).
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Priority 1: explicit ID (Header, Query Parameter, or Form Value)
@@ -65,9 +67,18 @@ func TenantMiddleware() fiber.Handler {
 			}
 		}
 
-		// Default for development / single tenant
-		c.Locals("tenant_id", 1)
-		return c.Next()
+		// Default only allowed in development for convenience
+		env := os.Getenv("ENV")
+		if env == "development" || env == "dev" {
+			c.Locals("tenant_id", 1)
+			return c.Next()
+		}
+
+		// In production/staging: require explicit tenant identification
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Tenant ID is required (X-Tenant-ID or X-Tenant-Slug header)",
+		})
 	}
 }
 
@@ -77,11 +88,15 @@ func parseInt(s string) (int, error) {
 	return i, err
 }
 
-// GetTenantID retrieves tenant_id from context
+// GetTenantID retrieves tenant_id from context.
+// Returns 0 if not set (callers should handle this case).
 func GetTenantID(c *fiber.Ctx) int {
 	tenantID := c.Locals("tenant_id")
 	if tenantID == nil {
-		return 1
+		return 0
 	}
-	return tenantID.(int)
+	if id, ok := tenantID.(int); ok {
+		return id
+	}
+	return 0
 }

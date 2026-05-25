@@ -10,13 +10,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtSecret = []byte("aether-cbt-secret-key-change-in-production")
+var jwtSecret = []byte("")
 
 // SetJWTSecret allows overriding the secret at startup (from config)
 func SetJWTSecret(secret string) {
-	if secret != "" {
-		jwtSecret = []byte(secret)
+	if secret == "" {
+		panic("FATAL: JWT secret tidak boleh kosong. Set JWT_SECRET di environment sebelum menjalankan aplikasi.")
 	}
+	jwtSecret = []byte(secret)
 }
 
 func GenerateSecureToken(byteLength int) (string, error) {
@@ -32,6 +33,9 @@ func GenerateSecureToken(byteLength int) (string, error) {
 
 // GetJWTSecret returns the current JWT secret (for middleware that can't import config)
 func GetJWTSecret() string {
+	if len(jwtSecret) == 0 {
+		panic("FATAL: JWT secret belum di-set. Panggil SetJWTSecret terlebih dahulu dengan nilai dari environment.")
+	}
 	return string(jwtSecret)
 }
 
