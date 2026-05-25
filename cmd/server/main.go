@@ -2,15 +2,16 @@ package main
 
 import (
 	"log"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
-	"github.com/anomalyco/aether-cbt/internal/api/handlers"
-	"github.com/anomalyco/aether-cbt/internal/api/middleware"
-	"github.com/anomalyco/aether-cbt/internal/config"
-	"github.com/anomalyco/aether-cbt/internal/db"
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/api/handlers"
+	"github.com/saroel01/aether-cbt/internal/api/middleware"
+	"github.com/saroel01/aether-cbt/internal/config"
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 func main() {
@@ -70,6 +71,7 @@ func main() {
 
 	// Room Supervisor routes
 	protected.Get("/supervisor/room-status", handlers.GetRoomStatus)
+	protected.Get("/supervisor/room-status/live", handlers.GetRoomStatusSSE)
 	protected.Post("/supervisor/reset", handlers.ResetStudentSession)
 
 	// Student Exam Active session routes
@@ -78,6 +80,7 @@ func main() {
 	protected.Post("/student/start", handlers.StartExamSession)
 	protected.Post("/student/infraction", handlers.RecordInfraction)
 	protected.Post("/student/progress", handlers.UpdateStudentProgress)
+	protected.Get("/student/remaining-time", handlers.GetRemainingTime)
 
 
 	// Admin Settings & Mapping routes
@@ -90,7 +93,11 @@ func main() {
 	// CSV Utility routes
 	protected.Post("/admin/students/import-csv", handlers.ImportStudentsCSV)
 	protected.Get("/admin/results/export-csv", handlers.ExportResultsCSV)
+	protected.Get("/admin/results/export-essay/:format", handlers.ExportEssayResults)
 	protected.Get("/admin/results/analysis", handlers.GetEducationalAnalysis)
+	protected.Get("/admin/results/essays", handlers.GetEssayAnswers)
+	protected.Post("/admin/results/essays/grade", handlers.GradeEssayAnswer)
+	protected.Get("/admin/results/item-analysis", handlers.GetItemAnalysis)
 
 	// Record Delete routes
 	protected.Delete("/students/:id", handlers.DeleteStudent)
@@ -125,6 +132,21 @@ func main() {
 
 	// iSpring Webhook (public)
 	api.Post("/ispring/webhook", handlers.ISpringWebhook)
+
+	// Serve static frontend from built assets in production
+	app.Static("/", "./web/build")
+
+	// SPA Routing support: serve index.html for unmatched client-side routes
+	app.Get("/*", func(c *fiber.Ctx) error {
+		path := c.Path()
+		// Do not handle backend api routes
+		if strings.HasPrefix(path, "/api") {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "API route not found",
+			})
+		}
+		return c.SendFile("./web/build/index.html")
+	})
 
 	log.Printf("Aether CBT starting on port %s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))

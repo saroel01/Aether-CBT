@@ -8,7 +8,7 @@ description: Use when working on Go backend code for Aether CBT. Covers Fiber ro
 This skill helps develop and maintain the Go + Fiber backend for the Aether CBT multi-tenant exam platform.
 
 ## Project Context
-- Module: `github.com/anomalyco/aether-cbt`
+- Module: `github.com/saroel01/aether-cbt`
 - Entry points: `cmd/server/main.go`, `cmd/createadmin/main.go`
 - Core packages:
   - `internal/api/handlers/` — all HTTP handlers

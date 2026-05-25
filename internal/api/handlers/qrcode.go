@@ -3,7 +3,7 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // GetTokenQRCode generates and returns a QR Code PNG image for a text parameter

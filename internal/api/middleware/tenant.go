@@ -2,34 +2,66 @@ package middleware
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/anomalyco/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/db"
 )
 
-// TenantMiddleware extracts tenant from header.
+// TenantMiddleware extracts tenant from header, query param, form value, or subdomain.
 // Supports:
 //   - X-Tenant-ID: 2
 //   - X-Tenant-Slug: sman1kluet
+//   - Subdomain: sman1kluet.aethercbt.id
 // Falls back to tenant 1 (default) for development.
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Priority 1: explicit ID header
-		if idStr := c.Get("X-Tenant-ID"); idStr != "" {
+		// Priority 1: explicit ID (Header, Query Parameter, or Form Value)
+		idStr := c.Get("X-Tenant-ID")
+		if idStr == "" {
+			idStr = c.Query("tenant_id")
+		}
+		if idStr == "" {
+			idStr = c.FormValue("tenant_id")
+		}
+		if idStr != "" {
 			if n, err := parseInt(idStr); err == nil && n > 0 {
 				c.Locals("tenant_id", n)
 				return c.Next()
 			}
 		}
 
-		// Priority 2: slug header → lookup
-		if slug := c.Get("X-Tenant-Slug"); slug != "" {
+		// Priority 2: slug (Header, Query Parameter, or Form Value) → lookup
+		slug := c.Get("X-Tenant-Slug")
+		if slug == "" {
+			slug = c.Query("tenant_slug")
+		}
+		if slug == "" {
+			slug = c.FormValue("tenant_slug")
+		}
+		if slug != "" {
 			var id int
 			err := db.DB.QueryRow("SELECT id FROM tenants WHERE slug = ? AND deleted_at IS NULL", slug).Scan(&id)
 			if err == nil && id > 0 {
 				c.Locals("tenant_id", id)
 				return c.Next()
+			}
+		}
+
+		// Priority 3: Subdomain detection from hostname (for Cloud VPS deployment)
+		host := c.Hostname()
+		parts := strings.Split(host, ".")
+		if len(parts) >= 3 {
+			// e.g. "sman1kluet.aethercbt.id" -> first part is "sman1kluet"
+			subdomain := parts[0]
+			if subdomain != "www" && subdomain != "api" {
+				var id int
+				err := db.DB.QueryRow("SELECT id FROM tenants WHERE slug = ? AND deleted_at IS NULL", subdomain).Scan(&id)
+				if err == nil && id > 0 {
+					c.Locals("tenant_id", id)
+					return c.Next()
+				}
 			}
 		}
 

@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/anomalyco/aether-cbt/internal/db"
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // GetActiveExamInfo returns configuration title and active status
@@ -129,3 +130,68 @@ func StartExamSession(c *fiber.Ctx) error {
 
 	return utils.SuccessResponse(c, nil, "Exam session registered successfully")
 }
+
+// GetRemainingTime calculates a student's remaining exam seconds dynamically from server time
+func GetRemainingTime(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(int)
+	role := c.Locals("role").(string)
+
+	pesertaID := c.QueryInt("peserta_id", 0)
+	mapelID := c.QueryInt("mapel_id", 0)
+
+	// Default to user_id if student role
+	if role == "student" {
+		pesertaID = c.Locals("user_id").(int)
+	}
+
+	if pesertaID <= 0 || mapelID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid peserta_id or mapel_id")
+	}
+
+	var loginTime time.Time
+	err := db.DB.QueryRow(`
+		SELECT login_time 
+		FROM cek_login 
+		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?
+	`, tenantID, pesertaID, mapelID).Scan(&loginTime)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Student might not be logged in or has already finished
+			return utils.SuccessResponse(c, fiber.Map{
+				"remaining_seconds": 0,
+				"is_active":         false,
+			}, "No active session found, remaining time is 0")
+		}
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check session active time")
+	}
+
+	var durasiMenit int = 90
+	err = db.DB.QueryRow(`
+		SELECT COALESCE(durasi_menit, 90) 
+		FROM mapel 
+		WHERE tenant_id = ? AND id = ?
+	`, tenantID, mapelID).Scan(&durasiMenit)
+
+	if err != nil {
+		// Fallback to default
+		durasiMenit = 90
+	}
+
+	duration := time.Duration(durasiMenit) * time.Minute
+	elapsed := time.Now().UTC().Sub(loginTime.UTC())
+	remaining := duration - elapsed
+
+	remainingSeconds := int(remaining.Seconds())
+	if remainingSeconds < 0 {
+		remainingSeconds = 0
+	}
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"remaining_seconds": remainingSeconds,
+		"login_time":        loginTime,
+		"duration_minutes":  durasiMenit,
+		"is_active":         remainingSeconds > 0,
+	}, "Remaining time calculated successfully")
+}
+

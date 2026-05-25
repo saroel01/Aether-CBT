@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // TestPasswordHashing verifies that the bcrypt password hash helper performs correctly

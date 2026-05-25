@@ -3,8 +3,8 @@ package repository
 import (
 	"database/sql"
 
-	"github.com/anomalyco/aether-cbt/internal/db"
-	"github.com/anomalyco/aether-cbt/internal/models"
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/models"
 )
 
 type TenantRepository struct{}

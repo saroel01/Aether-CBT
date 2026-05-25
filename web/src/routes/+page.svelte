@@ -14,7 +14,7 @@
     </div>
 
     <div class="mt-16 text-xs text-white/40">
-      Backend must be running on port 3000 • <a href="https://github.com/anomalyco/aether-cbt" class="underline">Documentation</a>
+      Backend must be running on port 3000 • <a href="https://github.com/saroel01/aether-cbt" class="underline">Documentation</a>
     </div>
   </div>
 </div>

@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // AuthMiddleware validates JWT token

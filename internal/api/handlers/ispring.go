@@ -4,69 +4,112 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/anomalyco/aether-cbt/internal/db"
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // XML structures mapping to iSpring detailed results format
-type XMLQuestion struct {
-	ID            string  `xml:"id,attr"`
-	Type          string  `xml:"type,attr"`
-	Status        string  `xml:"status,attr"`
-	AwardedPoints float64 `xml:"awardedPoints,attr"`
-	MaxPoints     float64 `xml:"maxPoints,attr"`
-	Body          string  `xml:"body"`
-	UserAnswer    string  `xml:"userAnswer"`
-	CorrectAnswer string  `xml:"correctAnswer"`
-}
-
-type XMLQuiz struct {
-	Title     string        `xml:"title,attr"`
-	Score     float64       `xml:"score,attr"`
-	MaxScore  float64       `xml:"maxScore,attr"`
-	Questions []XMLQuestion `xml:"question"`
-}
-
 type XMLReport struct {
-	XMLName xml.Name `xml:"report"`
-	Quiz    XMLQuiz  `xml:"quiz"`
+	XMLName   xml.Name      `xml:"quizReport"`
+	Version   string        `xml:"version,attr"`
+	Questions XMLQuestions `xml:"questions"`
 }
 
-// ISpringWebhook receives quiz results from iSpring, parses XML, and logs educational analysis details
+type XMLQuestions struct {
+	List []RawXMLQuestion `xml:",any"` // Uses xml:",any" to catch polymorphic tags dynamically
+}
+
+type RawXMLQuestion struct {
+	XMLName       xml.Name // Contains the actual tag: multipleChoiceQuestion, trueFalseQuestion, etc.
+	ID            string   `xml:"id,attr"`
+	Status        string   `xml:"status,attr"`
+	AwardedPoints float64  `xml:"awardedPoints,attr"`
+	MaxPoints     float64  `xml:"maxPoints,attr"`
+	
+	// Question text
+	Direction struct {
+		Text string `xml:"text"`
+	} `xml:"direction"`
+
+	// For Multiple Choice & True/False (Index-based answers)
+	Answers struct {
+		CorrectAnswerIndex string `xml:"correctAnswerIndex,attr"`
+		UserAnswerIndex    string `xml:"userAnswerIndex,attr"`
+		List               []struct {
+			Text string `xml:"text"`
+		} `xml:"answer"`
+	} `xml:"answers"`
+
+	// For Fill in the Blank / Type In (userAnswer attribute & acceptableAnswers)
+	UserAnswerAttr    string `xml:"userAnswer,attr"`
+	AcceptableAnswers struct {
+		List []string `xml:"answer"`
+	} `xml:"acceptableAnswers"`
+
+	// For Essay (userAnswer child tag)
+	UserAnswerTag string `xml:"userAnswer"`
+}
+
+// ISpringWebhook receives quiz results from iSpring, parses XML with Substitution Groups support,
+// performs anti-cheat active session checks, and saves the detailed student scores.
 func ISpringWebhook(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
-	noID := c.FormValue("sid") // User ID from iSpring (no_id)
+	// User ID from iSpring (no_id) - check "sid" first, then fallback to "USER_NAME"
+	noID := c.FormValue("sid")
+	if noID == "" {
+		noID = c.FormValue("USER_NAME")
+	}
+
 	score := c.FormValue("sp")
 	maxScore := c.FormValue("tp")
 	detailXML := c.FormValue("dr") // Detailed results XML
 
 	if noID == "" {
-		return c.Status(fiber.StatusBadRequest).SendString("Missing student ID")
+		return c.Status(fiber.StatusBadRequest).SendString("Missing student identifier (sid / USER_NAME)")
 	}
 
 	// Find peserta
 	var pesertaID int
 	err := db.DB.QueryRow("SELECT id FROM peserta WHERE no_id = ? AND tenant_id = ?", noID, tenantID).Scan(&pesertaID)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).SendString("Student not found")
+		return c.Status(fiber.StatusNotFound).SendString(fmt.Sprintf("Student with ID %s not found in tenant %d", noID, tenantID))
 	}
 
-	// Resolve active subject (mapel) from cek_login session
+	// Resolve active subject (mapel) and login_time from cek_login session (Anti-Cheat check)
 	var mapelID int
-	db.DB.QueryRow("SELECT mapel_id FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, tenantID).Scan(&mapelID)
+	var loginTime time.Time
+	err = db.DB.QueryRow("SELECT mapel_id, login_time FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, tenantID).Scan(&mapelID, &loginTime)
 	
-	if mapelID <= 0 {
-		// Fallback: use first mapel in tenant
-		db.DB.QueryRow("SELECT id FROM mapel WHERE tenant_id = ? LIMIT 1", tenantID).Scan(&mapelID)
+	if err != nil || mapelID <= 0 {
+		// Strictly enforce active session check for anti-cheat protection.
+		return c.Status(fiber.StatusForbidden).SendString("Unauthorized exam attempt: student session not found in room monitor")
+	}
+
+	// Fetch durasi_menit from mapel to validate grace period
+	var durasiMenit int = 90
+	err = db.DB.QueryRow("SELECT COALESCE(durasi_menit, 90) FROM mapel WHERE id = ? AND tenant_id = ?", mapelID, tenantID).Scan(&durasiMenit)
+	if err != nil {
+		durasiMenit = 90
+	}
+
+	// Grace Period: 5 minutes after official exam time limit
+	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
+	actualDuration := time.Now().UTC().Sub(loginTime.UTC())
+
+	if actualDuration > maxAllowedDuration {
+		return c.Status(fiber.StatusForbidden).SendString("Exam submission rejected: exceeded 5-minute grace period toleration (late submission)")
 	}
 
 	validasi := fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID)
 
-	// Save to hasil_tes
+	// Save summary to hasil_tes
 	res, err := db.DB.Exec(`
 		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, skor, skor_maks, detail_xml, status, validasi, waktu_selesai)
 		VALUES (?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
@@ -80,7 +123,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 
 	if err != nil {
 		log.Printf("Failed to insert hasil_tes: %v", err)
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save result")
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save result summary")
 	}
 
 	// Get the last inserted ID
@@ -93,7 +136,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		db.DB.QueryRow("SELECT id FROM hasil_tes WHERE tenant_id = ? AND validasi = ?", tenantID, validasi).Scan(&hasilTesID)
 	}
 
-	// Parse XML detailed results
+	// Parse XML detailed results dynamically
 	if detailXML != "" && hasilTesID > 0 {
 		var report XMLReport
 		if err := xml.Unmarshal([]byte(detailXML), &report); err == nil {
@@ -101,13 +144,65 @@ func ISpringWebhook(c *fiber.Ctx) error {
 			db.DB.Exec("DELETE FROM hasil_tes_detail WHERE hasil_tes_id = ?", hasilTesID)
 
 			// Insert each parsed question
-			for _, q := range report.Quiz.Questions {
+			for _, q := range report.Questions.List {
+				questionText := q.Direction.Text
+				if questionText == "" {
+					questionText = "Teks soal tidak tersedia"
+				}
+
+				var userAnswer, correctAnswer string
+				qType := q.XMLName.Local // e.g., multipleChoiceQuestion, trueFalseQuestion
+
+				switch qType {
+				case "multipleChoiceQuestion", "trueFalseQuestion":
+					options := q.Answers.List
+					
+					// Resolve userAnswer from index
+					if q.Answers.UserAnswerIndex != "" {
+						if idx, err := strconv.Atoi(q.Answers.UserAnswerIndex); err == nil && idx >= 0 && idx < len(options) {
+							userAnswer = options[idx].Text
+						}
+					}
+					
+					// Resolve correctAnswer from index
+					if q.Answers.CorrectAnswerIndex != "" {
+						if idx, err := strconv.Atoi(q.Answers.CorrectAnswerIndex); err == nil && idx >= 0 && idx < len(options) {
+							correctAnswer = options[idx].Text
+						}
+					}
+
+				case "multipleResponseQuestion":
+					// Multiple response question (Pilihan Ganda Kompleks)
+					var userAnsList []string
+					for _, opt := range q.Answers.List {
+						userAnsList = append(userAnsList, opt.Text)
+					}
+					userAnswer = "Banyak Pilihan: " + strings.Join(userAnsList, ", ")
+					correctAnswer = "Lihat skema kuis asli"
+
+				case "fillInTheBlankQuestion", "typeInQuestion":
+					userAnswer = q.UserAnswerAttr
+					correctAnswer = strings.Join(q.AcceptableAnswers.List, " ; ")
+
+				case "essayQuestion":
+					userAnswer = q.UserAnswerTag
+					correctAnswer = "Perlu Penilaian Manual"
+
+				default:
+					// Fallback for custom or unsupported question types
+					userAnswer = q.UserAnswerAttr
+					if userAnswer == "" && q.UserAnswerTag != "" {
+						userAnswer = q.UserAnswerTag
+					}
+					correctAnswer = "Tipe soal kustom"
+				}
+
 				_, err = db.DB.Exec(`
 					INSERT INTO hasil_tes_detail (
 						hasil_tes_id, question_id, question_text, question_type, 
 						status, awarded_points, max_points, user_answer, correct_answer
 					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				`, hasilTesID, q.ID, q.Body, q.Type, q.Status, q.AwardedPoints, q.MaxPoints, q.UserAnswer, q.CorrectAnswer)
+				`, hasilTesID, q.ID, questionText, qType, q.Status, q.AwardedPoints, q.MaxPoints, userAnswer, correctAnswer)
 				if err != nil {
 					log.Printf("Failed to save question detail: %v", err)
 				}
@@ -117,7 +212,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		}
 	}
 
-	// Remove from active cek_login session
+	// Remove from active cek_login session (student has completed the exam successfully)
 	_, _ = db.DB.Exec("DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, tenantID)
 
 	return c.SendString("Result received successfully")

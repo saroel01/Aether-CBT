@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/anomalyco/aether-cbt/internal/db"
-	"github.com/anomalyco/aether-cbt/internal/utils"
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 func main() {
