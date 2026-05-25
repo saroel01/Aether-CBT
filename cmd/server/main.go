@@ -70,65 +70,70 @@ func main() {
 	protected := api.Group("", middleware.AuthMiddleware())
 
 	// Room Supervisor routes
-	protected.Get("/supervisor/room-status", handlers.GetRoomStatus)
-	protected.Get("/supervisor/room-status/live", handlers.GetRoomStatusSSE)
-	protected.Post("/supervisor/reset", handlers.ResetStudentSession)
+	supervisorOnly := middleware.RequireRoles("supervisor", "admin")
+	protected.Get("/supervisor/room-status", supervisorOnly, handlers.GetRoomStatus)
+	protected.Get("/supervisor/room-status/live", supervisorOnly, handlers.GetRoomStatusSSE)
+	protected.Get("/supervisor/settings", supervisorOnly, handlers.GetSupervisorSettings)
+	protected.Post("/supervisor/reset", supervisorOnly, handlers.ResetStudentSession)
 
 	// Student Exam Active session routes
-	protected.Get("/student/active-info", handlers.GetActiveExamInfo)
-	protected.Get("/student/mapels", handlers.GetAvailableMapels)
-	protected.Post("/student/start", handlers.StartExamSession)
-	protected.Post("/student/infraction", handlers.RecordInfraction)
-	protected.Post("/student/progress", handlers.UpdateStudentProgress)
-	protected.Get("/student/remaining-time", handlers.GetRemainingTime)
-
+	authenticatedExamUsers := middleware.RequireRoles("student", "admin", "supervisor")
+	studentOnly := middleware.RequireRoles("student")
+	protected.Get("/student/active-info", authenticatedExamUsers, handlers.GetActiveExamInfo)
+	protected.Get("/student/mapels", authenticatedExamUsers, handlers.GetAvailableMapels)
+	protected.Post("/student/start", studentOnly, handlers.StartExamSession)
+	protected.Post("/student/infraction", studentOnly, handlers.RecordInfraction)
+	protected.Post("/student/progress", studentOnly, handlers.UpdateStudentProgress)
+	protected.Get("/student/remaining-time", authenticatedExamUsers, handlers.GetRemainingTime)
 
 	// Admin Settings & Mapping routes
-	protected.Get("/admin/settings", handlers.GetSettings)
-	protected.Post("/admin/settings", handlers.UpdateSettings)
-	protected.Post("/admin/curriculum/link", handlers.LinkClassSubject)
-	protected.Post("/admin/curriculum/unlink", handlers.UnlinkClassSubject)
-	protected.Get("/admin/curriculum/class/:kelas_id", handlers.GetClassSubjects)
+	adminOnly := middleware.RequireRoles("admin", "superadmin")
+	protected.Get("/admin/settings", adminOnly, handlers.GetSettings)
+	protected.Post("/admin/settings", adminOnly, handlers.UpdateSettings)
+	protected.Post("/admin/curriculum/link", adminOnly, handlers.LinkClassSubject)
+	protected.Post("/admin/curriculum/unlink", adminOnly, handlers.UnlinkClassSubject)
+	protected.Get("/admin/curriculum/class/:kelas_id", adminOnly, handlers.GetClassSubjects)
 
 	// CSV Utility routes
-	protected.Post("/admin/students/import-csv", handlers.ImportStudentsCSV)
-	protected.Get("/admin/results/export-csv", handlers.ExportResultsCSV)
-	protected.Get("/admin/results/export-essay/:format", handlers.ExportEssayResults)
-	protected.Get("/admin/results/analysis", handlers.GetEducationalAnalysis)
-	protected.Get("/admin/results/essays", handlers.GetEssayAnswers)
-	protected.Post("/admin/results/essays/grade", handlers.GradeEssayAnswer)
-	protected.Get("/admin/results/item-analysis", handlers.GetItemAnalysis)
+	protected.Post("/admin/students/import-csv", adminOnly, handlers.ImportStudentsCSV)
+	protected.Get("/admin/results/export-csv", supervisorOnly, handlers.ExportResultsCSV)
+	protected.Get("/admin/results/export-essay/:format", supervisorOnly, handlers.ExportEssayResults)
+	protected.Get("/admin/results/analysis", supervisorOnly, handlers.GetEducationalAnalysis)
+	protected.Get("/admin/results/essays", supervisorOnly, handlers.GetEssayAnswers)
+	protected.Post("/admin/results/essays/grade", adminOnly, handlers.GradeEssayAnswer)
+	protected.Get("/admin/results/item-analysis", supervisorOnly, handlers.GetItemAnalysis)
 
 	// Record Delete routes
-	protected.Delete("/students/:id", handlers.DeleteStudent)
-	protected.Delete("/classes/:id", handlers.DeleteClass)
-	protected.Delete("/mapel/:id", handlers.DeleteMapel)
-	protected.Delete("/rooms/:id", handlers.DeleteRoom)
+	protected.Delete("/students/:id", adminOnly, handlers.DeleteStudent)
+	protected.Delete("/classes/:id", adminOnly, handlers.DeleteClass)
+	protected.Delete("/mapel/:id", adminOnly, handlers.DeleteMapel)
+	protected.Delete("/rooms/:id", adminOnly, handlers.DeleteRoom)
 
 	// Tenant routes (superadmin/admin only)
-	protected.Get("/tenants", handlers.GetAllTenants)
-	protected.Post("/tenants", handlers.CreateTenant)
+	superadminOnly := middleware.RequireRoles("superadmin")
+	protected.Get("/tenants", superadminOnly, handlers.GetAllTenants)
+	protected.Post("/tenants", superadminOnly, handlers.CreateTenant)
 
 	// User routes
-	protected.Get("/users", handlers.GetUsers)
-	protected.Post("/users", handlers.CreateUser)
+	protected.Get("/users", adminOnly, handlers.GetUsers)
+	protected.Post("/users", adminOnly, handlers.CreateUser)
 
 	// Current user
 	protected.Get("/me", handlers.Me)
 
 	// Student routes
-	protected.Get("/students", handlers.GetStudents)
-	protected.Post("/students", handlers.CreateStudent)
+	protected.Get("/students", adminOnly, handlers.GetStudents)
+	protected.Post("/students", adminOnly, handlers.CreateStudent)
 
 	// Class & Subject routes
-	protected.Get("/classes", handlers.GetClasses)
-	protected.Post("/classes", handlers.CreateClass)
-	protected.Get("/mapel", handlers.GetMapel)
-	protected.Post("/mapel", handlers.CreateMapel)
+	protected.Get("/classes", adminOnly, handlers.GetClasses)
+	protected.Post("/classes", adminOnly, handlers.CreateClass)
+	protected.Get("/mapel", adminOnly, handlers.GetMapel)
+	protected.Post("/mapel", adminOnly, handlers.CreateMapel)
 
 	// Room routes
-	protected.Get("/rooms", handlers.GetRooms)
-	protected.Post("/rooms", handlers.CreateRoom)
+	protected.Get("/rooms", adminOnly, handlers.GetRooms)
+	protected.Post("/rooms", adminOnly, handlers.CreateRoom)
 
 	// iSpring Webhook (public)
 	api.Post("/ispring/webhook", handlers.ISpringWebhook)

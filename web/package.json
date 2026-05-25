@@ -11,11 +11,11 @@
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.0.0",
-    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
     "autoprefixer": "^10.5.0",
     "concurrently": "^9.2.1",
     "postcss": "^8.5.15",
-    "svelte": "^4.0.0",
+    "svelte": "^5.55.9",
     "tailwindcss": "^3.4.19",
     "vite": "^5.0.0"
   },

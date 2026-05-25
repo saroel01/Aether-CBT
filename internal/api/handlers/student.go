@@ -57,10 +57,19 @@ func CreateStudent(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
-	_, err := db.DB.Exec(`
+	if req.Password == "" {
+		req.Password = "siswa123"
+	}
+
+	passwordHash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to secure student password")
+	}
+
+	_, err = db.DB.Exec(`
 		INSERT INTO peserta (tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id, jenis_kelamin)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, tenantID, req.NoID, req.Password, req.NamaPeserta, req.KelasID, req.RuangID, req.JenisKelamin)
+	`, tenantID, req.NoID, passwordHash, req.NamaPeserta, req.KelasID, req.RuangID, req.JenisKelamin)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create student")

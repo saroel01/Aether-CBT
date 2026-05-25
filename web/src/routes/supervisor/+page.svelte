@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, qrCodeUrl } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
   import { onMount, onDestroy } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -13,7 +13,7 @@
   let students: any[] = [];
   let loading = true;
   let pollInterval: any;
-  let activeToken = 'ujian2026';
+  let activeToken = '';
 
   // Statistics counters
   let totalCount = 0;
@@ -46,11 +46,9 @@
 
     try {
       // Get exam token from settings
-      const settingsRes = await api('/student/active-info');
+      const settingsRes = await api('/supervisor/settings');
       if (settingsRes.success) {
-        // Since active-info doesn't return the secret token directly (security), we fallback to the default or load it
-        // We know standard token from seed is 'ujian2026'
-        activeToken = 'ujian2026';
+        activeToken = settingsRes.data?.token || activeToken;
       }
     } catch {}
 
@@ -317,7 +315,7 @@
           {#if activeToken}
             <div class="bg-slate-50 p-4 border rounded-3xl inline-block mx-auto mb-4">
               <!-- Fetch QR Code from backend Go endpoint using the active token! -->
-              <img src="http://localhost:3000/api/qrcode?text={activeToken}" alt="QR Token" class="h-44 w-44 mx-auto" />
+              <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-44 w-44 mx-auto" />
             </div>
           {/if}
 

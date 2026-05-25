@@ -27,16 +27,30 @@ func StudentLogin(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid exam token")
 	}
 
-	// Validate student
 	var pesertaID int
+	var storedPassword string
 	err := db.DB.QueryRow(`
-		SELECT id FROM peserta 
-		WHERE no_id = ? AND password = ? AND tenant_id = ?
-	`, req.NoID, req.Password, tenantID).Scan(&pesertaID)
+		SELECT id, password FROM peserta 
+		WHERE no_id = ? AND tenant_id = ? AND deleted_at IS NULL
+	`, req.NoID, tenantID).Scan(&pesertaID, &storedPassword)
 
-	if err != nil {
+	if err != nil || !utils.CheckPasswordOrPlaintext(req.Password, storedPassword) {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
-	return utils.SuccessResponse(c, fiber.Map{"peserta_id": pesertaID}, "Login successful")
+	jwtToken, err := utils.GenerateToken(pesertaID, tenantID, "student")
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to generate student session token")
+	}
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"peserta_id": pesertaID,
+		"token":      jwtToken,
+		"user": fiber.Map{
+			"id":        pesertaID,
+			"username":  req.NoID,
+			"role":      "student",
+			"tenant_id": tenantID,
+		},
+	}, "Login successful")
 }

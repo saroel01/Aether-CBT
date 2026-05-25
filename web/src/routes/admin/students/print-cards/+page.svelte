@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, qrCodeUrl } from '$lib/api';
   import { onMount } from 'svelte';
 
   let students: any[] = [];
   let classesList: any[] = [];
   let roomsList: any[] = [];
-  let activeToken = 'ujian2026';
+  let activeToken = '';
   let examTitle = 'Ujian Akhir Semester 2025/2026';
   let loading = true;
 
@@ -15,7 +15,7 @@
         api('/students'),
         api('/classes'),
         api('/rooms'),
-        api('/student/active-info')
+        api('/admin/settings')
       ]);
 
       students = studentsRes.data || [];
@@ -23,8 +23,7 @@
       roomsList = roomsRes.data || [];
       if (settingsRes.success && settingsRes.data) {
         examTitle = settingsRes.data.exam_title;
-        // active-info settings doesn't output secret token, we fallback to default or seeded value
-        activeToken = 'ujian2026';
+        activeToken = settingsRes.data.token || activeToken;
       }
     } catch (e) {
       console.error('Failed to load data for printing cards:', e);
@@ -120,7 +119,7 @@
             <!-- Right QR code box for login -->
             <div class="w-[85px] text-center border-l pl-3.5 shrink-0">
               <img 
-                src="http://localhost:3000/api/qrcode?text={encodeURIComponent(qrUrl)}" 
+                src={qrCodeUrl(qrUrl)}
                 alt="Login QR" 
                 class="h-[75px] w-[75px] mx-auto border p-1 rounded-lg"
               />

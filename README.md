@@ -2,18 +2,20 @@
 
 **Modern Computer-Based Testing Platform with Multi-Tenant Architecture**
 
-Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant berkinerja tinggi, aman, dan siap pakai yang dirancang untuk sekolah. Platform ini mendukung kapasitas tinggi dengan true offline capability menggunakan Go (Fiber) di sisi backend, SQLite (WAL mode) untuk penyimpanan terisolasi yang andal, dan SvelteKit di sisi frontend.
+Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant yang sedang dipersiapkan untuk penggunaan sekolah. Platform ini memakai Go (Fiber) di sisi backend, SQLite (WAL mode) untuk penyimpanan lokal, dan SvelteKit di sisi frontend. Status saat ini adalah hardened MVP: alur inti sudah diperkuat, tetapi deployment ujian nyata tetap membutuhkan fixture iSpring sekolah, backup/restore rehearsal, load test, dan rotasi kredensial.
 
 ---
 
 ## 🚀 Fitur Utama (Core Features)
 
 *   **Multi-Tenant yang Ketat**: Isolasi data penuh antara sekolah (tenant) menggunakan pemfilteran dinamis `tenant_id` pada tingkat database dan middleware.
-*   **Integrasi iSpring QuizMaker Dinamis**: 
-    *   Mendukung penuh unmarshaling berkas detail XML (`dr`) yang dikirimkan oleh iSpring QuizMaker.
-    *   Menggunakan parser polymorphic dinamis (`xml:",any"`) yang mematuhi skema XSD iSpring (Substitution Groups).
-    *   Pemetaan otomatis jawaban pilihan ganda berbasis indeks (`userAnswerIndex` & `correctAnswerIndex`) ke teks jawaban riil siswa.
-*   **Proteksi Keamanan Anti-Cheat**: Validasi sesi ujian secara langsung di monitor ruang pengawas (`cek_login`). Pengiriman hasil kuis di luar sesi ujian aktif akan otomatis ditolak dengan kode **`403 Forbidden`**.
+*   **Integrasi Hasil iSpring QuizMaker**:
+    *   Menerima hasil melalui endpoint `POST /api/ispring/webhook` dengan parameter standar seperti `sid`, `USER_NAME`, `sp`, `tp`, dan `dr`.
+    *   Memparse XML detail `quizReport` dari `dr`, termasuk multiple choice, multiple response, matching, sequence, fill-in-the-blank, type-in, essay, word bank, numeric, dan drag-and-drop.
+    *   Menyimpan XML mentah untuk audit serta menormalisasi jawaban per soal ke tabel `hasil_tes_detail`.
+*   **Proteksi Keamanan Anti-Cheat**: Validasi sesi ujian secara langsung di monitor ruang pengawas (`cek_login`). Pengiriman hasil kuis di luar sesi aktif atau tanpa `attempt_token` yang sesuai otomatis ditolak dengan kode **`403 Forbidden`**.
+*   **Kontrol Akses Berbasis Role**: Route admin, supervisor, superadmin, dan siswa dipisahkan dengan JWT dan middleware role.
+*   **Kredensial Siswa Lebih Aman**: Siswa baru dan impor CSV disimpan dengan bcrypt, sementara data lama plaintext masih dapat login untuk migrasi bertahap.
 *   **Ekspor Lembar Jawaban Esai Multi-Format (CSV, XLSX, PDF)**:
     *   *CSV*: Rekapan cepat grid data.
     *   *Excel (XLSX)*: Desain visual premium (Steel Blue header, auto-fit, grid borders, dan wrap text otomatis pada kolom esai siswa).
@@ -26,7 +28,7 @@ Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant berkinerja 
 
 *   **Backend**: Go (Fiber v2)
 *   **Database**: SQLite 3 (WAL Mode + Enforced Foreign Keys)
-*   **Frontend**: SvelteKit + TypeScript + Tailwind CSS (Functional MVP)
+*   **Frontend**: SvelteKit + TypeScript + Tailwind CSS
 *   **Ekspor & Cetak**: `excelize/v2` (Spreadsheet XLSX), `gofpdf` (Dokumen PDF)
 *   **QR Code**: Skip2 QR Code Generator
 
@@ -51,7 +53,7 @@ aether-cbt/
 │   │   └── migrations/        # Berkas migrasi database terurut (.sql)
 │   ├── models/                # Struktur database GORM/SQL
 │   └── utils/                 # Helper enkripsi, token JWT, QR Code, dan respons
-├── web/                       # Aplikasi SvelteKit frontend (Early MVP)
+├── web/                       # Aplikasi SvelteKit frontend
 ├── data/                      # Folder database SQLite & aset kuis iSpring per tenant
 └── docs/                      # Dokumentasi lengkap arsitektur dan spesifikasi UI
 ```
@@ -79,6 +81,17 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
     npm run seed
     ```
 
+### Konfigurasi Frontend
+
+Frontend membaca konfigurasi berikut saat build/runtime dev:
+
+```bash
+VITE_API_BASE=http://localhost:3000/api
+VITE_TENANT_ID=1
+```
+
+Jika `VITE_API_BASE` tidak diisi, build produksi memakai `/api`. Saat Vite dev berjalan di port `5173`, fallback dev mengarah ke `http://localhost:3000/api`.
+
 ---
 
 ## 📚 Dokumentasi Lebih Lanjut
@@ -86,6 +99,7 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
 Seluruh spesifikasi teknis dan panduan operasional tersedia secara lengkap di folder `docs/` dan root direktori:
 
 *   **[Panduan Penggunaan Lengkap](USAGE_GUIDE.md)** — Berisi petunjuk operasional Admin, Guru, dan Integrasi Kuis iSpring QuizMaker.
+*   **[Integrasi Hasil iSpring](docs/ISPRING_RESULT_INTEGRATION.md)** — Kontrak final endpoint hasil iSpring, format XML `dr`, tipe soal yang diparse, dan batasan implementasi.
 *   **[PRD.md](docs/PRD.md)** — Product Requirements Document.
 *   **[Technical_Architecture.md](docs/Technical_Architecture.md)** — Desain arsitektur teknis dan detail API endpoints.
 *   **[Database_Schema.md](docs/Database_Schema.md)** — Skema database lengkap SQLite 3.

@@ -7,7 +7,7 @@
 
   let noId = '';
   let password = '';
-  let token = 'ujian2026';
+  let token = '';
   let error = '';
   let loading = false;
 
@@ -48,6 +48,13 @@
         localStorage.setItem('peserta_id', res.data.peserta_id);
         localStorage.setItem('peserta_no_id', noId);
         localStorage.setItem('exam_token', token);
+        localStorage.setItem('aether_token', res.data.token);
+        localStorage.setItem('aether_user', JSON.stringify(res.data.user || {
+          id: res.data.peserta_id,
+          username: noId,
+          role: 'student',
+          tenant_id: 1
+        }));
         toast.success('Login berhasil! Silakan pilih mata pelajaran.');
         setTimeout(() => {
           window.location.href = '/student/select-subject';
@@ -147,7 +154,7 @@
       </div>
 
       <div class="mt-6 text-center text-xs text-slate-500">
-        Demo Login: <span class="font-mono text-indigo-400">2024001</span> / <span class="font-mono text-indigo-400">siswa123</span> • Token: <span class="font-mono text-indigo-400">ujian2026</span>
+        Gunakan Nomor ID, kata sandi, dan token resmi yang dibagikan proktor.
       </div>
     </Card>
 

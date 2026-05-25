@@ -62,6 +62,7 @@
       if (res.success) {
         localStorage.setItem('selected_mapel_id', mapelId.toString());
         localStorage.setItem('selected_mapel_name', mapelName);
+        localStorage.setItem('attempt_token', res.data?.attempt_token || '');
         toast.success(`Membuka Ujian: ${mapelName}`);
         
         setTimeout(() => {

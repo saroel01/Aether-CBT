@@ -59,6 +59,7 @@ func SetupFeaturesTestDB(t *testing.T) {
 			tenant_id INTEGER NOT NULL,
 			peserta_id INTEGER NOT NULL,
 			mapel_id INTEGER NOT NULL,
+			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
 			tab_switch_count INTEGER DEFAULT 0,
@@ -106,9 +107,9 @@ func SetupFeaturesTestDB(t *testing.T) {
 	_, _ = db.DB.Exec("INSERT INTO kelas (id, nama_kelas) VALUES (2, 'XI-RPL-1')")
 	_, _ = db.DB.Exec("INSERT INTO mapel (id, tenant_id, nama_mapel, kode_mapel, durasi_menit) VALUES (7, 1, 'Pemrograman Web', 'PW-11', 45)")
 	_, _ = db.DB.Exec("INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (15, 1, '5050', 'secure', 'Siswa Cerdas', 2, 1)")
-	
+
 	// Create active exam session
-	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, login_time, last_activity, tab_switch_count, answered_count, total_questions) VALUES (1, 15, 7, datetime('now', '-10 minutes'), datetime('now'), 2, 8, 10)")
+	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity, tab_switch_count, answered_count, total_questions) VALUES (1, 15, 7, 'feature-attempt-token', datetime('now', '-10 minutes'), datetime('now'), 2, 8, 10)")
 }
 
 func TeardownFeaturesTestDB() {
@@ -264,6 +265,7 @@ func TestISpringGracePeriod(t *testing.T) {
 	form.Add("sp", "80")
 	form.Add("tp", "100")
 	form.Add("dr", "<quizReport></quizReport>")
+	form.Add("attempt_token", "feature-attempt-token")
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

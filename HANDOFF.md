@@ -1,237 +1,335 @@
-# AETHER CBT - HANDOFF DOCUMENT
+# Aether CBT - Handoff
 
-**Project**: Aether CBT (Multi-Tenant Computer-Based Testing Platform)  
-**Status**: Backend Solid + Functional Frontend MVP (UI masih sangat dasar)  
-**Date**: 23 May 2026 (Updated)  
-**Tech Stack**: Go (Fiber) + SQLite + SvelteKit + Tailwind
+**Status:** Hardened MVP, pending deployment evidence  
+**Workspace:** `D:\Users\Saroel-H\Projects\Aether-CBT`  
+**Stack:** Go/Fiber, SQLite WAL, SvelteKit, Tailwind  
+**Current date of handoff:** 2026-05-25  
+**Primary dev command:** `npm run dev`
 
----
+## Executive Summary
 
-## 1. PROJECT OVERVIEW
+Aether CBT has moved beyond a raw MVP. The main issues found during the iSpring/CBT review have been hardened: iSpring parsing is now parser-backed and tested, protected routes are role-scoped, student login issues JWTs, exam result submission requires an active per-attempt token, newly created/imported student passwords are bcrypt-hashed, and the frontend no longer keeps critical API/tenant assumptions scattered across pages.
 
-Aether CBT is a modern, high-performance, multi-tenant Computer-Based Testing platform designed for schools. It supports up to 500+ concurrent students per tenant with true offline capability.
+Do not claim final production readiness yet. Before a real exam day, the project still needs real iSpring QuizMaker XML fixtures from the school, backup/restore rehearsal, realistic load testing, production CORS/secrets, and credential rotation.
 
-**Current State** (as of latest review):
+## Verification Evidence
 
-**Backend**:
-- Strong and mature
-- Full schema with 11 migrations + auto-apply
-- Multi-tenant properly enforced
-- JWT + bcrypt + CORS configured
-- All core CRUD endpoints working
+Fresh verification already run after the latest changes:
 
-**Frontend**:
-- Functional but very basic / early MVP
-- Admin login + basic data management works
-- Student login exists but exam screen is placeholder
-- **Does not follow** the design system documented in `docs/UI_Component_Library.md`
-- No proper component library yet
-
-**Overall**:
-- Can run with one command (`npm run dev`)
-- Suitable for continued development
-- Not ready for real school usage or pilot testing
-
----
-
-## 2. TECH STACK
-
-| Layer       | Technology                          | Version     |
-|-------------|-------------------------------------|-------------|
-| Backend     | Go + Fiber                          | 1.22 / 2.52 |
-| Database    | SQLite (WAL mode)                   | 3           |
-| Auth        | JWT + bcrypt                        | v5 / latest |
-| Frontend    | SvelteKit + TypeScript + Tailwind   | Latest      |
-| Real-time   | Server-Sent Events (SSE)            | -           |
-| QR Code     | go-qrcode                           | v0.0.0      |
-
----
-
-## 3. PROJECT STRUCTURE
-
-```
-aether-cbt/
-├── cmd/
-│   ├── server/main.go                 # Main application entry
-│   ├── createadmin/main.go            # Create default admin
-│   └── seed/main.go                   # Seed sample data
-├── internal/
-│   ├── api/
-│   │   ├── handlers/                  # All HTTP handlers (incl. me.go)
-│   │   └── middleware/
-│   │       ├── auth.go
-│   │       └── tenant.go
-│   ├── config/config.go
-│   ├── db/
-│   │   ├── sqlite.go
-│   │   ├── migrate.go                 # Auto migration runner
-│   │   └── migrations/                # 11 migration files
-│   ├── models/
-│   ├── repository/
-│   └── utils/
-├── web/                               # SvelteKit frontend (basic MVP)
-├── data/
-├── docs/                              # Includes UI_Component_Library.md (not yet implemented)
-├── .opencode/skills/                  # 4 development skills
-├── package.json                       # Primary scripts (npm run dev)
-├── go.mod
-├── Makefile
-├── QUICKSTART.md
-└── HANDOFF.md
+```bash
+go test ./...
 ```
 
----
+Result: passed for all Go packages.
 
-## 4. HOW TO RUN (Recommended)
+```bash
+npm run build
+```
 
-### Prerequisites
-- Go 1.22+
-- Node.js 18+
+Result: passed. Previous SvelteKit/Svelte runtime export warnings were removed by upgrading to Svelte 5 and `@sveltejs/vite-plugin-svelte` 4.
 
-### One Command (Recommended)
+```bash
+npm audit --audit-level=moderate
+```
+
+Result: still fails. Advisories remain in the frontend toolchain:
+
+- `cookie <0.7.0` through SvelteKit dependency chain.
+- `esbuild <=0.24.2` through Vite/dev-server dependency chain.
+
+The suggested `npm audit fix --force` is not safe as an automatic step because it proposes breaking toolchain jumps. Do not expose the Vite dev server publicly. Revisit this with a deliberate SvelteKit/Vite upgrade plan.
+
+## Key Completed Changes
+
+### iSpring Result Handling
+
+Files:
+
+- `internal/ispring/parser.go`
+- `internal/ispring/parser_test.go`
+- `internal/api/handlers/ispring.go`
+- `internal/api/handlers/ispring_test.go`
+- `docs/ISPRING_RESULT_INTEGRATION.md`
+- `docs/ISPRING_COMPATIBILITY_TASKS.md`
+
+What changed:
+
+- `POST /api/ispring/webhook` now uses `internal/ispring` parser.
+- Parser supports iSpring `quizReport` XML shape, including namespace-aware parsing.
+- Supported question families include multiple choice, multiple response, true/false, matching, sequence, type-in, fill-in-the-blank, essay, word bank, numeric, and drag-and-drop.
+- Invalid XML returns HTTP `400`.
+- Results are upserted using stable unique constraints.
+- Detail answers are normalized into `hasil_tes_detail`.
+
+### Database Guarantees
+
+Files:
+
+- `internal/db/migrations/017_create_exam_upsert_indexes.sql`
+- `internal/db/migrations/018_alter_cek_login_attempt_token.sql`
+- `internal/db/migrate_test.go`
+- `docs/Database_Schema.md`
+
+What changed:
+
+- Added unique index for `cek_login(tenant_id, peserta_id, mapel_id)`.
+- Added unique index for `hasil_tes(tenant_id, validasi)`.
+- Added `cek_login.attempt_token`.
+- Added migration tests to keep these assumptions covered.
+
+### Student Authentication and Exam Session Security
+
+Files:
+
+- `internal/api/handlers/exam.go`
+- `internal/api/handlers/student_exam.go`
+- `internal/api/handlers/student_auth_flow_test.go`
+- `internal/utils/auth.go`
+
+What changed:
+
+- Student login now returns a JWT and user object.
+- Student protected exam routes can use the JWT.
+- Student role can only start its own exam session.
+- `POST /api/student/start` generates a secure random `attempt_token`.
+- Web simulator/iSpring submission must include matching `attempt_token` or `AETHER_ATTEMPT_TOKEN`.
+- New helper `GenerateSecureToken`.
+- New helper `CheckPasswordOrPlaintext` allows legacy plaintext rows while supporting bcrypt rows.
+
+### Role Middleware
+
+Files:
+
+- `internal/api/middleware/role.go`
+- `internal/api/middleware/role_test.go`
+- `cmd/server/main.go`
+
+What changed:
+
+- Added `RequireRoles(...)`.
+- Admin, supervisor, superadmin, and student routes are separated by role.
+- Supervisor/admin can access room monitoring and result exports.
+- Student-only routes include exam start/progress/infraction.
+- Admin/superadmin routes protect management operations.
+
+### Student Password Hardening
+
+Files:
+
+- `internal/api/handlers/student.go`
+- `internal/api/handlers/csv_utility.go`
+- `internal/api/handlers/student_auth_flow_test.go`
+- `internal/utils/auth.go`
+- `USAGE_GUIDE.md`
+
+What changed:
+
+- Manually created students are stored with bcrypt.
+- CSV-imported students are stored with bcrypt.
+- Existing plaintext student rows still work so old seed/import data does not break immediately.
+- Tests cover bcrypt login, create, and CSV import.
+
+### Frontend Runtime Configuration and iSpring Attempt Token Flow
+
+Files:
+
+- `web/src/lib/api.ts`
+- `web/src/routes/student/login/+page.svelte`
+- `web/src/routes/student/select-subject/+page.svelte`
+- `web/src/routes/student/exam/+page.svelte`
+- `web/src/routes/admin/+page.svelte`
+- `web/src/routes/admin/+layout.svelte`
+- `web/src/routes/admin/settings/+page.svelte`
+- `web/src/routes/admin/students/+page.svelte`
+- `web/src/routes/admin/students/print-cards/+page.svelte`
+- `web/src/routes/supervisor/+page.svelte`
+
+What changed:
+
+- Centralized helpers: `apiUrl`, `authHeaders`, `qrCodeUrl`.
+- Frontend honors `VITE_API_BASE` and `VITE_TENANT_ID`.
+- Production default is same-origin `/api`.
+- Vite dev fallback still points to `http://localhost:3000/api`.
+- Student login stores JWT and user in local storage.
+- Subject selection stores `attempt_token`.
+- Exam submit sends `attempt_token` to `/api/ispring/webhook`.
+- Admin/supervisor QR rendering no longer hardcodes `http://localhost:3000`.
+- Admin and print-card pages fetch real admin settings token instead of using the seeded token.
+
+### Supervisor Settings
+
+Files:
+
+- `internal/api/handlers/settings_handler.go`
+- `internal/api/handlers/supervisor_settings_test.go`
+- `cmd/server/main.go`
+- `web/src/routes/supervisor/+page.svelte`
+
+What changed:
+
+- Added `GET /api/supervisor/settings`.
+- Allows supervisor/admin/superadmin to read active exam token/title for room display.
+- Rejects student role.
+- Covered by tests.
+
+### Frontend Tooling
+
+Files:
+
+- `web/package.json`
+- `web/package-lock.json`
+- `web/src/lib/components/ui/Modal.svelte`
+- `web/src/lib/components/ui/Toast.svelte`
+- `web/src/routes/admin/settings/+page.svelte`
+
+What changed:
+
+- Upgraded `svelte` to 5.
+- Upgraded `@sveltejs/vite-plugin-svelte` to 4.
+- Added aria labels to icon-only buttons flagged by Svelte 5 a11y checks.
+- `npm run build` now completes without the earlier Svelte runtime export warnings.
+
+### Documentation
+
+Files:
+
+- `README.md`
+- `PROJECT_STATUS.md`
+- `DEVELOPMENT_COMPLETE.md`
+- `HANDOFF.md`
+- `USAGE_GUIDE.md`
+- `docs/Technical_Architecture.md`
+- `docs/Database_Schema.md`
+- `docs/ISPRING_RESULT_INTEGRATION.md`
+- `docs/ISPRING_COMPATIBILITY_TASKS.md`
+- `docs/superpowers/plans/2026-05-25-production-hardening.md`
+
+What changed:
+
+- Removed confusing production-ready claims.
+- Current status is consistently described as hardened MVP/pilot-ready preparation, not final production.
+- Documented `attempt_token` requirement.
+- Documented frontend env configuration.
+- Documented remaining deployment gaps.
+
+## Important Current Behavior
+
+Student flow:
+
+1. Student logs in at `/student/login` with `no_id`, password, and exam token.
+2. Backend validates exam token from `settings`.
+3. Backend validates password using bcrypt if hash-like, otherwise plaintext legacy comparison.
+4. Backend returns JWT with role `student`.
+5. Student selects subject.
+6. `POST /api/student/start` creates/updates `cek_login` and returns `attempt_token`.
+7. Student exam page stores and submits `attempt_token` with result payload.
+8. `POST /api/ispring/webhook` rejects missing/wrong attempt token with HTTP `403`.
+9. Successful result upserts `hasil_tes`, writes details, and deletes active `cek_login`.
+
+iSpring webhook minimum expected fields:
+
+- `sid` or `USER_NAME`
+- `sp`
+- `tp`
+- `dr`
+- `attempt_token` or `AETHER_ATTEMPT_TOKEN`
+
+Frontend environment:
+
+```bash
+VITE_API_BASE=http://localhost:3000/api
+VITE_TENANT_ID=1
+```
+
+If `VITE_API_BASE` is unset, production build uses `/api`. Vite dev on port `5173` falls back to `http://localhost:3000/api`.
+
+## Known Deployment Gaps
+
+These are intentionally not hidden:
+
+1. Real iSpring QuizMaker XML fixtures from the school are still needed.
+2. Backup and restore rehearsal for `data/cbt_aether.db` is not yet automated/proven.
+3. Realistic load test is not yet run.
+4. Production CORS should be allow-listed instead of wildcard.
+5. Default JWT secret/admin/supervisor/student credentials must be rotated before deployment.
+6. `npm audit` still reports frontend toolchain advisories that require a deliberate breaking upgrade plan.
+7. Legacy plaintext student rows remain accepted for migration compatibility; eventually add a migration/rotation workflow to replace them.
+
+## Recommended Next Tasks
+
+1. Add real iSpring fixture tests:
+   - Export sample quizzes from the actual school iSpring QuizMaker projects.
+   - Save XML fixtures under a new test fixture directory.
+   - Assert parser output per question type used by the school.
+
+2. Add backup/restore procedure:
+   - Backup `data/cbt_aether.db`, WAL, and SHM files safely.
+   - Restore into a clean data directory.
+   - Run app smoke test after restore.
+   - Document exact commands in `USAGE_GUIDE.md`.
+
+3. Add load test:
+   - Simulate login, subject start, progress updates, and result submission.
+   - Use realistic payload sizes.
+   - Verify SQLite WAL behavior under concurrent submits.
+
+4. Harden deployment config:
+   - Set `JWT_SECRET`.
+   - Restrict CORS.
+   - Rotate default accounts.
+   - Ensure Vite dev server is never public.
+
+5. Plan frontend dependency audit resolution:
+   - Avoid `npm audit fix --force` without a branch.
+   - Test a controlled Vite/SvelteKit upgrade in isolation.
+
+## Useful Commands
 
 ```bash
 npm run dev
+npm run seed
+go test ./...
+cd web
+npm run build
+npm audit --audit-level=moderate
 ```
 
-This starts **both** backend (port 3000) and frontend (port 5173) together.
+## Git State at Handoff
 
-### Other Useful Commands
+There are many modified and new files. Nothing has been staged or committed by this handoff.
 
-| Command                    | Description                              |
-|---------------------------|------------------------------------------|
-| `npm run dev`             | Backend + Frontend (main command)        |
-| `npm run seed`            | Seed sample data (admin + students)      |
-| `npm run dev:backend-only`| Start only Go backend                    |
-| `go run cmd/server/main.go` | Legacy backend only                    |
+High-signal new files include:
 
-**Default Credentials** (after `npm run seed`):
-- Admin: `admin` / `admin123`
-- Student: `2024001` / `siswa123` (token: `ujian2026`)
-- Room Supervisor: `ruang_a` / `ruang123`
+- `internal/ispring/parser.go`
+- `internal/ispring/parser_test.go`
+- `internal/api/middleware/role.go`
+- `internal/api/middleware/role_test.go`
+- `internal/api/handlers/student_auth_flow_test.go`
+- `internal/api/handlers/supervisor_settings_test.go`
+- `internal/db/migrate_test.go`
+- `internal/db/migrations/017_create_exam_upsert_indexes.sql`
+- `internal/db/migrations/018_alter_cek_login_attempt_token.sql`
+- `docs/ISPRING_RESULT_INTEGRATION.md`
+- `docs/ISPRING_COMPATIBILITY_TASKS.md`
+- `docs/superpowers/plans/2026-05-25-production-hardening.md`
 
----
+## Handoff Warning
 
-## 5. API ENDPOINTS
+If the next worker has limited context, start by reading:
 
-### Public Endpoints
-| Method | Endpoint                    | Description                     |
-|--------|-----------------------------|---------------------------------|
-| GET    | `/`                         | Root health message             |
-| GET    | `/api/health`               | Health check                    |
-| POST   | `/api/auth/login`           | Admin / Supervisor login        |
-| POST   | `/api/auth/student-login`   | Student login                   |
-| POST   | `/api/ispring/webhook`      | Receive iSpring quiz results    |
+1. `docs/superpowers/plans/2026-05-25-production-hardening.md`
+2. `docs/ISPRING_RESULT_INTEGRATION.md`
+3. `HANDOFF.md`
+4. `cmd/server/main.go`
+5. `internal/api/handlers/exam.go`
+6. `internal/api/handlers/student_exam.go`
+7. `internal/api/handlers/ispring.go`
+8. `web/src/lib/api.ts`
 
-### Protected Endpoints (require JWT)
-| Method | Endpoint           | Description                        |
-|--------|--------------------|------------------------------------|
-| GET    | `/api/me`          | Get current logged-in user         |
-| GET/POST | `/api/tenants`   | Manage tenants (superadmin only)   |
-| GET/POST | `/api/users`     | Manage users                       |
-| GET/POST | `/api/students`  | Manage students                    |
-| GET/POST | `/api/classes`   | Manage classes                     |
-| GET/POST | `/api/mapel`     | Manage subjects                    |
-| GET/POST | `/api/rooms`     | Manage exam rooms                  |
+Then run:
 
----
-
-## 6. DATABASE
-
-**File**: `data/cbt_aether.db`
-
-**Core Tables**:
-- `tenants`
-- `users`
-- `peserta`
-- `kelas`
-- `mapel`
-- `ruang`
-- `hasil_tes`
-- `cek_login`
-- `settings`
-
-All tables (except `tenants`) contain `tenant_id` for isolation.
-
----
-
-## 7. MULTI-TENANT ARCHITECTURE
-
-- Every request goes through `TenantMiddleware`
-- Tenant can be specified via headers: `X-Tenant-ID` or `X-Tenant-Slug`
-- All queries must filter by `tenant_id`
-- Default tenant = ID 1 (`slug: default`)
-- Super Admin can manage multiple tenants
-
----
-
-## 8. KNOWN ISSUES / TODO (Updated - Honest Assessment)
-
-**Completed (solid):**
-- Backend architecture, migrations, auth, multi-tenant, CORS
-- Basic admin functionality (view + create data)
-- Basic student login flow
-
-**Still Major Gaps:**
-- [ ] Frontend UI is still very crude and does not follow `docs/UI_Component_Library.md`
-- [ ] No proper component library / design system implementation
-- [ ] Student exam screen is only a placeholder (no real iSpring integration yet)
-- [ ] Supervisor dashboard almost non-existent
-- [ ] No Excel import/export
-- [ ] No QR Code functionality
-- [ ] Very limited error handling and user feedback
-- [ ] No tests
-
----
-
-## 9. NEXT DEVELOPMENT PRIORITIES (Recommended Order)
-
-**High Priority (Foundation):**
-1. **Implement Design System** – Build proper components following `docs/UI_Component_Library.md` (colors, typography, buttons, cards, tables, modals, etc.)
-2. **Refactor existing Admin UI** to follow the new design system
-3. **Improve Student Exam Screen** – Make it actually usable
-
-**Next Features:**
-4. Real iSpring content integration in student exam
-5. Supervisor real-time monitoring
-6. Excel import/export
-7. QR Code support
-
-**Later:**
-- Polish, error handling, logging, tests, production readiness
-
----
-
-## 10. DOCUMENTATION
-
-All project documentation is located in `docs/`:
-
-- `PRD.md` — Product Requirements Document
-- `Technical_Architecture.md` — Architecture & API spec
-- `Database_Schema.md` — Complete database schema
-- `UI_Component_Library.md` — Design system
-
----
-
-## 11. CONTACT / MAINTAINER
-
-This project was built as a complete foundation for a modern multi-tenant CBT platform.
-
-**Status**: 
-- Backend is mature and reliable.
-- Frontend is functional but still very basic and does not yet follow the design system specified in the documentation.
-- Suitable for internal development and testing.
-- **Not yet suitable** for real school deployment or pilot testing.
-
----
-
-**New/Updated Files (as of latest update)**:
-- `QUICKSTART.md` — Recommended starting guide
-- Root `package.json` — `npm run dev` to run both backend + frontend
-- `.opencode/skills/` — 4 skills to help development in opencode
-- Basic admin pages (still need major UI improvement)
-- Complete migration system + seeder
-
-**Important Note**: The UI Component Library and Design System documented in `docs/UI_Component_Library.md` have **not been implemented yet**.
-
-**End of Handoff Document**
+```bash
+go test ./...
+cd web
+npm run build
+```

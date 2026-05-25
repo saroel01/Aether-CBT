@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, apiUrl, authHeaders } from '$lib/api';
   import { onMount, onDestroy } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -10,6 +10,7 @@
   let pesertaId = '';
   let pesertaNoId = '';
   let examToken = '';
+  let attemptToken = '';
   let selectedMapelId = '';
   let selectedMapelName = '';
 
@@ -95,8 +96,9 @@
     examToken = localStorage.getItem('exam_token') || '';
     selectedMapelId = localStorage.getItem('selected_mapel_id') || '';
     selectedMapelName = localStorage.getItem('selected_mapel_name') || 'Mata Pelajaran';
+    attemptToken = localStorage.getItem('attempt_token') || '';
 
-    if (!pesertaId || !selectedMapelId) {
+    if (!pesertaId || !selectedMapelId || !attemptToken) {
       toast.error('Silakan login dan pilih mata pelajaran terlebih dahulu.');
       window.location.href = '/student/login';
       return;
@@ -169,23 +171,54 @@
     submitExamResult();
   }
 
-  // Generates the detailed XML result in standard iSpring Quiz Report XSD format
+  function escapeXml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  function optionIndex(q: Question, key: string | undefined): number {
+    if (!key) return -1;
+    return q.options.findIndex((opt) => opt.key === key);
+  }
+
+  // Generates a compact iSpring-compatible quizReport XML for the built-in simulator.
+  // Real iSpring packages send the same report through the `dr` POST field.
   function generateDetailedXML(): string {
-    let xml = `<?xml version="1.0" encoding="utf-8"?>\n<report>\n  <quiz title="${selectedMapelName}" score="${score * 5}" maxScore="100" passingScore="70">\n`;
+    const earnedPoints = score * 5;
+    const percent = Math.round((earnedPoints / 100) * 100);
+    const passed = percent >= 70;
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<quizReport xmlns="http://www.ispringsolutions.com/ispring/quizbuilder/quizresults" version="9">\n`;
+    xml += `  <quizSettings>\n`;
+    xml += `    <passingPercent>70</passingPercent>\n`;
+    xml += `  </quizSettings>\n`;
+    xml += `  <summary passed="${passed ? 'true' : 'false'}" percent="${percent}" finishTimestamp="${new Date().toISOString()}" />\n`;
+    xml += `  <questions>\n`;
     
     questions.forEach((q) => {
       const isCorrect = q.selectedAnswer === q.correctAnswer;
-      const status = isCorrect ? 'correct' : 'incorrect';
+      const status = q.selectedAnswer === undefined ? 'notAnswered' : isCorrect ? 'correct' : 'incorrect';
       const points = isCorrect ? 5 : 0;
+      const userAnswerIndex = optionIndex(q, q.selectedAnswer);
+      const correctAnswerIndex = optionIndex(q, q.correctAnswer);
       
-      xml += `    <question id="${q.id}" type="choice" status="${status}" awardedPoints="${points}" maxPoints="5" usedAttempts="1">\n`;
-      xml += `      <body><![CDATA[${q.text}]]></body>\n`;
-      xml += `      <userAnswer><![CDATA[${q.selectedAnswer || 'Tidak dijawab'}]]></userAnswer>\n`;
-      xml += `      <correctAnswer><![CDATA[${q.correctAnswer}]]></correctAnswer>\n`;
-      xml += `    </question>\n`;
+      xml += `    <multipleChoiceQuestion id="${escapeXml(q.id)}" evaluationEnabled="true" maxPoints="5" maxAttempts="1" usedAttempts="1" awardedPoints="${points}" status="${status}">\n`;
+      xml += `      <direction><text>${escapeXml(q.text)}</text></direction>\n`;
+      xml += `      <answers correctAnswerIndex="${correctAnswerIndex}"${userAnswerIndex >= 0 ? ` userAnswerIndex="${userAnswerIndex}"` : ''}>\n`;
+      q.options.forEach((opt) => {
+        xml += `        <answer><text>${escapeXml(opt.text)}</text></answer>\n`;
+      });
+      xml += `      </answers>\n`;
+      xml += `    </multipleChoiceQuestion>\n`;
     });
     
-    xml += `  </quiz>\n</report>`;
+    xml += `  </questions>\n`;
+    xml += `  <groups />\n`;
+    xml += `</quizReport>`;
     return xml;
   }
 
@@ -212,13 +245,14 @@
       formData.append('sp', earnedPoints.toString());
       formData.append('tp', '100');
       formData.append('dr', detailedXML);
+      formData.append('attempt_token', attemptToken);
 
       // Perform HTTP POST to the webhook endpoint
-      const res = await fetch('http://localhost:3000/api/ispring/webhook', {
+      const res = await fetch(apiUrl('/ispring/webhook'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'X-Tenant-ID': '1' // default tenant context
+          ...authHeaders()
         },
         body: formData.toString()
       });

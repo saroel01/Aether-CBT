@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, apiUrl, authHeaders } from '$lib/api';
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -105,16 +105,12 @@
 
     importLoading = true;
     try {
-      const token = localStorage.getItem('aether_token');
       const formData = new FormData();
       formData.append('file', csvFile);
 
-      const res = await fetch('http://localhost:3000/api/admin/students/import-csv', {
+      const res = await fetch(apiUrl('/admin/students/import-csv'), {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Tenant-ID': '1'
-        },
+        headers: authHeaders(),
         body: formData
       });
 

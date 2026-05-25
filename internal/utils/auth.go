@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -14,6 +17,17 @@ func SetJWTSecret(secret string) {
 	if secret != "" {
 		jwtSecret = []byte(secret)
 	}
+}
+
+func GenerateSecureToken(byteLength int) (string, error) {
+	if byteLength <= 0 {
+		byteLength = 32
+	}
+	bytes := make([]byte, byteLength)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 // GetJWTSecret returns the current JWT secret (for middleware that can't import config)
@@ -31,6 +45,13 @@ func HashPassword(password string) (string, error) {
 func CheckPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+func CheckPasswordOrPlaintext(password, stored string) bool {
+	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
+		return CheckPasswordHash(password, stored)
+	}
+	return password == stored
 }
 
 // GenerateToken generates a JWT token

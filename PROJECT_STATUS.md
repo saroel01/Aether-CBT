@@ -1,69 +1,33 @@
 # Aether CBT - Project Status
 
-## Foundation Complete ✅
+## Status
 
-### Completed Components
+Aether CBT is a hardened MVP moving toward production use. Core security gaps found during the iSpring review have been addressed, but real exam deployment still requires school-specific fixture testing, backup/restore rehearsal, and load evidence.
 
-**Core Infrastructure**
-- [x] Clean project structure
-- [x] Configuration management
-- [x] SQLite database connection (WAL mode)
-- [x] Database migrations system
-- [x] Multi-tenant architecture foundation
+## Stable Foundation
 
-**Authentication & Security**
-- [x] JWT token generation & validation
-- [x] Password hashing (bcrypt)
-- [x] Auth middleware
-- [x] Tenant middleware
-- [x] Login endpoint
+- Go/Fiber backend with SQLite WAL.
+- Automatic SQL migrations.
+- SvelteKit frontend with admin, student, and supervisor routes.
+- Tenant-aware request context and tenant-scoped core tables.
+- JWT authentication for protected routes.
+- Role middleware for admin, supervisor, superadmin, and student route scopes.
+- Student active-session tracking through `cek_login`.
+- Per-attempt result submission tokens for active exam sessions.
+- Bcrypt storage for newly created/imported student passwords, with legacy plaintext compatibility for existing rows.
 
-**Data Models**
-- [x] Tenant model
-- [x] User model
-- [x] Repository pattern started
+## iSpring Result Handling
 
-**Utilities**
-- [x] Standardized API response format
-- [x] Error handling helpers
+The result webhook accepts standard iSpring POST fields and parses `dr` XML in `quizReport` form. See `docs/ISPRING_RESULT_INTEGRATION.md` for the final contract.
 
-### Project Structure
+Important database guarantees now present in migrations:
 
-```
-aether-cbt/
-├── cmd/server/main.go
-├── internal/
-│   ├── api/
-│   │   ├── handlers/auth.go
-│   │   └── middleware/
-│   │       ├── auth.go
-│   │       └── tenant.go
-│   ├── config/config.go
-│   ├── db/
-│   │   ├── sqlite.go
-│   │   └── migrations/
-│   ├── models/
-│   │   ├── tenant.go
-│   │   └── user.go
-│   ├── repository/tenant_repo.go
-│   └── utils/
-│       ├── auth.go
-│       └── response.go
-├── data/
-├── docs/ (complete documentation)
-├── go.mod
-├── Makefile
-└── README.md
-```
+- `cek_login(tenant_id, peserta_id, mapel_id)` is unique for active exam sessions.
+- `hasil_tes(tenant_id, validasi)` is unique for final result upserts.
 
-### Next Development Priorities
+## Remaining Before Real Exam Deployment
 
-1. **Admin Module** - CRUD for tenants, users, settings
-2. **Student Management** - Import, CRUD, room assignment
-3. **Exam Flow** - iSpring integration, result storage
-4. **Supervisor Dashboard** - Live monitoring, reset functionality
-5. **Frontend** - SvelteKit implementation
-
----
-
-**Status**: Foundation is production-ready and multi-tenant capable.
+1. Add real iSpring fixture tests from published QuizMaker output used by the school.
+2. Complete deployment, backup, restore, and load-test evidence.
+3. Configure production CORS, secrets, and credential rotation.
+4. Review npm audit advisories before internet-facing development server use.

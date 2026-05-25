@@ -35,6 +35,7 @@
 
       <button
         type="button"
+        aria-label="Tutup notifikasi"
         class="text-white/80 hover:text-white transition p-1 hover:bg-white/10 rounded-lg"
         on:click={() => toast.remove(t.id)}
       >

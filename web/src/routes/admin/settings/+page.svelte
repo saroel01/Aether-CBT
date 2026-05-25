@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api, qrCodeUrl } from '$lib/api';
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -133,6 +133,7 @@
               </div>
               <button 
                 type="button" 
+                aria-label={isExamActive ? 'Nonaktifkan server ujian' : 'Aktifkan server ujian'}
                 class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
                   {isExamActive ? 'bg-indigo-600' : 'bg-slate-200'}"
                 on:click={() => isExamActive = !isExamActive}
@@ -186,7 +187,7 @@
           <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">Live QR Code Token</div>
           {#if activeToken}
             <div class="bg-slate-50 p-3 border rounded-3xl inline-block mx-auto mb-3">
-              <img src="http://localhost:3000/api/qrcode?text={activeToken}" alt="QR Token" class="h-40 w-40 mx-auto" />
+              <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
             </div>
           {/if}
 

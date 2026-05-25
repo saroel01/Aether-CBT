@@ -115,20 +115,34 @@ func StartExamSession(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID or subject ID")
 	}
 
+	if role, _ := c.Locals("role").(string); role == "student" {
+		if userID, _ := c.Locals("user_id").(int); userID != req.PesertaID {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Students can only start their own exam session")
+		}
+	}
+
+	attemptToken, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create exam attempt token")
+	}
+
 	// Insert or replace in cek_login (active sessions)
-	_, err := db.DB.Exec(`
-		INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, login_time, last_activity)
-		VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	_, err = db.DB.Exec(`
+		INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(tenant_id, peserta_id, mapel_id) DO UPDATE SET 
+			attempt_token = excluded.attempt_token,
 			login_time = CURRENT_TIMESTAMP,
 			last_activity = CURRENT_TIMESTAMP
-	`, tenantID, req.PesertaID, req.MapelID)
+	`, tenantID, req.PesertaID, req.MapelID, attemptToken)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register active exam session")
 	}
 
-	return utils.SuccessResponse(c, nil, "Exam session registered successfully")
+	return utils.SuccessResponse(c, fiber.Map{
+		"attempt_token": attemptToken,
+	}, "Exam session registered successfully")
 }
 
 // GetRemainingTime calculates a student's remaining exam seconds dynamically from server time
@@ -194,4 +208,3 @@ func GetRemainingTime(c *fiber.Ctx) error {
 		"is_active":         remainingSeconds > 0,
 	}, "Remaining time calculated successfully")
 }
-

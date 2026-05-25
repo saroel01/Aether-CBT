@@ -45,6 +45,7 @@ func SetupTestDB(t *testing.T) {
 			tenant_id INTEGER NOT NULL,
 			peserta_id INTEGER NOT NULL,
 			mapel_id INTEGER NOT NULL,
+			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(tenant_id, peserta_id, mapel_id)
 		);`,
@@ -96,7 +97,7 @@ func SetupTestDB(t *testing.T) {
 	_, _ = db.DB.Exec("INSERT INTO kelas (id, nama_kelas) VALUES (10, 'XII-RPL')")
 	_, _ = db.DB.Exec("INSERT INTO mapel (id, nama_mapel) VALUES (5, 'Matematika')")
 	_, _ = db.DB.Exec("INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', 'siswa123', 'Syahrul Hamdi', 10, 1)")
-	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id) VALUES (1, 42, 5)") // Active Exam Session
+	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token) VALUES (1, 42, 5, 'attempt-secret')") // Active Exam Session
 }
 
 func TeardownTestDB() {
@@ -111,7 +112,7 @@ func TestISpringWebhookSuccess(t *testing.T) {
 	defer TeardownTestDB()
 
 	app := fiber.New()
-	
+
 	// Inject tenant_id dynamically mimicking Middleware
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("tenant_id", 1)
@@ -144,6 +145,7 @@ func TestISpringWebhookSuccess(t *testing.T) {
 	form.Add("sp", "10")       // Score obtained
 	form.Add("tp", "30")       // Total score
 	form.Add("dr", mockXML)    // Detailed XML results
+	form.Add("attempt_token", "attempt-secret")
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -240,6 +242,34 @@ func TestISpringWebhookForbidden(t *testing.T) {
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Expected status 403 Forbidden for unauthorized cheat attempt, got %d", resp.StatusCode)
+	}
+}
+
+func TestISpringWebhookRejectsMissingAttemptToken(t *testing.T) {
+	SetupTestDB(t)
+	defer TeardownTestDB()
+
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("tenant_id", 1)
+		return c.Next()
+	})
+	app.Post("/webhook", ISpringWebhook)
+
+	form := url.Values{}
+	form.Add("sid", "2026001")
+	form.Add("sp", "10")
+	form.Add("tp", "30")
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to test request: %v", err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("Expected status 403 for missing attempt_token, got %d", resp.StatusCode)
 	}
 }
 

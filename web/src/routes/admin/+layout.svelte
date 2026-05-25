@@ -121,7 +121,7 @@
         <header class="h-16 bg-white border-b flex items-center justify-between px-8 sticky top-0 z-10 shadow-sm shrink-0">
           <div class="flex items-center gap-2">
             <span class="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 font-semibold rounded-full border border-indigo-100">
-              Konteks: SMAN Default (Tenant ID 1)
+              Konteks tenant aktif
             </span>
           </div>
 

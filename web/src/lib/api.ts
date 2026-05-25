@@ -1,31 +1,50 @@
 // src/lib/api.ts
 // Centralized API client for Aether CBT backend
 
-const API_BASE = 'http://localhost:3000/api';
+const configuredApiBase = import.meta.env.VITE_API_BASE as string | undefined;
+const API_BASE = configuredApiBase || (typeof window !== 'undefined' && window.location.port === '5173' ? 'http://localhost:3000/api' : '/api');
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('aether_token');
 }
 
-export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+function getTenantID(): string {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('aether_tenant_id') || import.meta.env.VITE_TENANT_ID || '1';
+  }
+  return import.meta.env.VITE_TENANT_ID || '1';
+}
 
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'X-Tenant-ID': getTenantID(),
+    ...extra
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export function qrCodeUrl(text: string): string {
+  return apiUrl(`/qrcode?text=${encodeURIComponent(text)}`);
+}
+
+export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {})
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  Object.assign(headers, authHeaders());
 
-  // Default tenant for development (can be overridden via X-Tenant-* headers)
-  if (!headers['X-Tenant-ID'] && !headers['X-Tenant-Slug']) {
-    headers['X-Tenant-ID'] = '1';
-  }
-
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...options,
     headers
   });
@@ -50,7 +69,7 @@ export const auth = {
     }),
 
   studentLogin: (no_id: string, password: string, token: string) =>
-    api<{ success: boolean; data: { peserta_id: number } }>('/auth/student-login', {
+    api<{ success: boolean; data: { peserta_id: number; token: string; user?: any } }>('/auth/student-login', {
       method: 'POST',
       body: JSON.stringify({ no_id, password, token })
     }),

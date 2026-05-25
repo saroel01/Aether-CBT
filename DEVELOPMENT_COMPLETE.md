@@ -1,64 +1,38 @@
-# Aether CBT - Development Complete (Full E2E Solution)
+# Aether CBT - Development Status
 
-## Status: Production-Ready E2E Application Fully Completed
+## Current Status
 
-All core and secondary features outlined in the PRD and UI Component Library have been successfully developed, integrated, and verified. The platform is now fully E2E production-ready for educational institutions.
+Aether CBT is a hardened MVP with a Go/Fiber backend, SQLite WAL storage, SvelteKit frontend, admin/student/supervisor flows, result export utilities, and an iSpring result webhook.
 
-### Completed Tasks & Modules
+This project is suitable for controlled school pilot preparation. It is not declared fully production-ready until school-specific iSpring fixture tests, backup/restore rehearsal, load tests, and deployment credential rotation are completed.
 
-1. **✅ Project Foundation & Infrastructure** (Go, SQLite WAL, Multi-Tenant row-level isolation)
-2. **✅ Tenant, User, and System Configurations** (JWT authentication, bcrypt security)
-3. **✅ "Calm Confidence" Design System** (Full reusable component library in `web/src/lib/components/ui/`)
-4. **✅ Student Exam Portal & iSpring Simulator** (Subject selector, focused test screen with countdown warnings, and E2E webhook delivery)
-5. **✅ Room Supervisor Pemantauan Live Cockpit** (3-second auto-polling updates, session reset, and Token QR code generation)
-6. **✅ Advanced Admin Panel** (Tenant-branded dashboard, student bulk imports via CSV upload, and score exports via CSV downloads)
-7. **✅ Complete Relational Databases** (Fully completed Kelas, Mapel, Ruang, Peserta CRUDs)
-8. **✅ Testing and Quality Control** (Robust unit test suites verifying token, password, and QR generation helpers)
+## Implemented
 
-### final Project Structure
+- Multi-tenant schema foundation with tenant-scoped tables.
+- Admin, student, and supervisor authentication flows.
+- Student session tracking through `cek_login`.
+- Role-specific middleware for protected routes.
+- iSpring-compatible result webhook at `POST /api/ispring/webhook`.
+- Parser for `quizReport` detail XML in `internal/ispring`.
+- Normalized result detail storage in `hasil_tes_detail`.
+- Per-attempt token validation for result submissions.
+- Bcrypt storage for newly created/imported student passwords.
+- CSV/XLSX/PDF export features for selected result workflows.
+- Build scripts for unified backend/frontend deployment.
 
-```
-aether-cbt/
-├── cmd/
-│   ├── server/main.go                 # Go Fiber Web Server entrypoint
-│   ├── seed/main.go                   # Master DB Seeder
-│   └── createadmin/main.go
-├── internal/
-│   ├── api/
-│   │   ├── handlers/
-│   │   │   ├── auth.go
-│   │   │   ├── supervisor.go          # NEW: Room supervisor live endpoints
-│   │   │   ├── student_exam.go        # NEW: Student exam selector & starters
-│   │   │   ├── csv_utility.go         # NEW: CSV imports/exports
-│   │   │   ├── qrcode.go              # NEW: Raw PNG QR Code generator
-│   │   │   ├── handlers_test.go       # NEW: Complete unit tests
-│   │   │   └── ... (kelas, mapel, ruang, tenant, user)
-│   │   └── middleware/
-│   ├── config/
-│   ├── db/ (sqlite & 11 auto-migrations)
-│   └── utils/ (auth, response, qrcode)
-├── web/
-│   ├── src/
-│   │   ├── lib/
-│   │   │   ├── components/ui/         # NEW: Complete Svelte component library
-│   │   │   ├── stores/ (auth, toast)
-│   │   │   └── api.ts
-│   │   └── routes/
-│   │       ├── admin/                 # Refactored: Sidebar, CSV imports, CSV exports
-│   │       ├── supervisor/            # Refactored: Live polling, resets, QR displays
-│   │       └── student/               # Refactored: Login, subject selector, E2E exam client
-│   └── package.json
-├── data/ (cbt_aether.db & WAL files)
-├── docs/ (PRD, Technical Architecture, DB Schema, UI Component Library)
-└── package.json
-```
+## Recently Hardened
 
-### Key Technical Achievements
+- iSpring detail parsing was extracted from the HTTP handler into `internal/ispring`.
+- The parser now handles richer iSpring question types such as multiple response, matching, sequence, fill-in-the-blank, type-in, essay, word bank, numeric, and drag-and-drop.
+- The built-in student simulator now generates `quizReport` XML instead of a non-iSpring `<report>` format.
+- SQLite migrations now create unique indexes for the upsert targets used by active sessions and final results.
+- Student login now returns a JWT and protected exam routes require the right role.
+- Frontend API calls now use runtime API/tenant helpers instead of page-level localhost constants.
+- Svelte 5 compatible tooling removes prior production build warnings.
+- Integration behavior is documented in `docs/ISPRING_RESULT_INTEGRATION.md`.
 
-- **Zero-Dependency Lightweight Architecture**: Full client-server system runs smoothly with a single compiled binary + single SQLite file, perfect for local school servers with zero internet requirements.
-- **E2E Webhook Synchronization**: Resolves the legacy iSpring dependency gap by building a robust Svelte client that mimics iSpring XML outputs and synchronizes E2E with the backend receiver.
-- **Strict Multi-Tenant Isolation**: Enforced globally on all data, logs, and sessions using clean Fiber middleware.
+## Remaining Before Production Use
 
----
-
-**Aether CBT is now fully complete, verified, and E2E production-ready.**
+- Replace development CORS and default secrets with production configuration.
+- Add acceptance fixtures generated by real iSpring QuizMaker exports.
+- Complete load testing and operational backup/restore procedures.

@@ -37,6 +37,8 @@ Gunakan mode ini jika Anda ingin berkontribusi pada pengembangan aplikasi atau m
 *   **Pengawas Ruang**: Username: `ruang_a` | Password: `ruang123`
 *   **Siswa/Peserta**: Username: `2024001` | Password: `siswa123` (Token Ujian: `ujian2026`)
 
+Ganti seluruh kredensial dan token default sebelum pilot sekolah atau ujian nyata.
+
 ---
 
 ## 2. PANDUAN ADMINISTRASI OPERASIONAL (ADMIN FLOW)
@@ -56,6 +58,7 @@ Untuk memasukkan ratusan siswa secara sekaligus ke dalam kelas dan ruangan:
 Sebelum siswa dapat menempuh ujian:
 1.  Admin/Pengawas harus memastikan mata pelajaran (mapel) telah ditautkan dengan kelas yang diuji.
 2.  Siswa melakukan login di portal. Sesi aktif akan tercatat secara *real-time* di monitor pengawas (`cek_login`). Sesi ini berfungsi sebagai tiket resmi masuk ke kuis iSpring.
+3.  Saat sesi dimulai, server menerbitkan `attempt_token` per siswa/mapel. Token ini harus ikut terkirim saat hasil iSpring dikirim ke webhook.
 
 ---
 
@@ -82,6 +85,14 @@ iSpring akan mengirimkan data hasil secara dinamis ke server Aether CBT saat sis
     *   Menggunakan ID Tenant:
         `http://[IP_CBT]:3000/api/ispring/webhook?tenant_id=1`
 4.  Simpan, lalu publikasikan (*Publish*) kuis iSpring Anda ke format **HTML5**.
+
+### C. Validasi Attempt Token
+Aether CBT menolak hasil yang tidak berasal dari sesi aktif. Pastikan hasil iSpring membawa salah satu field berikut:
+
+* `attempt_token`
+* `AETHER_ATTEMPT_TOKEN`
+
+Nilainya diterbitkan oleh Aether CBT saat siswa memulai mata pelajaran. Simulator bawaan frontend sudah mengirim field ini otomatis. Untuk paket iSpring asli, tambahkan field/variabel user info tersembunyi yang nilainya diisi dari parameter launch URL.
 
 ---
 
@@ -148,4 +159,3 @@ Saat melakukan publikasi kuis di iSpring QuizMaker, ganti host tujuan pengiriman
     *Contoh:*
     `http://192.168.1.15:3000`
 4.  Halaman login siswa akan terbuka secara otomatis dan siap digunakan.
-

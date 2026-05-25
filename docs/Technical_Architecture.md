@@ -139,6 +139,7 @@ aether-cbt/
 |-----------------|---------------------------------------------|---------|
 | `api/handlers`  | HTTP request handling & response            | student.go, admin.go, etc. |
 | `api/middleware`| Cross-cutting concerns (auth, rate limit)   | auth.go, cors.go |
+| `ispring/`      | Parse iSpring `quizReport` detail XML from webhook payloads | parser.go |
 | `services/`     | Business logic                              | exam/, result/, ispring/ |
 | `repository/`   | Data access layer (SQLite queries)          | *_repo.go |
 | `models/`       | Struct definitions & validation             | *.go |
@@ -176,6 +177,8 @@ aether-cbt/
 | POST   | `/api/student/start-exam`         | Start selected subject          |
 | POST   | `/api/ispring/webhook`            | Receive iSpring result (public) |
 
+`/api/ispring/webhook` accepts iSpring POST fields such as `sid`, `USER_NAME`, `sp`, `tp`, `dr`, and `attempt_token`. The `dr` field must use iSpring `quizReport` XML; parser behavior and supported question types are documented in `docs/ISPRING_RESULT_INTEGRATION.md`.
+
 ### 4.3 Supervisor
 
 | Method | Endpoint                          | Description                     |
@@ -208,9 +211,11 @@ aether-cbt/
 
 ## 6. SECURITY ARCHITECTURE
 
-- JWT tokens with short expiry + refresh tokens
-- Rate limiting on login and webhook endpoints
-- CORS strictly limited to trusted origins
+- JWT tokens protect admin, supervisor, superadmin, and student routes.
+- Role middleware enforces route-level access boundaries.
+- Student exam starts generate a per-attempt token stored in `cek_login`; result submission must echo this token.
+- Newly created/imported student passwords are stored with bcrypt; legacy plaintext rows are accepted for migration compatibility.
+- Production deployment must still add login rate limiting and CORS allow-list configuration.
 - All user inputs sanitized
 - SQL queries use prepared statements only
 - File uploads validated (type, size, content)
@@ -228,9 +233,10 @@ aether-cbt/
 - Default tenant created automatically on first run
 
 **Development**:
-- `make dev` runs both Go backend and SvelteKit dev server
+- `npm run dev` runs both Go backend and SvelteKit dev server
 - Hot reload enabled for frontend
 - Default tenant `default` automatically created for single-tenant usage
+- Frontend API configuration uses `VITE_API_BASE` and `VITE_TENANT_ID`; production defaults to same-origin `/api`.
 
 ---
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth';
-  import { api, auth as apiAuth } from '$lib/api';
+  import { api, apiUrl, authHeaders, qrCodeUrl, auth as apiAuth } from '$lib/api';
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -21,7 +21,7 @@
     mapel: 0
   };
 
-  let activeToken = 'ujian2026';
+  let activeToken = '';
   let activeExamTitle = 'Ujian Akhir Semester 2025/2026';
 
   // React to auth store
@@ -58,7 +58,7 @@
         api('/classes').catch(() => ({ data: [] })),
         api('/rooms').catch(() => ({ data: [] })),
         api('/mapel').catch(() => ({ data: [] })),
-        api('/student/active-info').catch(() => ({ data: {} }))
+        api('/admin/settings').catch(() => ({ data: {} }))
       ]);
 
       stats.students = studentsRes.data?.length || 0;
@@ -68,6 +68,7 @@
       
       if (activeInfo.success && activeInfo.data) {
         activeExamTitle = activeInfo.data.exam_title;
+        activeToken = activeInfo.data.token || activeToken;
       }
     } catch (e) {
       console.warn('Could not load stats', e);
@@ -77,18 +78,14 @@
   // Triggers downloading the CSV sheet containing exam scores directly from backend Go endpoint!
   function downloadResultsCSV() {
     try {
-      const token = localStorage.getItem('aether_token');
       // Create a native link to trigger file download, passing JWT token via URL query parameter if headers are not possible,
       // or we can simply use fetch to get it and generate a local URL! That is 100% compliant with auth headers!
       loading = true;
       toast.info('Menyiapkan berkas ekspor hasil...');
       
-      fetch('http://localhost:3000/api/admin/results/export-csv', {
+      fetch(apiUrl('/admin/results/export-csv'), {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Tenant-ID': '1'
-        }
+        headers: authHeaders()
       })
       .then(res => {
         if (!res.ok) throw new Error('Download failed');
@@ -312,7 +309,7 @@
 
           <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">QR Code Ujian Resmi</div>
           <div class="bg-slate-50 p-3 border rounded-3xl inline-block mx-auto mb-3">
-            <img src="http://localhost:3000/api/qrcode?text={activeToken}" alt="QR Token" class="h-40 w-40 mx-auto" />
+            <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
           </div>
 
           <p class="text-xs text-slate-500 leading-relaxed px-2">

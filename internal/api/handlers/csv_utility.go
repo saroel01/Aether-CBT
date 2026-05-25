@@ -81,6 +81,12 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 			continue
 		}
 
+		passwordHash, err := utils.HashPassword(password)
+		if err != nil {
+			errorCount++
+			continue
+		}
+
 		// Insert into db (ignore duplicates)
 		_, err = db.DB.Exec(`
 			INSERT INTO peserta (tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id, jenis_kelamin)
@@ -91,7 +97,7 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 				ruang_id = excluded.ruang_id,
 				jenis_kelamin = excluded.jenis_kelamin,
 				password = excluded.password
-		`, tenantID, noID, password, namaPeserta, kelasID, ruangID, jenisKelamin)
+		`, tenantID, noID, passwordHash, namaPeserta, kelasID, ruangID, jenisKelamin)
 
 		if err != nil {
 			errorCount++
@@ -246,8 +252,8 @@ func ExportEssayResults(c *fiber.Ctx) error {
 
 		// Header Style (Steel Blue Hex 4682B4, White, Bold, Centered)
 		headerStyle, _ := f.NewStyle(&excelize.Style{
-			Fill: excelize.Fill{Type: "pattern", Color: []string{"4682B4"}, Pattern: 1},
-			Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"4682B4"}, Pattern: 1},
+			Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
 			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 		})
 		f.SetRowStyle(sheetName, 1, 1, headerStyle)
@@ -324,15 +330,15 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		pdf.SetFont("Arial", "B", 16)
 		pdf.SetTextColor(70, 130, 180) // Steel Blue
 		pdf.CellFormat(180, 8, strings.ToUpper(tenantName), "", 1, "C", false, 0, "")
-		
+
 		pdf.SetTextColor(50, 50, 50)
 		pdf.SetFont("Arial", "B", 12)
 		pdf.CellFormat(180, 6, "REKAPITULASI JAWABAN ESAI SISWA", "", 1, "C", false, 0, "")
-		
+
 		pdf.SetFont("Arial", "I", 9)
 		pdf.SetTextColor(120, 120, 120)
 		pdf.CellFormat(180, 5, fmt.Sprintf("Dicetak otomatis pada: %s", time.Now().Format("02 January 2006, 15:04 MST")), "", 1, "C", false, 0, "")
-		
+
 		// Double Line Divider
 		pdf.SetDrawColor(70, 130, 180)
 		pdf.SetLineWidth(0.8)
@@ -366,7 +372,7 @@ func ExportEssayResults(c *fiber.Ctx) error {
 			pdf.SetTextColor(60, 60, 60)
 			pdf.SetFillColor(245, 245, 245)
 			pdf.CellFormat(180, 5, "  Pertanyaan Soal:", "LR", 1, "L", true, 0, "")
-			
+
 			pdf.SetFont("Arial", "", 9)
 			pdf.MultiCell(180, 5.5, "  "+qText, "LR", "L", true)
 
@@ -374,7 +380,7 @@ func ExportEssayResults(c *fiber.Ctx) error {
 			pdf.SetFont("Arial", "B", 8.5)
 			pdf.SetTextColor(60, 60, 60)
 			pdf.CellFormat(180, 5, "  Lembar Jawaban Siswa:", "LR", 1, "L", false, 0, "")
-			
+
 			pdf.SetFont("Arial", "I", 9.5)
 			pdf.SetTextColor(30, 30, 90) // dark blue text
 			if userAns == "" {
@@ -388,7 +394,7 @@ func ExportEssayResults(c *fiber.Ctx) error {
 			pdf.SetFillColor(253, 253, 240) // soft yellow tint
 			pdf.CellFormat(110, 8, fmt.Sprintf("  Skor Sementara Kuis:  %.1f / %.1f", score, maxScore), "1", 0, "L", true, 0, "")
 			pdf.CellFormat(70, 8, "Nilai Akhir Guru:  ________  (Paraf: ____)  ", "1", 1, "R", true, 0, "")
-			
+
 			// Spacing between cards
 			pdf.Ln(6)
 		}

@@ -40,6 +40,7 @@
           </slot>
           <button 
             type="button" 
+            aria-label="Tutup dialog"
             class="text-slate-400 hover:text-slate-600 transition p-1 hover:bg-slate-50 rounded-lg" 
             on:click={close}
           >

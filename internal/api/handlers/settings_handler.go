@@ -21,6 +21,32 @@ type SettingsResponse struct {
 func GetSettings(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
+	s, err := getSettingsForTenant(tenantID)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to retrieve settings")
+	}
+
+	return utils.SuccessResponse(c, s, "Settings retrieved")
+}
+
+// GetSupervisorSettings returns read-only exam settings needed by room supervisors.
+func GetSupervisorSettings(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(int)
+	role := c.Locals("role").(string)
+
+	if role != "supervisor" && role != "admin" && role != "superadmin" {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only exam staff can view supervisor settings")
+	}
+
+	s, err := getSettingsForTenant(tenantID)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to retrieve settings")
+	}
+
+	return utils.SuccessResponse(c, s, "Supervisor settings retrieved")
+}
+
+func getSettingsForTenant(tenantID int) (SettingsResponse, error) {
 	var s SettingsResponse
 	err := db.DB.QueryRow(`
 		SELECT exam_title, COALESCE(proctor_name, ''), COALESCE(footer_text, ''), token, is_exam_active 
@@ -35,16 +61,16 @@ func GetSettings(c *fiber.Ctx) error {
 				INSERT INTO settings (tenant_id, exam_title, token, is_exam_active)
 				VALUES (?, 'Ujian Akhir Semester 2025/2026', 'ujian2026', TRUE)
 			`, tenantID)
-			
+
 			s.ExamTitle = "Ujian Akhir Semester 2025/2026"
 			s.Token = "ujian2026"
 			s.IsExamActive = true
 		} else {
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to retrieve settings")
+			return SettingsResponse{}, err
 		}
 	}
 
-	return utils.SuccessResponse(c, s, "Settings retrieved")
+	return s, nil
 }
 
 // UpdateSettings updates active tenant configurations
@@ -83,7 +109,7 @@ func UpdateSettings(c *fiber.Ctx) error {
 			SET exam_title = ?, proctor_name = ?, footer_text = ?, token = ?, is_exam_active = ?
 			WHERE tenant_id = ?
 		`, req.ExamTitle, req.ProctorName, req.FooterText, req.Token, req.IsExamActive, tenantID)
-		
+
 		if err != nil {
 			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to save settings")
 		}
