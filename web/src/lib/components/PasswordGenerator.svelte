@@ -6,6 +6,8 @@
   export let length = 12;
   export let label = 'Password';
   export let placeholder = 'Masukkan password';
+  export let theme: 'light' | 'dark' = 'light';
+  export let id = 'password-generator-input';
 
   const dispatch = createEventDispatcher();
 
@@ -47,29 +49,41 @@
   function copyToClipboard() {
     if (!value) return;
     navigator.clipboard.writeText(value).then(() => {
-      // Bisa ditambahkan toast jika diperlukan
+      // Dispatch or success alert
     });
   }
+
+  let themeClasses = {
+    dark: 'text-slate-100 bg-slate-950/40 border-slate-800 hover:border-slate-700 focus:border-indigo-500 focus:ring-indigo-500/10 placeholder-slate-600',
+    light: 'text-slate-900 bg-slate-50/50 border-slate-200/80 hover:border-slate-300 focus:border-indigo-600 focus:ring-indigo-600/10 placeholder-slate-400'
+  };
+
+  let labelThemeClasses = {
+    dark: 'text-slate-400',
+    light: 'text-slate-500'
+  };
 </script>
 
-<div class="space-y-1.5">
-  <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+<div class="space-y-1.5 w-full">
+  <label for={id} class="text-xs font-semibold uppercase tracking-widest {labelThemeClasses[theme]}">
     {label}
   </label>
 
   <div class="flex gap-2">
     <div class="relative flex-1">
       <input
+        {id}
         type="password"
         bind:value
         {placeholder}
-        class="w-full h-11 px-4 pr-10 text-slate-800 bg-white border border-slate-200/80 rounded-xl outline-none transition-all focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        class="w-full h-12 px-4 pr-10 border rounded-2xl outline-none transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:ring-4 {themeClasses[theme]}"
       />
       {#if value}
         <button
           type="button"
           on:click={copyToClipboard}
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          aria-label="Salin password"
+          class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 z-10 flex items-center transition-colors"
           title="Salin password"
         >
           📋
@@ -80,14 +94,15 @@
     <Button 
       variant="secondary" 
       size="md"
+      {theme}
       on:click={generate}
-      class="whitespace-nowrap"
+      class="whitespace-nowrap rounded-2xl font-semibold"
     >
       Generate
     </Button>
   </div>
 
-  <p class="text-[10px] text-slate-400">
+  <p class="text-[10px] text-slate-400 leading-normal">
     Klik Generate untuk membuat password kuat otomatis (huruf, angka, simbol).
   </p>
 </div>

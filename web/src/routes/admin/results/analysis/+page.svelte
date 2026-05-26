@@ -4,6 +4,7 @@
   import Card from '$lib/components/ui/Card.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import { toast } from '$lib/stores/toast';
 
   interface QuestionMetric {
@@ -81,16 +82,18 @@
       <p class="text-slate-500 text-sm">Agregasi kualitatif dan tingkat kesulitan butir soal ujian dari berkas hasil iSpring XML.</p>
     </div>
     
-    <button 
-      type="button" 
-      class="inline-flex items-center gap-2 px-4 py-2 bg-white border rounded-xl hover:bg-slate-50 text-slate-700 font-semibold text-sm transition shadow-sm"
+    <Button 
+      variant="secondary" 
+      size="sm"
+      theme="light"
+      class="font-semibold shadow-sm flex items-center gap-2"
       on:click={loadAnalytics}
     >
-      <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <svg class="h-4 w-4 text-slate-505" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
       </svg>
       Segarkan Analisis
-    </button>
+    </Button>
   </div>
 
   {#if loading}
@@ -110,34 +113,33 @@
       Belum ada data lembar hasil ujian yang diserahkan oleh peserta.<br>Analisis soal otomatis akan terbuat jika siswa menyelesaikan ujian.
     </div>
   {:else}
-    <!-- Summary Analytics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card padding="md" class="border-indigo-100 bg-indigo-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-indigo-600"></div>
+      <Card padding="md" class="border-indigo-100/70 bg-indigo-50/20 hover:bg-indigo-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
         <div>
-          <span class="text-xs text-indigo-500 font-bold uppercase tracking-wider">Akurasi Jawaban Rata-Rata</span>
-          <div class="text-4xl font-extrabold text-indigo-700 mt-1">{averagePassingRate}%</div>
+          <span class="text-xs text-indigo-600 font-bold uppercase tracking-wider font-mono">Akurasi Rata-Rata</span>
+          <div class="text-4xl font-extrabold text-indigo-700 mt-1.5 font-display">{averagePassingRate}%</div>
         </div>
+        <div class="h-12 w-12 bg-indigo-100/50 text-indigo-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">📊</div>
       </Card>
 
-      <Card padding="md" class="border-red-100 bg-red-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-red-500"></div>
+      <Card padding="md" class="border-red-100/70 bg-red-50/20 hover:bg-red-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
         <div>
-          <span class="text-xs text-red-500 font-bold uppercase tracking-wider">Jumlah Soal Kategori Sulit</span>
-          <div class="text-4xl font-extrabold text-red-700 mt-1">
+          <span class="text-xs text-red-600 font-bold uppercase tracking-wider font-mono">Soal Kategori Sulit</span>
+          <div class="text-4xl font-extrabold text-red-700 mt-1.5 font-display">
             {metrics.filter(q => q.total_count > 0 && (q.correct_count / q.total_count) < 0.5).length}
           </div>
         </div>
+        <div class="h-12 w-12 bg-red-100/50 text-red-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">🔥</div>
       </Card>
 
-      <Card padding="md" class="border-emerald-100 bg-emerald-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-emerald-500"></div>
+      <Card padding="md" class="border-emerald-100/70 bg-emerald-50/20 hover:bg-emerald-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
         <div>
-          <span class="text-xs text-emerald-500 font-bold uppercase tracking-wider">Jumlah Soal Kategori Mudah</span>
-          <div class="text-4xl font-extrabold text-emerald-700 mt-1">
+          <span class="text-xs text-emerald-600 font-bold uppercase tracking-wider font-mono">Soal Kategori Mudah</span>
+          <div class="text-4xl font-extrabold text-emerald-700 mt-1.5 font-display">
             {metrics.filter(q => q.total_count > 0 && (q.correct_count / q.total_count) >= 0.8).length}
           </div>
         </div>
+        <div class="h-12 w-12 bg-emerald-100/50 text-emerald-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">✨</div>
       </Card>
     </div>
 
@@ -154,9 +156,7 @@
             {@const rate = Math.round((q.correct_count / q.total_count) * 100)}
             <Card padding="md" class="bg-white border-slate-200/60 shadow-sm flex flex-col gap-3">
               <div class="flex justify-between items-start gap-2">
-                <span class="font-mono font-bold text-xs px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded">
-                  {q.question_id}
-                </span>
+                <Badge theme="light" variant="danger" class="font-mono">{q.question_id}</Badge>
                 <span class="text-xs font-bold text-red-500">
                   Tingkat Kebenaran: {rate}%
                 </span>
@@ -187,9 +187,7 @@
             {@const rate = Math.round((q.correct_count / q.total_count) * 100)}
             <Card padding="md" class="bg-white border-slate-200/60 shadow-sm flex flex-col gap-3">
               <div class="flex justify-between items-start gap-2">
-                <span class="font-mono font-bold text-xs px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded">
-                  {q.question_id}
-                </span>
+                <Badge theme="light" variant="success" class="font-mono">{q.question_id}</Badge>
                 <span class="text-xs font-bold text-emerald-600">
                   Tingkat Kebenaran: {rate}%
                 </span>
@@ -232,9 +230,7 @@
                 {q.question_text || '—'}
               </td>
               <td>
-                <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 font-bold border rounded capitalize">
-                  {q.question_type || 'choice'}
-                </span>
+                <Badge theme="light" variant="neutral" class="capitalize">{q.question_type || 'choice'}</Badge>
               </td>
               <td class="text-center font-semibold font-mono text-sm">
                 <span class="text-emerald-600">{q.correct_count}</span>

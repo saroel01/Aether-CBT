@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,10 +16,31 @@ import (
 	"github.com/saroel01/aether-cbt/internal/api/middleware"
 	"github.com/saroel01/aether-cbt/internal/config"
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/submission"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 func main() {
+	// Load .env file manually if exists (zero-dependency loader for local development)
+	if envBytes, err := os.ReadFile(".env"); err == nil {
+		lines := strings.Split(string(envBytes), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+				val = strings.Trim(val, `"'`)
+				if os.Getenv(key) == "" {
+					os.Setenv(key, val)
+				}
+			}
+		}
+	}
+
 	cfg := config.Load()
 	utils.SetJWTSecret(cfg.JWTSecret) // configure JWT from env/config
 
@@ -30,6 +54,39 @@ func main() {
 	if err := db.RunMigrations(); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Submission Queue + Worker
+	queueDir := getEnvString("QUEUE_DIR", "data/queue")
+	queueCfg := submission.FilesystemQueueConfig{
+		MaxRetries:     getEnvInt("QUEUE_MAX_RETRIES", 5),
+		StuckThreshold: time.Duration(getEnvInt("QUEUE_STUCK_THRESHOLD_MIN", 5)) * time.Minute,
+		DoneRetention:  time.Duration(getEnvInt("QUEUE_DONE_RETENTION_DAYS", 7)) * 24 * time.Hour,
+	}
+	subQueue, err := submission.NewFilesystemQueueWithConfig(queueDir, queueCfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize filesystem queue at %s: %v", queueDir, err)
+	}
+	if err := subQueue.RecoverStartup(ctx, true); err != nil {
+		log.Fatalf("Failed to recover filesystem queue at startup: %v", err)
+	}
+	if err := subQueue.MigrateLegacyTable(ctx, db.DB); err != nil {
+		log.Fatalf("Failed to migrate legacy submission_queue: %v", err)
+	}
+
+	processor := submission.NewProcessor(db.DB)
+	worker := submission.NewWorkerWithConfig(
+		subQueue,
+		processor.ProcessBatch,
+		getEnvInt("QUEUE_BATCH_SIZE", 5),
+		time.Duration(getEnvInt("QUEUE_BATCH_TIMEOUT_MS", 100))*time.Millisecond,
+	)
+	handlers.SetSubmissionQueue(subQueue)
+
+	go worker.Run(ctx)
+	defer worker.Stop()
 
 	app := fiber.New(fiber.Config{
 		AppName:   "Aether CBT v1.0",
@@ -79,8 +136,14 @@ func main() {
 	api.Get("/qrcode", handlers.GetTokenQRCode)
 
 	// iSpring Webhook (public) - registered BEFORE protected group to avoid auth middleware
+	webhookMax := 100
+	if v := os.Getenv("WEBHOOK_RATE_LIMIT_PER_MIN"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			webhookMax = parsed
+		}
+	}
 	webhookLimiter := limiter.New(limiter.Config{
-		Max:        10,
+		Max:        webhookMax,
 		Expiration: 1 * time.Minute,
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).SendString("Too many submissions. Please try again later.")
@@ -97,6 +160,9 @@ func main() {
 	protected.Get("/supervisor/room-status/live", supervisorOnly, handlers.GetRoomStatusSSE)
 	protected.Get("/supervisor/settings", supervisorOnly, handlers.GetSupervisorSettings)
 	protected.Post("/supervisor/reset", supervisorOnly, handlers.ResetStudentSession)
+
+	// Debug routes
+	protected.Get("/debug/queue", supervisorOnly, handlers.GetQueueStatus(subQueue))
 
 	// Student Exam Active session routes
 	authenticatedExamUsers := middleware.RequireRoles("student", "admin", "supervisor")
@@ -175,4 +241,24 @@ func main() {
 
 	log.Printf("Aether CBT starting on port %s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))
+}
+
+func getEnvString(key, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }

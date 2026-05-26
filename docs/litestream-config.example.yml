@@ -1,0 +1,27 @@
+# Litestream Configuration Example
+# docs/litestream-config.example.yml
+#
+# Copy this file to litestream.yml and adjust for your environment.
+# Usage: litestream replicate -config litestream.yml
+
+dbs:
+  - path: data/cbt_aether.db
+    replicas:
+      # Option A: Local filesystem backup (simplest for single-server PoC)
+      - type: file
+        path: backups/cbt_aether.db
+
+      # Option B: S3-compatible storage (MinIO / AWS S3 / Wasabi / etc.)
+      # Uncomment and configure:
+      # - type: s3
+      #   bucket: aether-cbt-backups
+      #   path: "{{.Hostname}}/cbt_aether.db"
+      #   endpoint: http://localhost:9000   # MinIO for PoC
+      #   # access-key-id: ...             # or use AWS_ACCESS_KEY_ID env
+      #   # secret-access-key: ...         # or use AWS_SECRET_ACCESS_KEY env
+
+      # Option C: SFTP (remote server backup)
+      # - type: sftp
+      #   host: backup-server.example.com
+      #   user: backup
+      #   path: /backups/aether-cbt/cbt_aether.db

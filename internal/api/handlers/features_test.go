@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/submission"
 )
 
 // SetupFeaturesTestDB initializes a mock SQLite in-memory database with our new premium fields
@@ -244,20 +246,37 @@ func TestGlobalTimer(t *testing.T) {
 }
 
 // 3. Test iSpring Submission Grace Period Check
+// With the new async design, the handler enqueues the job (HTTP 200) and the
+// processor rejects it with "grace period exceeded". After Max_Retries calls to
+// MarkFailed, the job ends up in failed/.
+// Requirement 15.5.
 func TestISpringGracePeriod(t *testing.T) {
 	SetupFeaturesTestDB(t)
 	defer TeardownFeaturesTestDB()
 
-	// Seed session that was started 60 minutes ago for an exam of 45 minutes
-	// With 5 minutes grace, 60 minutes > 45+5 = 50 minutes. This should trigger late submission rejection.
-	_, _ = db.DB.Exec("UPDATE cek_login SET login_time = datetime('now', '-60 minutes') WHERE peserta_id = 15")
+	// Seed session that was started far in the past (year 2000) for an exam of 45 minutes.
+	// With 5 minutes grace, any time > 50 minutes ago exceeds the grace period.
+	// Note: SQLite datetime() modifiers don't work reliably with modernc.org/sqlite driver,
+	// so we use a hardcoded past timestamp instead.
+	_, err := db.DB.Exec("UPDATE cek_login SET login_time = '2000-01-01 00:00:00' WHERE peserta_id = 15")
+	if err != nil {
+		t.Fatalf("Failed to update login_time: %v", err)
+	}
+
+	// Create a FilesystemQueue in a temp directory for this test.
+	queueDir := t.TempDir()
+	fsQueue, err := submission.NewFilesystemQueue(queueDir)
+	if err != nil {
+		t.Fatalf("Failed to create FilesystemQueue: %v", err)
+	}
+	SetSubmissionQueue(fsQueue)
+	defer SetSubmissionQueue(nil)
 
 	app := fiber.New()
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("tenant_id", 1)
 		return c.Next()
 	})
-
 	app.Post("/webhook", ISpringWebhook)
 
 	form := url.Values{}
@@ -275,9 +294,66 @@ func TestISpringGracePeriod(t *testing.T) {
 		t.Fatalf("Failed request: %v", err)
 	}
 
-	// Should be 403 Forbidden because student exceeded the grace period!
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("Expected 403 Forbidden for expired grace period, got %d", resp.StatusCode)
+	// Step 1: handler should return HTTP 200 — job is enqueued, grace check is in processor.
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 OK from handler (grace period check is in processor), got %d", resp.StatusCode)
+	}
+
+	// Step 2: run processor — it should return "grace period exceeded" error.
+	processor := submission.NewProcessor(db.DB)
+	ctx := context.Background()
+
+	job, deqErr := fsQueue.Dequeue(ctx)
+	if deqErr != nil {
+		t.Fatalf("Failed to dequeue job: %v", deqErr)
+	}
+	if job == nil {
+		t.Fatal("Expected a job in the queue after POST, got nil")
+	}
+
+	processErr := processor.ProcessBatch(ctx, []*submission.SubmissionJob{job})
+	if processErr == nil {
+		t.Errorf("Expected processor to return an error for grace period exceeded, got nil")
+	} else if !strings.Contains(processErr.Error(), "grace period exceeded") {
+		t.Errorf("Expected error to contain 'grace period exceeded', got: %v", processErr)
+	}
+
+	// Step 3: simulate Max_Retries calls to MarkFailed so the job ends up in failed/.
+	// The queue has maxRetries=5. We already have the job dequeued (in processing/).
+	// Call MarkFailed once — this puts it back in pending/ with retry_count=1.
+	// Repeat until retry_count reaches maxRetries (5), at which point it goes to failed/.
+	maxRetries := 5
+	gracePeriodErr := fmt.Errorf("grace period exceeded")
+
+	// First MarkFailed (job is currently in processing/ from the Dequeue above)
+	if mErr := fsQueue.MarkFailed(ctx, job.ID, gracePeriodErr); mErr != nil {
+		t.Fatalf("MarkFailed (attempt 1) failed: %v", mErr)
+	}
+
+	// Remaining retries: dequeue → MarkFailed until maxRetries
+	for i := 2; i <= maxRetries; i++ {
+		nextJob, dErr := fsQueue.Dequeue(ctx)
+		if dErr != nil {
+			t.Fatalf("Dequeue (attempt %d) failed: %v", i, dErr)
+		}
+		if nextJob == nil {
+			t.Fatalf("Expected job in pending/ for retry attempt %d, got nil", i)
+		}
+		if mErr := fsQueue.MarkFailed(ctx, nextJob.ID, gracePeriodErr); mErr != nil {
+			t.Fatalf("MarkFailed (attempt %d) failed: %v", i, mErr)
+		}
+	}
+
+	// Step 4: verify job is in failed/ after Max_Retries exhausted.
+	stats, sErr := fsQueue.GetStats(ctx)
+	if sErr != nil {
+		t.Fatalf("GetStats failed: %v", sErr)
+	}
+	if stats.FailedCount != 1 {
+		t.Errorf("Expected 1 file in failed/ after max retries, got %d", stats.FailedCount)
+	}
+	if stats.PendingCount != 0 {
+		t.Errorf("Expected 0 files in pending/ after max retries, got %d", stats.PendingCount)
 	}
 }
 

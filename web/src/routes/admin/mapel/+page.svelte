@@ -5,6 +5,7 @@
   import Card from '$lib/components/ui/Card.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import Table from '$lib/components/ui/Table.svelte';
+  import Badge from '$lib/components/ui/Badge.svelte';
   import { toast } from '$lib/stores/toast';
 
   let items: any[] = [];
@@ -102,10 +103,8 @@
             {#each items as m}
               <tr>
                 <td class="font-mono text-slate-400 font-bold">{m.id}</td>
-                <td>
-                  <span class="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-xs border rounded">
-                    {m.kode_mapel}
-                  </span>
+                 <td>
+                  <Badge theme="light" variant="neutral" class="font-mono">{m.kode_mapel}</Badge>
                 </td>
                 <td class="font-semibold text-slate-800">{m.nama_mapel}</td>
                 <td class="text-xs text-slate-400 font-mono">
@@ -115,7 +114,7 @@
                   <Button 
                     variant="danger" 
                     size="sm" 
-                    class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border-red-100 font-semibold"
+                    theme="light"
                     on:click={() => deleteMapel(m.id, m.nama_mapel)}
                   >
                     Hapus
@@ -146,6 +145,7 @@
             placeholder="Contoh: MTK" 
             bind:value={newCode}
             disabled={createLoading}
+            theme="light"
           />
 
           <Input 
@@ -154,12 +154,14 @@
             placeholder="Contoh: Matematika" 
             bind:value={newName}
             disabled={createLoading}
+            theme="light"
           />
 
           <Button 
             variant="primary" 
             size="sm" 
-            class="w-full bg-indigo-600 border-none hover:bg-indigo-700 font-semibold" 
+            theme="light"
+            class="w-full" 
             on:click={createMapel}
             loading={createLoading}
           >

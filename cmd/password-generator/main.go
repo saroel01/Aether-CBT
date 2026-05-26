@@ -61,13 +61,12 @@ func generateSecurePassword(length int, charset string, noSymbols bool) (string,
 	password.Grow(length)
 
 	// Pastikan ada minimal 1 huruf besar, 1 angka, dan 1 simbol (kecuali no-symbols)
-	required := []rune{upper[0], digits[0]}
+	required := []rune{rune(upper[0]), rune(digits[0])}
 	if !noSymbols {
-		required = append(required, symbols[0])
+		required = append(required, rune(symbols[0]))
 	}
 
 	for _, ch := range required {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		password.WriteRune(ch)
 		// Sisipkan di posisi acak
 		pos, _ := rand.Int(rand.Reader, big.NewInt(int64(length)))
@@ -96,7 +95,7 @@ func generateSecurePassword(length int, charset string, noSymbols bool) (string,
 }
 
 func printHelp() {
-	fmt.Println(`Aether CBT Password Generator (Versi Produksi)
+	fmt.Print(`Aether CBT Password Generator (Versi Produksi)
 
 Penggunaan:
   aether-password-generator.exe

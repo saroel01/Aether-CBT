@@ -4,9 +4,9 @@
 *.dll
 *.so
 *.dylib
-aether-cbt
-server
-load
+/aether-cbt
+/server
+/load
 
 # Test binaries
 tests/load/load
@@ -55,5 +55,12 @@ vendor/
 coverage.txt
 coverage.html
 
+# Spec baseline outputs
+.kiro/specs/*/baseline-test-output.txt
+
 # opencode local config
 opencode.json
+.opencode/
+.agents/
+skills-lock.json
+docs/superpowers/

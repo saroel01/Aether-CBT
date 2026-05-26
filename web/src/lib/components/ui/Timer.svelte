@@ -3,6 +3,7 @@
 
   export let durationSeconds = 0;
   export let active = true;
+  export let theme: 'light' | 'dark' = 'dark';
 
   const dispatch = createEventDispatcher();
   let intervalId: any;
@@ -74,12 +75,25 @@
   // Visual cues: Green (>10m), Amber (3-10m), Red (<3m)
   $: isLow = remaining < 600 && remaining >= 180;
   $: isCritical = remaining < 180;
+
+  let classes = {
+    dark: {
+      critical: 'bg-red-950/30 text-red-400 border-red-900/20 animate-pulse',
+      low: 'bg-amber-950/30 text-amber-400 border-amber-900/20',
+      normal: 'bg-emerald-950/30 text-emerald-400 border-emerald-900/20'
+    },
+    light: {
+      critical: 'bg-red-50 text-red-600 border-red-200 animate-pulse',
+      low: 'bg-amber-50 text-amber-600 border-amber-200',
+      normal: 'bg-emerald-50 text-emerald-600 border-emerald-200'
+    }
+  };
 </script>
 
 <div class="inline-flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all duration-300 font-mono text-lg font-semibold tracking-wider
-  {isCritical ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 
-   isLow ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-   'bg-emerald-50 text-emerald-600 border-emerald-200'}"
+  {isCritical ? classes[theme].critical : 
+   isLow ? classes[theme].low : 
+   classes[theme].normal}"
 >
   <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

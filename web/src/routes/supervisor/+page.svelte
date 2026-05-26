@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { api, qrCodeUrl } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
-  import { onMount, onDestroy } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import Table from '$lib/components/ui/Table.svelte';
@@ -124,95 +124,97 @@
   <title>Dashboard Pengawas: {roomName} - Aether CBT</title>
 </svelte:head>
 
-<div class="min-h-screen bg-slate-50 flex flex-col">
+<div class="min-h-screen bg-slate-50 flex flex-col justify-between select-none">
   <!-- Nav header -->
-  <header class="bg-white border-b sticky top-0 z-10 px-6 py-4">
+  <header class="bg-white border-b sticky top-0 z-10 px-6 py-4 shadow-sm shadow-slate-100/50">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
       <div class="flex items-center gap-3">
-        <span class="text-xl font-bold tracking-tight text-indigo-600">Aether CBT</span>
-        <span class="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full font-semibold">Pengawas</span>
+        <span class="text-lg font-bold tracking-tight text-indigo-600 font-display">AETHER CBT</span>
+        <span class="text-[10px] px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-bold uppercase tracking-wider font-mono">Pengawas</span>
       </div>
 
-      <div class="flex items-center gap-4 text-sm">
+      <div class="flex items-center gap-6 text-sm">
         <div class="text-right">
           <div class="font-bold text-slate-800">{roomName}</div>
-          <div class="text-xs text-slate-500">Pengawas: @{supervisorName}</div>
+          <div class="text-xs text-slate-400 font-medium">@{supervisorName}</div>
         </div>
-        <Button variant="ghost" size="sm" class="text-red-600 hover:text-red-700 hover:bg-red-50" on:click={logout}>
+        <Button variant="ghost" size="sm" theme="light" class="text-red-600 hover:text-red-750" on:click={logout}>
           Keluar
         </Button>
       </div>
     </div>
   </header>
 
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col gap-8">
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col gap-8 z-10">
+    <!-- Header Summary -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
-        <h2 class="text-3xl font-bold text-slate-900">Pemantauan Ruangan Live</h2>
-        <p class="text-slate-500 text-sm">Status real-time pengerjaan peserta ujian di {roomName}. Data diperbarui otomatis.</p>
+        <h2 class="text-2xl font-bold text-slate-900 font-display">Pemantauan Ruangan Ujian</h2>
+        <p class="text-slate-500 text-sm">Status pengerjaan peserta ruang real-time. Data melakukan penyegaran otomatis.</p>
       </div>
       
-      <Button variant="secondary" size="sm" class="flex items-center gap-2" on:click={refreshRoomStatus}>
+      <Button variant="secondary" size="sm" theme="light" class="flex items-center gap-2" on:click={refreshRoomStatus}>
         <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
         </svg>
-        Segarkan
+        Segarkan Data
       </Button>
     </div>
 
-    <!-- Statistics Panel Grid -->
+    <!-- Statistics Panel Grid (Restrained Outlines instead of Side-stripe outlines) -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-      <Card padding="md" class="border-slate-100/80 bg-white flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-slate-400"></div>
+      <Card padding="md" class="border-slate-200/60 bg-white flex items-center justify-between shadow-sm relative overflow-hidden">
         <div>
-          <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Siswa</span>
-          <div class="text-4xl font-extrabold text-slate-800 mt-1">{totalCount}</div>
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Total Siswa</span>
+          <div class="text-3xl font-extrabold text-slate-800 mt-1 font-display">{totalCount}</div>
         </div>
+        <div class="h-10 w-10 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center font-bold">∑</div>
       </Card>
 
-      <Card padding="md" class="border-indigo-100/80 bg-indigo-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-indigo-500"></div>
+      <Card padding="md" class="border-indigo-100 bg-white flex items-center justify-between shadow-sm relative overflow-hidden">
         <div>
-          <span class="text-xs text-indigo-500 font-bold uppercase tracking-wider">Sedang Mengerjakan</span>
-          <div class="text-4xl font-extrabold text-indigo-700 mt-1">{activeCount}</div>
+          <span class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider font-mono">Sedang Ujian</span>
+          <div class="text-3xl font-extrabold text-indigo-600 mt-1 font-display">{activeCount}</div>
         </div>
+        <div class="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-bold">✎</div>
       </Card>
 
-      <Card padding="md" class="border-emerald-100/80 bg-emerald-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-emerald-500"></div>
+      <Card padding="md" class="border-emerald-100 bg-white flex items-center justify-between shadow-sm relative overflow-hidden">
         <div>
-          <span class="text-xs text-emerald-500 font-bold uppercase tracking-wider">Selesai Ujian</span>
-          <div class="text-4xl font-extrabold text-emerald-700 mt-1">{finishedCount}</div>
+          <span class="text-[10px] text-emerald-500 font-bold uppercase tracking-wider font-mono">Selesai Ujian</span>
+          <div class="text-3xl font-extrabold text-emerald-600 mt-1 font-display">{finishedCount}</div>
         </div>
+        <div class="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">✓</div>
       </Card>
 
-      <Card padding="md" class="border-amber-100/80 bg-amber-50/10 flex items-center justify-between shadow-sm relative overflow-hidden">
-        <div class="absolute left-0 top-0 h-full w-[4px] bg-amber-500"></div>
+      <Card padding="md" class="border-amber-100 bg-white flex items-center justify-between shadow-sm relative overflow-hidden">
         <div>
-          <span class="text-xs text-amber-500 font-bold uppercase tracking-wider">Idle / Belum Mulai</span>
-          <div class="text-4xl font-extrabold text-amber-700 mt-1">{idleCount}</div>
+          <span class="text-[10px] text-amber-500 font-bold uppercase tracking-wider font-mono">Belum Mulai</span>
+          <div class="text-3xl font-extrabold text-amber-600 mt-1 font-display">{idleCount}</div>
         </div>
+        <div class="h-10 w-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">⏰</div>
       </Card>
     </div>
 
     <!-- Core Layout Grid: List vs Token Card -->
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
-      <!-- Live list (3/4) -->
+      <!-- Live list (3/4 Grid) -->
       <div class="lg:col-span-3 flex flex-col gap-4">
-        <h3 class="text-lg font-bold uppercase tracking-wider text-slate-500">Daftar Peserta Ruang</h3>
+        <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 font-mono">Daftar Peserta Ruang</h3>
         
         {#if loading}
-          <div class="bg-white border rounded-2xl p-20 flex flex-col items-center justify-center gap-3">
+          <div class="bg-white border border-slate-100 rounded-2xl p-20 flex flex-col items-center justify-center gap-3">
             <svg class="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <p class="text-sm font-semibold text-slate-500">Memuat status siswa...</p>
+            <p class="text-sm font-semibold text-slate-400">Menghubungkan ke monitor proktor...</p>
           </div>
         {:else}
           <Table>
             <thead>
-              <tr>
+              <tr class="font-display">
                 <th>No. ID</th>
                 <th>Nama Peserta</th>
                 <th>Kelas</th>
@@ -228,15 +230,15 @@
                 {@const isSubmitted = s.hasil_status === 'submitted'}
                 {@const isWorking = s.is_logged_in}
                 
-                <tr>
-                  <td class="font-mono font-bold text-slate-500">{s.no_id}</td>
-                  <td class="font-semibold">
+                <tr class="hover:bg-slate-50/50 transition-colors">
+                  <td class="font-mono font-bold text-slate-400">{s.no_id}</td>
+                  <td class="font-semibold text-slate-800">
                     <div class="flex items-center gap-2">
-                      <span class="text-slate-800">{s.nama_peserta}</span>
+                      <span>{s.nama_peserta}</span>
                       {#if s.tab_switches > 0 && s.tab_switches < 3}
-                        <span class="px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 rounded-lg flex items-center gap-1 animate-pulse" title="Siswa keluar dari layar ujian">
-                          ⚠️ {s.tab_switches}x Tab
-                        </span>
+                      <Badge variant="danger" theme="light" class="animate-pulse font-bold" title="Siswa keluar dari layar ujian">
+                        ⚠️ {s.tab_switches}x Tab
+                      </Badge>
                       {/if}
                     </div>
                   </td>
@@ -245,52 +247,52 @@
                     <div class="flex flex-col gap-1.5">
                       <div class="flex items-center gap-1.5">
                         {#if s.tab_switches >= 3}
-                          <span class="px-2.5 py-0.5 bg-red-600 text-white text-[10px] font-extrabold border border-red-500 rounded-md animate-pulse">
+                          <Badge variant="danger" theme="light" class="animate-pulse font-extrabold">
                             ⚠️ TERKUNCI
-                          </span>
+                          </Badge>
                         {:else if isSubmitted}
-                          <Badge variant="success">Selesai</Badge>
+                          <Badge variant="success" theme="light">Selesai</Badge>
                         {:else if isWorking}
-                          <Badge variant="info">Mengerjakan</Badge>
+                          <Badge variant="info" theme="light">Mengerjakan</Badge>
                         {:else}
-                          <Badge variant="neutral">Idle</Badge>
+                          <Badge variant="neutral" theme="light">Idle</Badge>
                         {/if}
                       </div>
 
                       {#if isWorking && s.total_questions > 0}
                         {@const percent = Math.round((s.answered_count / s.total_questions) * 100)}
-                        <div class="w-32 flex items-center gap-2">
-                          <div class="flex-1 bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div class="w-32 flex items-center gap-2 mt-1">
+                          <div class="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
                             <div class="bg-indigo-600 h-full rounded-full" style="width: {percent}%"></div>
                           </div>
-                          <span class="text-[10px] font-bold font-mono text-slate-500">{s.answered_count}/{s.total_questions}</span>
+                          <span class="text-[10px] font-bold font-mono text-slate-400">{s.answered_count}/{s.total_questions}</span>
                         </div>
                       {/if}
                     </div>
                   </td>
-                  <td class="font-medium text-slate-600">{s.nama_mapel || '—'}</td>
-                  <td class="font-mono text-xs">{formatTime(s.login_time)}</td>
+                  <td class="font-semibold text-slate-700">{s.nama_mapel || '—'}</td>
+                  <td class="font-mono text-slate-500 text-xs">{formatTime(s.login_time)}</td>
                   <td>
                     {#if isSubmitted && s.skor !== undefined}
                       <span class="font-bold text-slate-800">{s.skor}</span>
                       <span class="text-xs text-slate-400">/ {s.skor_maks}</span>
                     {:else}
-                      <span class="text-slate-400">—</span>
+                      <span class="text-slate-350">—</span>
                     {/if}
                   </td>
                   <td class="text-center">
                     {#if isWorking}
-                      <Button variant="danger" size="sm" class="px-3 py-1 font-semibold" on:click={() => resetStudent(s.id, s.nama_peserta)}>
+                      <Button variant="danger" size="sm" theme="light" class="px-3 py-1 font-semibold" on:click={() => resetStudent(s.id, s.nama_peserta)}>
                         Reset Sesi
                       </Button>
                     {:else}
-                      <span class="text-slate-400 font-mono text-xs">—</span>
+                      <span class="text-slate-350 font-mono text-xs">—</span>
                     {/if}
                   </td>
                 </tr>
               {:else}
                 <tr>
-                  <td colspan="8" class="text-center py-16 text-slate-500 font-medium">
+                  <td colspan="8" class="text-center py-16 text-slate-400 font-medium">
                     Belum ada siswa terdaftar di {roomName}.<br>Harap daftarkan siswa dengan Ruang ID ini di panel admin.
                   </td>
                 </tr>
@@ -300,34 +302,37 @@
         {/if}
       </div>
 
-      <!-- Token and QR Code card (1/4) -->
-      <div class="lg:col-span-1 flex flex-col gap-6 sticky top-24">
-        <h3 class="text-lg font-bold uppercase tracking-wider text-slate-500">Token Ruangan</h3>
+      <!-- Token and QR Code card (1/4 Grid) -->
+      <div class="lg:col-span-1 flex flex-col gap-4 sticky top-24">
+        <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 font-mono">Token Ruangan</h3>
 
-        <Card padding="md" class="border-slate-200/50 bg-white text-center shadow-sm">
-          <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Token Ujian Aktif</div>
+        <Card padding="md" class="border-slate-200/60 bg-white text-center shadow-sm relative overflow-hidden">
+          <!-- Minimal top border -->
+          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 font-mono">Token Ujian Aktif</div>
           <div class="text-3xl font-extrabold text-indigo-600 font-mono tracking-wider mb-6 bg-indigo-50/50 py-3 rounded-2xl border border-indigo-100">
             {activeToken}
           </div>
 
-          <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">Tampilkan QR Code Ujian</div>
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">QR Code Verifikasi</div>
           
           {#if activeToken}
-            <div class="bg-slate-50 p-4 border rounded-3xl inline-block mx-auto mb-4">
-              <!-- Fetch QR Code from backend Go endpoint using the active token! -->
+            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-4 hover:scale-[1.01] transition-transform duration-300">
               <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-44 w-44 mx-auto" />
             </div>
           {/if}
 
           <p class="text-xs text-slate-500 leading-relaxed px-2">
-            Siswa dapat memindai QR Code di atas dengan perangkat mereka untuk melakukan verifikasi token login secara instan.
+            Siswa dapat memindai QR Code di atas dengan perangkat mereka untuk melakukan verifikasi login secara instan.
           </p>
         </Card>
       </div>
     </div>
   </main>
 
-  <footer class="bg-white border-t py-4 px-6 text-center text-xs text-slate-500">
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-150 py-4 px-6 text-center text-xs text-slate-400 font-mono">
     Aether CBT • Sistem Monitoring Ruangan Ujian Cerdas & Terintegrasi
   </footer>
 </div>

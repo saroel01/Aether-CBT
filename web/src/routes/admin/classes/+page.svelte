@@ -183,19 +183,20 @@
               {@const isSelected = selectedClass?.id === c.id}
               <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
               <tr 
-                class="cursor-pointer transition-colors duration-150 {isSelected ? 'bg-indigo-50/40 border-l-4 border-l-indigo-600' : ''}"
+                class="cursor-pointer transition-all duration-300 {isSelected ? 'bg-indigo-50/70 text-indigo-900 font-semibold ring-1 ring-indigo-200 rounded-2xl shadow-sm' : 'hover:bg-slate-50/50'}"
                 on:click={() => selectClass(c)}
               >
                 <td class="font-mono text-slate-400 font-bold">{c.id}</td>
                 <td class="font-semibold text-slate-800">{c.nama_kelas}</td>
                 <td class="text-center">
-                  <button 
-                    type="button"
-                    class="text-red-500 hover:text-red-700 font-semibold text-xs p-1.5 hover:bg-red-50 rounded"
-                    on:click|stopPropagation={() => deleteClass(c.id, c.nama_kelas)}
+                  <Button 
+                    variant="danger" 
+                    size="sm" 
+                    theme="light"
+                    on:click={(e) => { e.stopPropagation(); deleteClass(c.id, c.nama_kelas); }}
                   >
                     Hapus
-                  </button>
+                  </Button>
                 </td>
               </tr>
             {:else}
@@ -223,12 +224,14 @@
             placeholder="Contoh: XII IPA 1" 
             bind:value={newName}
             disabled={createLoading}
+            theme="light"
           />
 
           <Button 
             variant="primary" 
             size="sm" 
-            class="w-full bg-indigo-600 border-none hover:bg-indigo-700 font-semibold" 
+            theme="light"
+            class="w-full" 
             on:click={createClass}
             loading={createLoading}
           >
@@ -283,7 +286,7 @@
             <div class="flex flex-col gap-2 pt-2">
               <label for="link_subject_select" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Petakan Baru</label>
               <div class="flex gap-2">
-                <select id="link_subject_select" bind:value={selectedSubjectToLink} class="w-full h-11 px-4 border rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-indigo-500 bg-white text-sm">
+                <select id="link_subject_select" bind:value={selectedSubjectToLink} class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
                   <option value={0}>Pilih Mata Pelajaran...</option>
                   {#each allSubjects as sub}
                     <!-- Hide if already linked -->
@@ -292,7 +295,7 @@
                     {/if}
                   {/each}
                 </select>
-                <Button variant="primary" size="sm" class="bg-indigo-600 border-none font-bold" on:click={linkSubject}>
+                <Button variant="primary" size="sm" theme="light" on:click={linkSubject}>
                   Petakan
                 </Button>
               </div>

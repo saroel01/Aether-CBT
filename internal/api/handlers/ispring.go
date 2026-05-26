@@ -2,140 +2,82 @@ package handlers
 
 import (
 	"crypto/subtle"
+	"database/sql"
+	"errors"
 	"fmt"
-	"log"
-	"time"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
 	ispringparser "github.com/saroel01/aether-cbt/internal/ispring"
+	"github.com/saroel01/aether-cbt/internal/submission"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
-// ISpringWebhook receives quiz results from iSpring, parses XML with Substitution Groups support,
-// performs anti-cheat active session checks, and saves the detailed student scores.
+var SubmissionQueue submission.Queue
+
+func SetSubmissionQueue(q submission.Queue) {
+	SubmissionQueue = q
+}
+
 func ISpringWebhook(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
-	// User ID from iSpring (no_id) - check "sid" first, then fallback to "USER_NAME"
-	noID := c.FormValue("sid")
+	noID := strings.TrimSpace(c.FormValue("sid"))
 	if noID == "" {
-		noID = c.FormValue("USER_NAME")
+		noID = strings.TrimSpace(c.FormValue("USER_NAME"))
 	}
-
-	score := c.FormValue("sp")
-	maxScore := c.FormValue("tp")
-	detailXML := c.FormValue("dr") // Detailed results XML
-
 	if noID == "" {
 		return c.Status(fiber.StatusBadRequest).SendString("Missing student identifier (sid / USER_NAME)")
 	}
 
-	// Find peserta
-	var pesertaID int
-	err := db.DB.QueryRow("SELECT id FROM peserta WHERE no_id = ? AND tenant_id = ?", noID, tenantID).Scan(&pesertaID)
+	score := c.FormValue("sp")
+	maxScore := c.FormValue("tp")
+	detailXML := c.FormValue("dr")
+	attemptToken := c.FormValue("attempt_token")
+	if attemptToken == "" {
+		attemptToken = c.FormValue("AETHER_ATTEMPT_TOKEN")
+	}
+
+	// Single SELECT: cek_login JOIN peserta (Requirement 4.7).
+	var pesertaID, mapelID int
+	var expectedToken string
+	err := db.DB.QueryRowContext(c.Context(), `
+		SELECT p.id, cl.mapel_id, COALESCE(cl.attempt_token, '')
+		  FROM peserta p
+		  JOIN cek_login cl ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
+		 WHERE p.tenant_id = ? AND p.no_id = ?
+		 LIMIT 1
+	`, tenantID, noID).Scan(&pesertaID, &mapelID, &expectedToken)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c.Status(fiber.StatusForbidden).SendString("active session not found")
+	}
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).SendString(fmt.Sprintf("Student with ID %s not found in tenant %d", noID, tenantID))
+		return c.Status(fiber.StatusInternalServerError).SendString("session lookup failed")
+	}
+	if expectedToken == "" || subtle.ConstantTimeCompare([]byte(attemptToken), []byte(expectedToken)) != 1 {
+		return c.Status(fiber.StatusForbidden).SendString("invalid attempt token")
 	}
 
-	// Resolve active subject (mapel), login_time, and attempt token from cek_login session (Anti-Cheat check)
-	var mapelID int
-	var loginTime time.Time
-	var expectedAttemptToken string
-	err = db.DB.QueryRow("SELECT mapel_id, login_time, COALESCE(attempt_token, '') FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, tenantID).Scan(&mapelID, &loginTime, &expectedAttemptToken)
-
-	if err != nil || mapelID <= 0 {
-		// Strictly enforce active session check for anti-cheat protection.
-		return c.Status(fiber.StatusForbidden).SendString("Unauthorized exam attempt: student session not found in room monitor")
-	}
-
-	submittedAttemptToken := c.FormValue("attempt_token")
-	if submittedAttemptToken == "" {
-		submittedAttemptToken = c.FormValue("AETHER_ATTEMPT_TOKEN")
-	}
-	if expectedAttemptToken == "" || subtle.ConstantTimeCompare([]byte(submittedAttemptToken), []byte(expectedAttemptToken)) != 1 {
-		return c.Status(fiber.StatusForbidden).SendString("Unauthorized exam attempt: invalid attempt token")
-	}
-
-	// Fetch durasi_menit from mapel to validate grace period
-	var durasiMenit int = 90
-	err = db.DB.QueryRow("SELECT COALESCE(durasi_menit, 90) FROM mapel WHERE id = ? AND tenant_id = ?", mapelID, tenantID).Scan(&durasiMenit)
-	if err != nil {
-		durasiMenit = 90
-	}
-
-	// Grace Period: 5 minutes after official exam time limit
-	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
-	actualDuration := time.Now().UTC().Sub(loginTime.UTC())
-
-	if actualDuration > maxAllowedDuration {
-		return c.Status(fiber.StatusForbidden).SendString("Exam submission rejected: exceeded 5-minute grace period toleration (late submission)")
-	}
-
-	var detailReport *ispringparser.Report
 	if detailXML != "" {
-		detailReport, err = ispringparser.ParseDetailedResults(detailXML)
-		if err != nil {
-			log.Printf("Invalid iSpring detail XML: %v", err)
+		if _, err := ispringparser.ParseDetailedResults(detailXML); err != nil {
 			return c.Status(fiber.StatusBadRequest).SendString("Invalid iSpring detailed results XML")
 		}
 	}
 
-	validasi := fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID)
-
-	// Save summary to hasil_tes
-	res, err := db.DB.Exec(`
-		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, skor, skor_maks, detail_xml, status, validasi, waktu_selesai)
-		VALUES (?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(tenant_id, validasi) DO UPDATE SET
-			skor = excluded.skor,
-			skor_maks = excluded.skor_maks,
-			detail_xml = excluded.detail_xml,
-			status = 'submitted',
-			waktu_selesai = CURRENT_TIMESTAMP
-	`, tenantID, pesertaID, mapelID, score, maxScore, detailXML, validasi)
-
-	if err != nil {
-		log.Printf("Failed to insert hasil_tes: %v", err)
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save result summary")
+	job := &submission.SubmissionJob{
+		TenantID:     tenantID,
+		NoID:         noID,
+		Score:        score,
+		MaxScore:     maxScore,
+		DetailXML:    detailXML,
+		AttemptToken: attemptToken,
+		Validasi:     fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID),
 	}
-
-	// Get the last inserted ID
-	lastID, _ := res.LastInsertId()
-	var hasilTesID int
-	if lastID > 0 {
-		hasilTesID = int(lastID)
-	} else {
-		// If ON CONFLICT was triggered, fetch the existing ID
-		db.DB.QueryRow("SELECT id FROM hasil_tes WHERE tenant_id = ? AND validasi = ?", tenantID, validasi).Scan(&hasilTesID)
+	if err := SubmissionQueue.Enqueue(c.Context(), job); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to queue result")
 	}
-
-	if detailReport != nil && hasilTesID > 0 {
-		// Clear existing details if any (to support re-submissions safely)
-		db.DB.Exec("DELETE FROM hasil_tes_detail WHERE hasil_tes_id = ?", hasilTesID)
-
-		for _, q := range detailReport.Questions {
-			questionText := q.Text
-			if questionText == "" {
-				questionText = "Teks soal tidak tersedia"
-			}
-
-			_, err = db.DB.Exec(`
-				INSERT INTO hasil_tes_detail (
-					hasil_tes_id, question_id, question_text, question_type, 
-					status, awarded_points, max_points, user_answer, correct_answer
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, hasilTesID, q.ID, questionText, q.Type, q.Status, q.AwardedPoints, q.MaxPoints, q.UserAnswer, q.CorrectAnswer)
-			if err != nil {
-				log.Printf("Failed to save question detail: %v", err)
-			}
-		}
-	}
-
-	// Remove from active cek_login session (student has completed the exam successfully)
-	_, _ = db.DB.Exec("DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, tenantID)
-
 	return c.SendString("Result received successfully")
 }
 

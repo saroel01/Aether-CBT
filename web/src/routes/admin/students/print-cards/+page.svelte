@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, qrCodeUrl } from '$lib/api';
   import { onMount } from 'svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
   let students: any[] = [];
   let classesList: any[] = [];
@@ -62,13 +63,15 @@
       <h3 class="text-sm font-bold text-slate-800">Pratinjau Kartu Peserta Ujian</h3>
       <p class="text-xs text-slate-500">Gunakan pintasan browser Ctrl+P jika printer dialog tidak terbuka secara otomatis.</p>
     </div>
-    <button 
-      type="button"
-      class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition"
+    <Button 
+      variant="primary" 
+      size="sm"
+      theme="light"
+      class="font-semibold shadow-sm"
       on:click={() => window.print()}
     >
       Cetak Halaman
-    </button>
+    </Button>
   </div>
 
   {#if loading}
