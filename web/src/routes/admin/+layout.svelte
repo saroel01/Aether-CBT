@@ -58,29 +58,29 @@
     <p class="text-sm font-semibold">Memuat data panel admin...</p>
   </div>
 {:else}
-  <div class="min-h-screen bg-slate-50 flex">
+  <div class="min-h-screen bg-slate-100/50 flex">
     <!-- Left Sidebar (Collapsible/Fixed) -->
     {#if $authStore.isAuthenticated}
-      <aside class="w-64 bg-slate-900 text-white flex flex-col justify-between shadow-xl shrink-0 z-10 sticky top-0 h-screen border-r border-slate-800">
+      <aside class="w-64 bg-slate-950 text-white flex flex-col justify-between shadow-xl shrink-0 z-10 sticky top-0 h-screen border-r border-slate-900">
         <div>
           <!-- Sidebar Brand Header -->
-          <div class="h-16 flex items-center px-6 border-b border-slate-800 bg-slate-950/20">
+          <div class="h-16 flex items-center px-6 border-b border-slate-900 bg-slate-950/20">
             <div class="flex items-center gap-3">
-              <span class="text-xl font-bold tracking-tight text-indigo-400">Aether CBT</span>
-              <span class="text-xs px-2 py-0.5 bg-indigo-950/80 text-indigo-300 border border-indigo-900 rounded font-bold uppercase tracking-wider scale-90">Proktor</span>
+              <span class="text-lg font-bold tracking-tight text-slate-200 font-display">AETHER CBT</span>
+              <span class="text-[9px] px-2 py-0.5 bg-indigo-950 text-indigo-400 border border-indigo-900/60 rounded font-bold uppercase tracking-wider font-mono">PROKTOR</span>
             </div>
           </div>
 
           <!-- Navigation Links -->
-          <nav class="p-4 space-y-1">
+          <nav class="p-4 space-y-1.5">
             {#each menus as m}
               {@const isActive = activeRoute === m.path}
               <a 
                 href={m.path}
-                class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-150
-                  {isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 scale-[1.02]' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}"
+                class="flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold text-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
+                  {isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50 scale-[1.02]' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'}"
               >
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d={m.icon} />
                 </svg>
                 <span>{m.label}</span>
@@ -90,10 +90,10 @@
         </div>
 
         <!-- Sidebar footer profiles -->
-        <div class="p-4 border-t border-slate-800 bg-slate-950/30">
+        <div class="p-4 border-t border-slate-900 bg-slate-950/40">
           <div class="flex items-center justify-between">
             <div class="flex flex-col text-left">
-              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Petugas Login</span>
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Pengguna</span>
               <span class="text-sm font-bold text-slate-200 truncate max-w-[130px]">
                 {$authStore.user?.full_name || $authStore.user?.username || 'Proktor'}
               </span>
@@ -101,7 +101,7 @@
             
             <button 
               type="button"
-              class="text-red-400 hover:text-red-300 transition p-2 hover:bg-slate-800 rounded-xl"
+              class="text-red-400 hover:text-red-300 transition-colors p-2 hover:bg-slate-900/50 rounded-xl"
               on:click={() => { authStore.logout(); goto('/'); }}
               title="Logout"
             >
@@ -118,16 +118,19 @@
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Top header bar -->
       {#if $authStore.isAuthenticated}
-        <header class="h-16 bg-white border-b flex items-center justify-between px-8 sticky top-0 z-10 shadow-sm shrink-0">
+        <header class="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 sticky top-0 z-10 shadow-sm shadow-slate-100/50 shrink-0">
           <div class="flex items-center gap-2">
-            <span class="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 font-semibold rounded-full border border-indigo-100">
-              Konteks tenant aktif
+            <span class="text-[10px] px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold uppercase tracking-wider rounded-full border border-indigo-100 font-mono">
+              TENANT-ID: {$authStore.user?.tenant_id || 1}
             </span>
           </div>
 
-          <div class="text-sm font-medium text-slate-500 flex items-center gap-3">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-3 font-mono">
             <span>Server CBT Aktif</span>
-            <span class="h-2 w-2 bg-emerald-500 rounded-full animate-ping"></span>
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
           </div>
         </header>
       {/if}

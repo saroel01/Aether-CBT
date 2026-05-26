@@ -15,6 +15,13 @@
   let loading = true;
   let createLoading = false;
 
+  let visiblePasswords: Record<number, boolean> = {};
+
+  function togglePassword(id: number) {
+    visiblePasswords[id] = !visiblePasswords[id];
+    visiblePasswords = visiblePasswords;
+  }
+
   onMount(async () => {
     await loadRooms();
   });
@@ -112,26 +119,41 @@
                     @{r.username}
                   </span>
                 </td>
-                <td class="font-mono text-xs text-slate-400">ruang123</td>
+                <td class="font-mono text-xs text-slate-500">
+                  <div class="flex items-center gap-2 justify-between min-w-[100px]">
+                    <span class="font-bold select-text">
+                      {visiblePasswords[r.id] ? (r.password || 'ruang123') : '••••••••'}
+                    </span>
+                    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+                    <button 
+                      type="button" 
+                      class="text-xs text-slate-400 hover:text-indigo-600 transition"
+                      on:click={() => togglePassword(r.id)}
+                      title={visiblePasswords[r.id] ? "Sembunyikan" : "Tampilkan"}
+                    >
+                      {visiblePasswords[r.id] ? '👁️' : '🔑'}
+                    </button>
+                  </div>
+                </td>
                 <td class="text-xs text-slate-400 font-mono">
                   {new Date(r.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </td>
                 <td class="text-center">
                   <div class="flex items-center justify-center gap-2">
                     <a href="/admin/rooms/print-attendance?room_id={r.id}" target="_blank" title="Cetak Daftar Hadir">
-                      <Button variant="secondary" size="sm" class="border-indigo-100 text-indigo-700 hover:bg-indigo-50 font-semibold py-1 px-2.5">
+                      <Button variant="secondary" size="sm" theme="light">
                         Absen
                       </Button>
                     </a>
                     <a href="/admin/rooms/print-report?room_id={r.id}" target="_blank" title="Cetak Berita Acara">
-                      <Button variant="secondary" size="sm" class="border-teal-100 text-teal-700 hover:bg-teal-50 font-semibold py-1 px-2.5">
+                      <Button variant="secondary" size="sm" theme="light">
                         Acara
                       </Button>
                     </a>
                     <Button 
                       variant="danger" 
                       size="sm" 
-                      class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border-red-100 font-semibold py-1 px-2.5"
+                      theme="light"
                       on:click={() => deleteRoom(r.id, r.nama_ruang)}
                     >
                       Hapus
@@ -163,6 +185,7 @@
             placeholder="Contoh: Ruang A" 
             bind:value={newName}
             disabled={createLoading}
+            theme="light"
           />
 
           <Input 
@@ -171,6 +194,7 @@
             placeholder="Contoh: ruang_a" 
             bind:value={newUsername}
             disabled={createLoading}
+            theme="light"
           />
 
           <PasswordGenerator 
@@ -178,12 +202,14 @@
             length={12}
             label="Password Pengawas"
             placeholder="Klik Generate untuk password kuat"
+            theme="light"
           />
 
           <Button 
             variant="primary" 
             size="sm" 
-            class="w-full bg-indigo-600 border-none hover:bg-indigo-700 font-semibold" 
+            theme="light"
+            class="w-full" 
             on:click={createRoom}
             loading={createLoading}
           >

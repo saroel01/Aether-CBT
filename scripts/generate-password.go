@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -52,13 +55,12 @@ func generatePassword(length int, charset string, noSymbols bool) (string, error
 	password.Grow(length)
 
 	// Pastikan minimal ada 1 huruf besar, 1 angka, dan 1 simbol (jika diizinkan)
-	mustHave := []rune{upper[0], digits[0]}
+	mustHave := []rune{rune(upper[0]), rune(digits[0])}
 	if !noSymbols {
-		mustHave = append(mustHave, symbols[0])
+		mustHave = append(mustHave, rune(symbols[0]))
 	}
 
 	for _, ch := range mustHave {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		// Sisipkan karakter wajib di posisi acak
 		pos, _ := rand.Int(rand.Reader, big.NewInt(int64(length)))
 		password.WriteRune(ch)

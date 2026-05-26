@@ -140,6 +140,14 @@
     return found ? found.nama_kelas : `ID: ${id}`;
   }
 
+  // Set first class/room values as default once lists load!
+  $: if (classesList.length > 0 && !newKelas) {
+    newKelas = classesList[0].id;
+  }
+  $: if (roomsList.length > 0 && !newRuang) {
+    newRuang = roomsList[0].id;
+  }
+
   function getRoomName(id: number): string {
     const found = roomsList.find(r => r.id === id);
     return found ? found.nama_ruang : `ID: ${id}`;
@@ -162,24 +170,25 @@
   <title>Manajemen Peserta - Aether CBT</title>
 </svelte:head>
 
-<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto select-none">
   <!-- Section Title -->
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/60 pb-6">
     <div>
-      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Peserta Ujian (Siswa)</h1>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Peserta Ujian (Siswa)</h1>
       <p class="text-slate-500 text-sm">Kelola daftar registrasi peserta ujian resmi di sekolah.</p>
     </div>
 
+    <!-- Header Action Buttons with theme="light" -->
     <div class="flex items-center gap-3">
       <a href="/admin/students/print-cards" target="_blank">
-        <Button variant="secondary" size="md" class="font-semibold border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+        <Button variant="secondary" size="sm" theme="light" class="font-semibold">
           Cetak Kartu Ujian
         </Button>
       </a>
-      <Button variant="secondary" size="md" class="font-semibold" on:click={() => showCSVModal = true}>
+      <Button variant="secondary" size="sm" theme="light" class="font-semibold" on:click={() => showCSVModal = true}>
         Impor CSV Massal
       </Button>
-      <Button variant="primary" size="md" class="bg-indigo-600 border-none hover:bg-indigo-700 font-semibold shadow-md shadow-indigo-100" on:click={() => showAddModal = true}>
+      <Button variant="primary" size="sm" theme="light" class="font-semibold" on:click={() => showAddModal = true}>
         Tambah Siswa
       </Button>
     </div>
@@ -194,13 +203,13 @@
       <p class="text-sm font-semibold">Memuat daftar siswa...</p>
     </div>
   {:else if error}
-    <div class="p-6 bg-red-50 border border-red-100 rounded-3xl text-center text-red-600 font-medium">
+    <div class="p-6 bg-red-50 border border-red-150 rounded-3xl text-center text-red-600 font-medium">
       Gagal mengambil data siswa: {error}
     </div>
   {:else}
     <Table>
       <thead>
-        <tr>
+        <tr class="font-display">
           <th>No. ID</th>
           <th>Nama Lengkap</th>
           <th>Jenis Kelamin</th>
@@ -212,26 +221,29 @@
       </thead>
       <tbody>
         {#each students as s}
-          <tr>
-            <td class="font-mono font-bold text-slate-500">{s.no_id}</td>
+          <tr class="hover:bg-slate-50/50 transition-colors">
+            <!-- No ID using monospace bold slate-500 -->
+            <td class="font-mono font-bold text-slate-400">{s.no_id}</td>
             <td class="font-semibold text-slate-800">{s.nama_peserta}</td>
             <td>
+              <!-- Beautiful High-Contrast light themed badges -->
               {#if s.jenis_kelamin === 'L'}
-                <Badge variant="info">Laki-laki</Badge>
+                <Badge variant="info" theme="light">Laki-laki</Badge>
               {:else if s.jenis_kelamin === 'P'}
-                <Badge variant="warning">Perempuan</Badge>
+                <Badge variant="warning" theme="light">Perempuan</Badge>
               {:else}
-                <Badge variant="neutral">—</Badge>
+                <Badge variant="neutral" theme="light">—</Badge>
               {/if}
             </td>
-            <td class="font-medium text-slate-600">{getClassName(s.kelas_id)}</td>
-            <td class="font-medium text-slate-600">{getRoomName(s.ruang_id)}</td>
-            <td class="font-mono text-xs text-slate-400">siswa123</td>
+            <td class="font-semibold text-slate-600">{getClassName(s.kelas_id)}</td>
+            <td class="font-semibold text-slate-600">{getRoomName(s.ruang_id)}</td>
+            <td class="font-mono text-slate-400 text-xs">siswa123</td>
             <td class="text-center">
+              <!-- Tactile Delete Button themed for light screen -->
               <Button 
                 variant="danger" 
                 size="sm" 
-                class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border-red-100 font-semibold"
+                theme="light"
                 on:click={() => deleteStudent(s.id, s.nama_peserta)}
               >
                 Hapus
@@ -249,14 +261,15 @@
     </Table>
   {/if}
 
-  <!-- Manual Add Student Modal -->
+  <!-- Manual Add Student Modal (Clean Light Inputs) -->
   <Modal show={showAddModal} title="Tambah Siswa Baru" size="md">
-    <div class="space-y-4 text-slate-800">
+    <div class="space-y-4 text-slate-800 p-1">
       <Input 
         id="no_id"
         label="Nomor ID / Nomor Peserta *" 
         placeholder="Contoh: 2024009" 
         bind:value={newNoID}
+        theme="light"
       />
       
       <Input 
@@ -264,12 +277,13 @@
         label="Nama Lengkap *" 
         placeholder="Contoh: Muhammad Rian" 
         bind:value={newNama}
+        theme="light"
       />
 
       <div class="grid grid-cols-2 gap-4">
         <div class="flex flex-col gap-1.5">
-          <label for="kelas_select" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Kelas *</label>
-          <select id="kelas_select" bind:value={newKelas} class="w-full h-11 px-4 border rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+          <label for="kelas_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Kelas *</label>
+          <select id="kelas_select" bind:value={newKelas} class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-350 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
             {#each classesList as c}
               <option value={c.id}>{c.nama_kelas}</option>
             {/each}
@@ -277,8 +291,8 @@
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="ruang_select" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ruang Ujian *</label>
-          <select id="ruang_select" bind:value={newRuang} class="w-full h-11 px-4 border rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+          <label for="ruang_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Ruang Ujian *</label>
+          <select id="ruang_select" bind:value={newRuang} class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-350 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
             {#each roomsList as r}
               <option value={r.id}>{r.nama_ruang}</option>
             {/each}
@@ -286,62 +300,90 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-2 gap-4 items-end">
         <div class="flex flex-col gap-1.5">
-          <label for="jk_select" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jenis Kelamin *</label>
-          <select id="jk_select" bind:value={newJK} class="w-full h-11 px-4 border rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+          <label for="jk_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Jenis Kelamin *</label>
+          <select id="jk_select" bind:value={newJK} class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-350 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
             <option value="L">Laki-laki</option>
             <option value="P">Perempuan</option>
           </select>
         </div>
 
+        <!-- Password Generator themed light -->
         <PasswordGenerator 
           bind:value={newPass} 
           length={10}
           label="Kata Sandi Login"
-          placeholder="Klik Generate untuk membuat password"
+          placeholder="Buat password login otomatis"
+          theme="light"
         />
       </div>
     </div>
 
-    <div slot="footer" class="flex gap-2">
-      <Button variant="secondary" size="sm" on:click={() => showAddModal = false} disabled={createLoading}>Batal</Button>
-      <Button variant="primary" size="sm" class="bg-indigo-600 border-none hover:bg-indigo-700" on:click={createStudent} {createLoading}>Simpan</Button>
+    <div slot="footer" class="flex gap-3 justify-end">
+      <Button variant="secondary" size="sm" theme="light" on:click={() => showAddModal = false} disabled={createLoading}>Batal</Button>
+      <Button variant="primary" size="sm" theme="light" class="shadow-md" on:click={createStudent} {createLoading}>Simpan</Button>
     </div>
   </Modal>
 
-  <!-- CSV Import Modal -->
+  <!-- CSV Import Modal (Light Theme Elegant styling) -->
   <Modal show={showCSVModal} title="Impor Data Siswa CSV Massal" size="md">
-    <div class="space-y-4 text-slate-800">
+    <div class="space-y-5 text-slate-800 p-1">
       <p class="text-sm text-slate-500 leading-relaxed">
         Anda dapat mendaftarkan siswa secara sekaligus dengan mengunggah lembar spreadsheet dalam format CSV (.csv). 
       </p>
 
-      <div class="bg-indigo-50/50 border border-indigo-100 p-4 rounded-2xl text-xs space-y-2 text-indigo-950 font-medium">
-        <div class="font-bold uppercase tracking-wider text-indigo-700 mb-1">Skema Kolom CSV:</div>
-        <p class="font-mono">no_id, nama_peserta, kelas_id, ruang_id, jenis_kelamin, password</p>
-        <p class="text-slate-500 text-[10px] leading-tight">
-          * kelas_id dan ruang_id diisi berdasarkan angka ID relational.<br>
-          * jenis_kelamin diisi "L" atau "P".<br>
-          * baris pertama berkas CSV bertindak sebagai tajuk/header dan akan dilewati otomatis.
-        </p>
+      <div class="bg-indigo-50/50 border border-indigo-100/70 p-4.5 rounded-2xl text-xs space-y-3 text-indigo-950 font-medium shadow-sm">
+        <div class="font-bold uppercase tracking-wider text-indigo-700 mb-1 flex items-center gap-1.5">
+          <span>📋</span> Skema Kolom CSV Resmi:
+        </div>
+        <div class="flex flex-wrap gap-1 font-mono text-[11px] bg-white p-2 border border-indigo-100/50 rounded-xl shadow-inner">
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">no_id</span>
+          <span class="text-slate-300">,</span>
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">nama_peserta</span>
+          <span class="text-slate-300">,</span>
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">kelas_id</span>
+          <span class="text-slate-300">,</span>
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">ruang_id</span>
+          <span class="text-slate-300">,</span>
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">jenis_kelamin</span>
+          <span class="text-slate-300">,</span>
+          <span class="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">password</span>
+        </div>
+        <div class="text-slate-500 text-[10px] leading-relaxed pt-1 space-y-1">
+          <p>• <strong>kelas_id</strong> dan <strong>ruang_id</strong> diisi berdasarkan angka ID relational database.</p>
+          <p>• <strong>jenis_kelamin</strong> wajib diisi <strong>"L"</strong> atau <strong>"P"</strong>.</p>
+          <p>• Baris pertama berkas CSV bertindak sebagai tajuk/header dan dilewati otomatis oleh sistem.</p>
+        </div>
       </div>
 
-      <div class="flex flex-col gap-1.5 pt-2">
-        <label for="csv_file_input" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pilih Berkas CSV</label>
-        <input 
-          id="csv_file_input"
-          type="file" 
-          accept=".csv" 
-          on:change={handleCSVChange}
-          class="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 file:cursor-pointer hover:file:bg-indigo-100"
-        />
+      <!-- Tactile Dropzone Widget -->
+      <div class="flex flex-col gap-2 pt-1">
+        <label for="csv_file_input" class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Pilih Berkas CSV</label>
+        <div class="border-2 border-dashed border-indigo-200/80 bg-indigo-50/10 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-indigo-50/20 hover:border-indigo-300 transition-all duration-300 relative h-32 overflow-hidden">
+          <input 
+            id="csv_file_input"
+            type="file" 
+            accept=".csv" 
+            on:change={handleCSVChange}
+            class="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+          />
+          {#if csvFile}
+            <span class="text-2xl mb-1.5">📄</span>
+            <span class="text-xs font-bold text-indigo-700 truncate max-w-[300px]">{csvFile.name}</span>
+            <span class="text-[10px] text-slate-400 font-semibold mt-1">Ukuran: {Math.round(csvFile.size / 1024)} KB • Klik untuk mengganti berkas</span>
+          {:else}
+            <span class="text-2xl mb-1.5">📂</span>
+            <span class="text-xs font-bold text-slate-700">Tarik berkas CSV ke sini atau klik untuk mencari</span>
+            <span class="text-[10px] text-slate-400 font-semibold mt-1">Mendukung berkas ekstensi .csv hingga 5MB</span>
+          {/if}
+        </div>
       </div>
     </div>
 
-    <div slot="footer" class="flex gap-2">
-      <Button variant="secondary" size="sm" on:click={() => showCSVModal = false} disabled={importLoading}>Batal</Button>
-      <Button variant="primary" size="sm" class="bg-indigo-600 border-none hover:bg-indigo-700" on:click={uploadCSV} {importLoading}>Unggah & Proses</Button>
+    <div slot="footer" class="flex gap-3 justify-end">
+      <Button variant="secondary" size="sm" theme="light" on:click={() => showCSVModal = false} disabled={importLoading}>Batal</Button>
+      <Button variant="primary" size="sm" theme="light" class="shadow-md" on:click={uploadCSV} {importLoading}>Unggah & Proses</Button>
     </div>
   </Modal>
 </div>

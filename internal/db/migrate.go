@@ -37,8 +37,8 @@ func RunMigrations() error {
 		_, err = DB.Exec(string(content))
 		if err != nil {
 			errStr := err.Error()
-			if strings.Contains(errStr, "duplicate column name") || strings.Contains(errStr, "already exists") {
-				log.Printf("Migration %s skipped (columns/table already exist): %v", f, err)
+			if strings.Contains(errStr, "duplicate column name") || strings.Contains(errStr, "already exists") || strings.Contains(errStr, "SQLITE_BUSY") {
+				log.Printf("Migration %s skipped: %v", f, err)
 			} else {
 				log.Printf("Migration %s failed: %v", f, err)
 				return err

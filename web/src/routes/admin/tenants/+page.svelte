@@ -80,7 +80,7 @@
     <Button 
       variant="primary" 
       size="md" 
-      class="bg-indigo-600 border-none hover:bg-indigo-700 font-semibold shadow-md shadow-indigo-100" 
+      theme="light"
       on:click={() => showAddModal = true}
     >
       Daftarkan Sekolah Baru
@@ -112,15 +112,22 @@
             <td class="font-mono text-slate-400 font-bold">{t.id}</td>
             <td class="font-semibold text-slate-800">{t.name}</td>
             <td>
-              <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-mono font-bold text-xs border border-indigo-100 rounded-lg">
-                {t.slug}
-              </span>
+              <Badge theme="light" variant="info" class="font-mono">{t.slug}</Badge>
             </td>
             <td>
               {#if t.is_active}
-                <Badge variant="success">Aktif</Badge>
+                <Badge variant="success" theme="light" class="flex items-center gap-1.5 w-fit">
+                  <span class="relative flex h-1.5 w-1.5 shrink-0">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  Aktif
+                </Badge>
               {:else}
-                <Badge variant="neutral">Non-Aktif</Badge>
+                <Badge variant="neutral" theme="light" class="flex items-center gap-1.5 w-fit">
+                  <span class="h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0"></span>
+                  Non-Aktif
+                </Badge>
               {/if}
             </td>
             <td class="text-xs text-slate-400 font-mono">
@@ -151,6 +158,7 @@
         placeholder="Contoh: SMAN 1 Kluet Selatan" 
         bind:value={newName}
         disabled={createLoading}
+        theme="light"
       />
 
       <Input 
@@ -159,6 +167,7 @@
         placeholder="Contoh: sman1kluet" 
         bind:value={newSlug}
         disabled={createLoading}
+        theme="light"
       />
       <p class="text-[10px] text-slate-400 font-medium leading-none">
         * Hanya huruf kecil, angka, dan tanda hubung (-) tanpa spasi. E.g. "sman1kluet".
@@ -166,8 +175,8 @@
     </div>
 
     <div slot="footer" class="flex gap-2">
-      <Button variant="secondary" size="sm" on:click={() => showAddModal = false} disabled={createLoading}>Batal</Button>
-      <Button variant="primary" size="sm" class="bg-indigo-600 border-none hover:bg-indigo-700" on:click={createTenant} loading={createLoading}>Simpan</Button>
+      <Button variant="secondary" size="sm" theme="light" on:click={() => showAddModal = false} disabled={createLoading}>Batal</Button>
+      <Button variant="primary" size="sm" theme="light" on:click={createTenant} loading={createLoading}>Simpan</Button>
     </div>
   </Modal>
 </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { api, qrCodeUrl } from '$lib/api';
   import { onMount } from 'svelte';
+  import { api, qrCodeUrl } from '$lib/api';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import Input from '$lib/components/ui/Input.svelte';
@@ -149,10 +149,10 @@
   <title>Konfigurasi Ujian - Admin</title>
 </svelte:head>
 
-<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto select-none">
   <!-- Section Title -->
-  <div class="border-b pb-6">
-    <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Pengaturan Ujian</h1>
+  <div class="border-b border-slate-200/60 pb-6">
+    <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Pengaturan Ujian</h1>
     <p class="text-slate-500 text-sm">Kelola spesifikasi ujian sekolah, kredensial proktor, dan rotasi token.</p>
   </div>
 
@@ -166,27 +166,31 @@
     </div>
   {:else}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-      <!-- General configuration (2/3) -->
+      <!-- General configuration (2/3 Grid) -->
       <div class="lg:col-span-2 flex flex-col gap-6">
-        <Card padding="lg" class="border-slate-200 bg-white shadow-sm">
-          <h3 class="text-lg font-bold text-slate-800 mb-4 pb-2 border-b">Konfigurasi Umum</h3>
+        <Card padding="lg" class="border-slate-200/60 bg-white shadow-sm relative overflow-hidden">
+          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+
+          <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-6 pb-2 border-b border-slate-100">Konfigurasi Umum</h3>
           
-          <div class="space-y-4">
+          <div class="space-y-5">
             <Input 
               id="exam_title_input"
               label="Judul Pelaksanaan Ujian *" 
               placeholder="Contoh: Penilaian Akhir Semester 2025/2026" 
               bind:value={examTitle}
               disabled={saveLoading}
+              theme="light"
             />
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <Input 
                 id="proctor_name_input"
                 label="Nama Proktor / Kepala Ruangan" 
                 placeholder="Contoh: Drs. H. Sumardi" 
                 bind:value={proctorName}
                 disabled={saveLoading}
+                theme="light"
               />
 
               <Input 
@@ -195,23 +199,24 @@
                 placeholder="Contoh: Aether CBT • Hak Cipta Sekolah" 
                 bind:value={footerText}
                 disabled={saveLoading}
+                theme="light"
               />
             </div>
 
             <!-- Global toggle activation -->
-            <div class="flex items-center justify-between py-4 border-t border-slate-100 mt-6">
+            <div class="flex items-center justify-between py-5 border-t border-slate-100 mt-6">
               <div>
                 <h4 class="text-sm font-bold text-slate-800">Status Server Ujian</h4>
-                <p class="text-xs text-slate-500">Apabila dinonaktifkan, siswa tidak dapat masuk ke sistem lembar ujian.</p>
+                <p class="text-xs text-slate-400">Apabila dinonaktifkan, siswa tidak dapat masuk ke sistem lembar ujian.</p>
               </div>
               <button 
                 type="button" 
                 aria-label={isExamActive ? 'Nonaktifkan server ujian' : 'Aktifkan server ujian'}
-                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:outline-none
                   {isExamActive ? 'bg-indigo-600' : 'bg-slate-200'}"
                 on:click={() => isExamActive = !isExamActive}
               >
-                <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out
+                <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
                   {isExamActive ? 'translate-x-5' : 'translate-x-0'}"
                 ></span>
               </button>
@@ -222,7 +227,8 @@
         <Button 
           variant="primary" 
           size="lg" 
-          class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md py-3.5 border-none w-full"
+          theme="light"
+          class="w-full font-semibold mt-2"
           on:click={saveSettings}
           loading={saveLoading}
         >
@@ -230,10 +236,12 @@
         </Button>
       </div>
 
-      <!-- Token Manager & QR (1/3) -->
+      <!-- Token Manager & QR (1/3 Grid) -->
       <div class="lg:col-span-1 flex flex-col gap-6">
-        <Card padding="md" class="border-slate-200/50 bg-white text-center shadow-sm">
-          <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Token Ujian Aktif</div>
+        <Card padding="md" class="border-slate-200/50 bg-white text-center shadow-sm relative overflow-hidden">
+          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Token Ujian Aktif</div>
           
           <div class="flex gap-2 mb-4">
             <input 
@@ -241,12 +249,13 @@
               type="text" 
               bind:value={activeToken} 
               disabled={saveLoading} 
-              class="w-full text-center text-xl font-extrabold text-indigo-600 font-mono border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase tracking-widest"
+              class="w-full text-center text-xl font-extrabold text-indigo-600 font-mono border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-slate-50/50 uppercase tracking-widest transition-all duration-300"
             />
             <Button 
               variant="secondary" 
               size="sm" 
-              class="px-3" 
+              theme="light"
+              class="px-3 rounded-2xl" 
               on:click={rotateToken}
               title="Acak Token"
               disabled={saveLoading}
@@ -257,14 +266,14 @@
             </Button>
           </div>
 
-          <div class="text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">Live QR Code Token</div>
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Live QR Code Token</div>
           {#if activeToken}
-            <div class="bg-slate-50 p-3 border rounded-3xl inline-block mx-auto mb-3">
+            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 hover:scale-[1.01] transition-transform duration-300">
               <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
             </div>
           {/if}
 
-          <p class="text-[11px] text-slate-500 leading-relaxed px-2">
+          <p class="text-[11px] text-slate-400 leading-relaxed px-2 font-medium">
             * Jika Anda mengubah token, pastikan untuk mengklik tombol **"Simpan Seluruh Perubahan"** di samping agar perubahan token tersebut aktif untuk siswa.
           </p>
         </Card>
@@ -273,9 +282,11 @@
 
     <!-- === AKUN SAYA (Self Profile Update) === -->
     <div class="mt-8">
-      <Card padding="lg" class="border-slate-200 bg-white shadow-sm max-w-2xl">
-        <h3 class="text-lg font-bold text-slate-800 mb-1">Akun Saya</h3>
-        <p class="text-sm text-slate-500 mb-6">Ubah username atau password Anda sendiri. Masukkan password saat ini untuk verifikasi keamanan.</p>
+      <Card padding="lg" class="border-slate-200 bg-white shadow-sm max-w-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+
+        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-1">Akun Saya</h3>
+        <p class="text-xs text-slate-400 mb-6">Ubah username atau password Anda sendiri. Masukkan password saat ini untuk verifikasi keamanan.</p>
 
         <div class="space-y-5">
           <Input 
@@ -284,6 +295,7 @@
             bind:value={currentPassword} 
             placeholder="Masukkan password Anda saat ini"
             disabled={profileLoading}
+            theme="light"
           />
 
           <Input 
@@ -291,6 +303,7 @@
             bind:value={newUsername} 
             placeholder="Kosongkan jika tidak ingin mengubah"
             disabled={profileLoading}
+            theme="light"
           />
 
           <PasswordGenerator 
@@ -298,6 +311,7 @@
             length={12}
             label="Password Baru (opsional)"
             placeholder="Klik Generate atau ketik manual"
+            theme="light"
           />
 
           {#if newPassword}
@@ -307,6 +321,7 @@
               bind:value={confirmNewPassword} 
               placeholder="Ulangi password baru"
               disabled={profileLoading}
+              theme="light"
             />
           {/if}
 
@@ -314,7 +329,8 @@
             <Button 
               variant="primary" 
               size="md" 
-              class="w-full bg-indigo-600 hover:bg-indigo-700" 
+              theme="light"
+              class="w-full font-semibold shadow-md shadow-indigo-600/10" 
               on:click={prepareUpdateProfile}
               loading={profileLoading}
               disabled={!currentPassword || profileLoading}
@@ -323,7 +339,7 @@
             </Button>
           </div>
 
-          <p class="text-[11px] text-amber-600 leading-relaxed">
+          <p class="text-[11px] text-amber-600 font-semibold leading-relaxed">
             ⚠️ Jika Anda mengubah password, Anda akan diminta login ulang pada sesi berikutnya.
           </p>
         </div>
@@ -333,20 +349,21 @@
 
   <!-- Confirmation Modal -->
   <Modal show={showConfirmModal} title="Konfirmasi Perubahan Akun" size="sm">
-    <div class="space-y-4 text-slate-700">
-      <p>Apakah Anda yakin ingin menyimpan perubahan pada akun Anda?</p>
+    <div class="space-y-4 text-slate-700 p-2">
+      <p class="text-base font-semibold text-slate-900">Apakah Anda yakin ingin menyimpan perubahan pada akun Anda?</p>
       
       {#if newPassword}
-        <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
-          <strong>Peringatan:</strong> Anda akan mengubah password. Setelah berhasil, Anda akan <strong>otomatis di-logout</strong> dan harus login kembali.
+        <div class="bg-red-50 border border-red-150 rounded-2xl p-4 text-xs text-red-700 font-semibold leading-relaxed">
+          ⚠️ <strong>Peringatan:</strong> Anda akan mengubah password. Setelah berhasil, Anda akan <strong>otomatis di-logout</strong> dan harus login kembali.
         </div>
       {/if}
     </div>
 
-    <div slot="footer" class="flex gap-2 justify-end">
+    <div slot="footer" class="flex gap-3 justify-end">
       <Button 
         variant="secondary" 
         size="sm" 
+        theme="light"
         on:click={() => showConfirmModal = false}
         disabled={profileLoading}
       >
@@ -355,7 +372,8 @@
       <Button 
         variant="primary" 
         size="sm" 
-        class="bg-indigo-600 hover:bg-indigo-700"
+        theme="light"
+        class="font-semibold shadow-md"
         on:click={confirmAndUpdateProfile}
         loading={profileLoading}
       >
