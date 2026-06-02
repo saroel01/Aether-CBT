@@ -44,8 +44,12 @@ func main() {
 	cfg := config.Load()
 	utils.SetJWTSecret(cfg.JWTSecret) // configure JWT from env/config
 
-	// Connect to database
-	if err := db.Connect(cfg.DatabaseURL); err != nil {
+	// Connect to database with explicit connection pool tuning (Requirement 13.1)
+	if err := db.Connect(cfg.DatabaseURL, db.PoolConfig{
+		MaxOpenConns:    cfg.DBMaxOpenConns,
+		MaxIdleConns:    cfg.DBMaxIdleConns,
+		ConnMaxLifetime: cfg.DBConnMaxLifetime,
+	}); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()

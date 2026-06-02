@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	if err := db.Connect("data/cbt_aether.db"); err != nil {
+	if err := db.Connect("data/cbt_aether.db", db.DefaultPoolConfig()); err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
@@ -66,7 +66,7 @@ func main() {
 	// Sample Students (password is plaintext for easy student login in this version)
 	// PERINGATAN: Jangan gunakan password 'siswa123' di data produksi!
 	students := []struct {
-		no_id, nama string
+		no_id, nama  string
 		kelas, ruang int
 	}{
 		{"2024001", "Ahmad Fauzi", kelas1, ruangA},

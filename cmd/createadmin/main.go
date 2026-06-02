@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Connect to database
-	if err := db.Connect("data/cbt_aether.db"); err != nil {
+	if err := db.Connect("data/cbt_aether.db", db.DefaultPoolConfig()); err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
