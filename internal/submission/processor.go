@@ -50,15 +50,15 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		return fmt.Errorf("peserta not found (no_id=%s, tenant=%d): %w", job.NoID, job.TenantID, err)
 	}
 
-	// Step 2: lookup mapel_id and login_time from cek_login using peserta_id and tenant_id.
-	// Note: anti-cheat token validation is already done in the handler (Requirement 4).
-	// We still need mapel_id for the UPSERT and login_time for grace period check.
+	// Step 2: lookup mapel_id and login_time from the SPECIFIC session that owns the
+	// attempt_token, so a peserta with multiple active sessions resolves the right one
+	// (Requirement 11.3, Task 10.3). Anti-cheat token validation is done in the handler.
 	var mapelID int
 	var loginTime time.Time
 	requiresGraceCheck := true
 	err = tx.QueryRowContext(ctx,
-		"SELECT mapel_id, login_time FROM cek_login WHERE peserta_id = ? AND tenant_id = ?",
-		pesertaID, job.TenantID,
+		"SELECT mapel_id, login_time FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?",
+		pesertaID, job.TenantID, job.AttemptToken,
 	).Scan(&mapelID, &loginTime)
 	if err != nil {
 		if err == sql.ErrNoRows && job.Validasi != "" {
@@ -171,10 +171,11 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		}
 	}
 
-	// Step 10: DELETE cek_login for that peserta_id and tenant_id.
+	// Step 10: DELETE only the cek_login row for THIS attempt_token, leaving any other
+	// active session for the peserta intact (Requirement 11.3, Task 10.3).
 	if _, err = tx.ExecContext(ctx,
-		"DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ?",
-		pesertaID, job.TenantID,
+		"DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?",
+		pesertaID, job.TenantID, job.AttemptToken,
 	); err != nil {
 		return fmt.Errorf("delete cek_login: %w", err)
 	}

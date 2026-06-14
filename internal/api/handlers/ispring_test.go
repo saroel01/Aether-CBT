@@ -50,6 +50,7 @@ func setupTestDB(t *testing.T) func() {
 			tenant_id INTEGER NOT NULL,
 			peserta_id INTEGER NOT NULL,
 			mapel_id INTEGER NOT NULL,
+			session_id INTEGER,
 			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(tenant_id, peserta_id, mapel_id)
@@ -103,7 +104,7 @@ func setupTestDB(t *testing.T) func() {
 	_, _ = db.DB.Exec("INSERT INTO kelas (id, nama_kelas) VALUES (10, 'XII-RPL')")
 	_, _ = db.DB.Exec("INSERT INTO mapel (id, tenant_id, nama_mapel, durasi_menit) VALUES (5, 1, 'Matematika', 90)")
 	_, _ = db.DB.Exec("INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', 'siswa123', 'Syahrul Hamdi', 10, 1)")
-	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token) VALUES (1, 42, 5, 'attempt-secret')") // Active Exam Session
+	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, session_id, attempt_token) VALUES (1, 42, 5, 7, 'attempt-secret')") // Active Exam Session
 
 	return func() {
 		if db.DB != nil {
@@ -401,8 +402,10 @@ func TestPropertyISpringWebhookHappyPathEnqueuesMatchingJob(t *testing.T) {
 		if job.NoID != noID || job.Score != score || job.MaxScore != maxScore || job.AttemptToken != token {
 			rt.Fatalf("job mismatch: %+v", job)
 		}
-		if job.Validasi != "1_"+noID+"_5" {
-			rt.Fatalf("validasi = %q, want %q", job.Validasi, "1_"+noID+"_5")
+		// validasi is session-based: tenant_noID_sessionID (Requirement 14.2). The seeded
+		// cek_login has session_id = 7.
+		if job.Validasi != "1_"+noID+"_7" {
+			rt.Fatalf("validasi = %q, want %q", job.Validasi, "1_"+noID+"_7")
 		}
 	})
 }

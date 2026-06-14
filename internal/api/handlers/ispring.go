@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -40,24 +39,31 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		attemptToken = c.FormValue("AETHER_ATTEMPT_TOKEN")
 	}
 
-	// Single SELECT: cek_login JOIN peserta (Requirement 4.7).
-	var pesertaID, mapelID int
-	var expectedToken string
+	// Match the active session by (no_id, attempt_token) so a peserta with multiple active
+	// sessions resolves the one this submission belongs to; the per-session attempt_token is
+	// the secret issued at StartExamSession (Requirements 14.2, 11.3).
+	var mapelID int
+	var sessionID sql.NullInt64
 	err := db.DB.QueryRowContext(c.Context(), `
-		SELECT p.id, cl.mapel_id, COALESCE(cl.attempt_token, '')
-		  FROM peserta p
-		  JOIN cek_login cl ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
-		 WHERE p.tenant_id = ? AND p.no_id = ?
+		SELECT cl.mapel_id, cl.session_id
+		  FROM cek_login cl
+		  JOIN peserta p ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
+		 WHERE p.tenant_id = ? AND p.no_id = ? AND cl.attempt_token = ?
 		 LIMIT 1
-	`, tenantID, noID).Scan(&pesertaID, &mapelID, &expectedToken)
+	`, tenantID, noID, attemptToken).Scan(&mapelID, &sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.Status(fiber.StatusForbidden).SendString("active session not found")
 	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("session lookup failed")
 	}
-	if expectedToken == "" || subtle.ConstantTimeCompare([]byte(attemptToken), []byte(expectedToken)) != 1 {
-		return c.Status(fiber.StatusForbidden).SendString("invalid attempt token")
+
+	// validasi: session-based key (tenant_noID_sessionID) for new sessions; the legacy
+	// mapel-based key for sessions without a session_id so old results stay reachable
+	// (Requirement 14.2, AD-1). The unique index hasil_tes(tenant_id, validasi) is unchanged.
+	validasi := fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID)
+	if sessionID.Valid {
+		validasi = fmt.Sprintf("%d_%s_%d", tenantID, noID, int(sessionID.Int64))
 	}
 
 	if detailXML != "" {
@@ -73,7 +79,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		MaxScore:     maxScore,
 		DetailXML:    detailXML,
 		AttemptToken: attemptToken,
-		Validasi:     fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID),
+		Validasi:     validasi,
 	}
 	if err := SubmissionQueue.Enqueue(c.Context(), job); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to queue result")

@@ -61,6 +61,7 @@ func SetupFeaturesTestDB(t *testing.T) {
 			tenant_id INTEGER NOT NULL,
 			peserta_id INTEGER NOT NULL,
 			mapel_id INTEGER NOT NULL,
+			session_id INTEGER,
 			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,

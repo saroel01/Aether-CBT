@@ -115,12 +115,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 9.3 Test Property 11 (penolakan saat locked di semua jalur; grace-period existing tetap lulus)
     - _Requirements: 10.3, 10.5, 16.4_
 
-- [ ] 10. Webhook & kunci validasi berbasis sesi
-  - [ ] 10.1 Ubah pembentukan `validasi` ke `tenant_id_noID_sessionID` di handler webhook & processor; pastikan UPSERT `hasil_tes` tetap benar
+- [x] 10. Webhook & kunci validasi berbasis sesi
+  - [x] 10.1 Ubah pembentukan `validasi` ke `tenant_id_noID_sessionID` di handler webhook & processor; pastikan UPSERT `hasil_tes` tetap benar
     - _Requirements: 14.2_
-  - [ ] 10.2 Perbarui/penyesuaian test webhook & processor (idempotensi kiriman ulang, Property 9)
+  - [x] 10.2 Perbarui/penyesuaian test webhook & processor (idempotensi kiriman ulang, Property 9)
     - _Requirements: 14.2, 16.4_
-  - [ ] 10.3 Verifikasi `cek_login` dihapus per sesi yang tepat setelah hasil masuk (tidak memengaruhi sesi lain)
+  - [x] 10.3 Verifikasi `cek_login` dihapus per sesi yang tepat setelah hasil masuk (tidak memengaruhi sesi lain)
     - _Requirements: 11.3_
 
 - [ ] 11. Pemantauan pengawas berbasis sesi

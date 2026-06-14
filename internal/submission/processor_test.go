@@ -127,6 +127,32 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 	}
 }
 
+// TestProcessorCleanupTargetsOnlyTheSubmittedSession verifies that cek_login cleanup after a
+// result is processed removes ONLY the session that owns the submitted attempt_token, leaving
+// any other active session for the same peserta intact (Requirement 11.3, Task 10.3).
+func TestProcessorCleanupTargetsOnlyTheSubmittedSession(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	// A second active session for the same peserta with a different attempt_token.
+	if _, err := db.Exec(`INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time) VALUES (1, 42, 7, 'tok-other', ?)`, time.Now().UTC().Add(-5*time.Minute)); err != nil {
+		t.Fatalf("seed second cek_login: %v", err)
+	}
+
+	job := processorJob("80", "") // AttemptToken = "tok" -> targets only the first session
+	if err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{job}); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+
+	var remaining int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cek_login WHERE peserta_id = 42 AND tenant_id = 1 AND attempt_token = 'tok-other'`).Scan(&remaining); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if remaining != 1 {
+		t.Fatalf("second session was also deleted; remaining=%d, want 1 (cleanup must target only the submitted session)", remaining)
+	}
+}
+
 func TestProcessorProcessBatchRollsBackWholeBatch(t *testing.T) {
 	db := setupProcessorDB(t)
 	defer db.Close()
