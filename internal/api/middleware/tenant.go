@@ -19,6 +19,19 @@ import (
 // In production: requires explicit tenant identifier (returns 400 if missing).
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Content serving is authorized by the self-contained content-session cookie (AD-2):
+		// the iSpring player loads sub-assets via plain HTML tags that carry no tenant
+		// header. The tenant is resolved from the cookie token inside the handler, not here,
+		// so exempt the content path from the tenant-identifier requirement (which would
+		// otherwise 400 in production). Isolation is structural: the whole token -> session
+		// -> exam -> package chain is scoped to the token's tenant.
+		// Exact path or prefix-with-slash so a future /api/exam/content* route is not
+		// silently exempted (which would leave tenant_id unset and panic handlers that
+		// assert it).
+		if p := c.Path(); p == "/api/exam/content" || strings.HasPrefix(p, "/api/exam/content/") {
+			return c.Next()
+		}
+
 		// Priority 1: explicit ID (Header, Query Parameter, or Form Value)
 		idStr := c.Get("X-Tenant-ID")
 		if idStr == "" {

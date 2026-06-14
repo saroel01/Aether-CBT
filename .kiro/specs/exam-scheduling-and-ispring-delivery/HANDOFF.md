@@ -1,6 +1,6 @@
 # Handoff — Exam Scheduling & iSpring Delivery
 
-**Status: 7 / 16 tasks complete, all on `main`, `go build/vet/test ./...` green.**
+**Status: 8 / 16 tasks complete, all on `main`, `go build/vet/test ./...` green.**
 Last updated: 2026-06-14. Read this top-to-bottom before continuing.
 
 This file is a working handoff for the agent picking up the exam-scheduling spec.
@@ -41,6 +41,29 @@ been done so far, the conventions you MUST follow, and exactly where to resume.
 | `2e583b1` | (fix) Fiber BodyLimit | raised to upload cap so 15–20 MB zips work |
 | `dafbd81` | **6** admin handlers + routes | 14 handler tests |
 | `29c26d7` | **7** student session flow | 8 handler tests, legacy fallback retained |
+| _(this commit)_ | **8** content serving + shim | `content_session_service.Authorize`, `ServeExamContent` (`GET /api/exam/content/*`), TenantMiddleware content-path exemption, migration 026 (unique `content_token`); 6 service + 12 handler + 2 middleware + 1 migration test |
+
+### Task 8 notes (read before Task 9/14)
+- **Content serving derives the tenant from the cookie token, NOT the request.** The iSpring
+  player loads sub-assets via plain HTML tags with no `Authorization` **and** no tenant
+  header, so `GET /api/exam/content/*` is registered **outside** the Bearer `AuthMiddleware`
+  group (next to the webhook, `main.go`) and `TenantMiddleware` early-returns for that exact
+  path (`p == "/api/exam/content" || HasPrefix "/api/exam/content/"` — precise, not a loose
+  `HasPrefix`, so a future `/api/exam/content*` route is not silently exempted). The token
+  is an unguessable per-session capability; migration **026** makes it a unique partial index
+  so the token→`cek_login` mapping is 1:1 at the data layer.
+- `ContentSessionService.Authorize(token)` chain: `GetByContentToken` → lock check →
+  `exam_session.GetByID` → `enterable` window → `exam.GetByID` → `soal_package.GetByID` →
+  `peserta.no_id` (for the shim `SID`). All scoped to the token's tenant. Errors:
+  `ErrContentUnauthorized`(→401), `ErrContentLocked`/`ErrContentWindowClosed`(→403),
+  `ErrContentPackageMissing`(→404), mapped in `mapContentError`; serve errors in
+  `mapServeError` (`ErrPathTraversal`→400, not-exist→404).
+- **Shim is injected only on the entry** (`ServeIndexWithShim`); assets stream verbatim via
+  `ServeContent`. `contentTypeFor` hard-codes iSpring MIME types (host-registry-independent
+  for Windows dev) with `mime.TypeByExtension` fallback.
+- **Deferred to Task 15** (per design AD-4 / HANDOFF §3.7): streaming the entry/asset instead
+  of buffering through fasthttp's `BodyWriter`, and caching the 5-query auth chain per asset.
+  Functionally correct now; revisit under the ~500-participant load test.
 
 Module: `github.com/saroel01/aether-cbt`. Backend stack: Go/Fiber + SQLite WAL + modernc
 driver + SvelteKit frontend (`web/`, not yet touched).
@@ -139,35 +162,25 @@ repo := repository.NewExamRepository(testDB)     // tests
 
 ---
 
-## 4. What's next — start with Task 8 (critical path)
+## 4. What's next — start with Task 9 (anti-cheat)
 
-The critical path to real content delivery is `1→2→4→8→14→15`; tasks 1,2,4 are done, so
-**Task 8 is the next unblocked critical-path item.**
+Task 8 (content serving) is **DONE** — see the Task 8 notes in §1. The remaining critical
+path to real end-to-end delivery is `14→15` (student UI + load test); wave 5 backend tasks
+`9 → 10 → 12` are now the unblocked next items.
 
-### Task 8 — Content serving (`GET /api/exam/content/*`)
-Builds on: Task 7's content cookie (`aether_exam`, set in `StartExamSession`) + Task 4's
-`soalpkg` (`ServeContent`, `ServeIndexWithShim`, `ResolvePath`).
-- **8.1 `content_session_service.go`** (`internal/service`): validate the content cookie →
-  `cek_login_repo.GetByContentToken` → check tenant match, window (`NotEnterableReason`),
-  and `locked`. Issue/validate is already half-done: `StartExamSession` sets the
-  `content_token` via `cek_login_repo.SetContentToken` and writes the cookie.
-- **8.2 Handler `GET /api/exam/content/*`**: registered **outside** the Bearer
-  `AuthMiddleware` group (the iSpring player loads sub-assets via plain HTML tags with no
-  `Authorization` header — AD-2). Validate cookie → resolve the exam's `soal_package`
-  directory (`data/soal/{tenant_slug}/{package_uuid}/`) → stream via `soalpkg.ServeContent`
-  for assets and `soalpkg.ServeIndexWithShim` for `index.html`. Set Content-Type by
-  extension. Tenant slug via `handlers.tenantSlug(tenantID)`.
-- **8.3 Integration tests**: owner vs non-owner (403), outside window (403), locked (403),
-  traversal (400/404). Reuse `newAdminTestApp` with role="student".
+### Task 9 — Anti-cheat server-enforced (resume here)
+- `cek_login_repo` already has `Lock/Unlock/IsLocked/IncrementInfraction`. Wire
+  `RecordInfraction` (anticheat_handler.go, still mapel-based) to increment + lock at
+  `cfg.AntiCheatLockThreshold`; enforce `locked` in start (**done** in `StartExamSession`) +
+  content serve (**done** — `ContentSessionService.Authorize` checks `cek.Locked` → 403) +
+  progress. Property 11.
 
-### Then (wave 5): 9 → 10 → 12
-- **Task 9 (anti-cheat):** `cek_login_repo` already has `Lock/Unlock/IsLocked/
-  IncrementInfraction`. Wire `RecordInfraction` (anticheat_handler.go, still mapel-based)
-  to increment + lock at `cfg.AntiCheatLockThreshold`; enforce `locked` in start (done) +
-  content serve (8.2) + progress. Property 11.
+### Then: 10 → 12
 - **Task 10 (webhook):** change `validasi` key to `tenant_id_noID_sessionID` in the webhook
-  handler + processor; keep UPSERT on `hasil_tes(tenant_id, validasi)`. Verify `cek_login`
-  cleanup targets the right session.
+  handler (`ispring.go:76` builds `tenantID_noID_mapelID` today) + processor; keep UPSERT on
+  `hasil_tes(tenant_id, validasi)`. The shim now ships `sid`(=no_id) + `attempt_token` via
+  `ShimContext` (set in `ServeExamContent`), so the webhook has what it needs. Verify
+  `cek_login` cleanup targets the right session.
 - **Task 12 (legacy data migration):** Go util run after `RunMigrations`; for each tenant
   with `settings.token` but no `exam_session`, create one exam + session from settings
   (idempotent "only if absent"). This makes the legacy fallback unnecessary.
@@ -202,20 +215,23 @@ internal/
   models/                  SoalPackage, Exam, ExamSession(+relations), CekLogin, status consts
   repository/              grade/soal_package/exam/exam_session/cek_login repos + errors + scan helpers
   service/scheduling_service.go  effective status, window, token-overlap, eligibility, remaining; WithClock
+  service/content_session_service.go  Authorize(contentToken): token→session→exam→package, lock/window; WithContentClock
   soalpkg/                 storage.go (Store/RemovePackage), serve.go (ResolvePath/ServeContent/ServeIndexWithShim),
                            shim.go (InjectionHTML), assets/ispring-shim.js (embedded)
   api/handlers/            grade/soal_package/exam/exam_session_handler.go (admin),
                            exam.go (StudentLogin), student_exam.go (Start/Remaining),
                            anticheat_handler.go (RecordInfraction/UpdateStudentProgress),
-                           student_session_handler.go (MySessions, content cookie)
+                           student_session_handler.go (MySessions, content cookie),
+                           content_serving_handler.go (ServeExamContent + contentTypeFor/mapContentError/mapServeError)
   testutil/                NewMigratedDB + Seed* helpers
 .kiro/specs/exam-scheduling-and-ispring-delivery/  requirements.md, design.md, tasks.md, HANDOFF.md (this file)
 ```
 
 ## 6. Where to look for examples
 - A thin handler delegating to repo + service + mapping errors: `exam_session_handler.go`.
+- A cookie-authorized handler with error→HTTP mapping + shim injection: `content_serving_handler.go`.
 - The dual-path (session vs legacy) pattern: `student_exam.go` `StartExamSession`.
 - A property test: `service/scheduling_property_test.go`.
 - A security-critical package with tests: `internal/soalpkg/*_test.go`.
 
-Good luck — the foundation is solid and well-tested; pick up at Task 8.
+Good luck — the foundation is solid and well-tested; pick up at Task 9.

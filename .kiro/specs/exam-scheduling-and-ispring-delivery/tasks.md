@@ -99,12 +99,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 7.5 Debounce/idempotensi progres: ubah `UpdateStudentProgress` jadi UPSERT ringan; kurangi frekuensi (kontrak server)
     - _Requirements: 13.2_
 
-- [ ] 8. Penyajian konten terotorisasi + cookie sesi konten
-  - [ ] 8.1 `content_session_service.go`: terbitkan/validasi `content_token`, penegakan tenant + jendela waktu + lock
+- [x] 8. Penyajian konten terotorisasi + cookie sesi konten
+  - [x] 8.1 `content_session_service.go`: terbitkan/validasi `content_token`, penegakan tenant + jendela waktu + lock
     - _Requirements: 8.1, 8.2, 8.5, 10.3, 15.5_
-  - [ ] 8.2 Handler `GET /api/exam/content/*` (validasi cookie → sesi aktif → stream + shim) + wiring (di luar AuthMiddleware Bearer)
+  - [x] 8.2 Handler `GET /api/exam/content/*` (validasi cookie → sesi aktif → stream + shim) + wiring (di luar AuthMiddleware Bearer)
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
-  - [ ] 8.3 Test integrasi penyajian: pemilik sah vs bukan pemilik (403), di luar jendela (403), locked (403), traversal (400/404)
+  - [x] 8.3 Test integrasi penyajian: pemilik sah vs bukan pemilik (403), di luar jendela (403), locked (403), traversal (400/404)
     - _Requirements: 8.2, 8.3, 10.3, 16.4_
 
 - [ ] 9. Anti-cheat server-enforced

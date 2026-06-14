@@ -164,6 +164,12 @@ func main() {
 	})
 	api.Post("/ispring/webhook", webhookLimiter, handlers.ISpringWebhook)
 
+	// Exam content serving (Requirement 8, AD-2). Registered on the public group (outside the
+	// Bearer AuthMiddleware): the iSpring player loads sub-assets via plain HTML tags with no
+	// Authorization header. It is authorized by the content-session cookie instead, and
+	// TenantMiddleware exempts this path (the tenant comes from the cookie token).
+	api.Get("/exam/content/*", handlers.ServeExamContent)
+
 	// Protected routes (require login)
 	protected := api.Group("", middleware.AuthMiddleware())
 

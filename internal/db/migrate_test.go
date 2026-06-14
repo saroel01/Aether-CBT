@@ -152,10 +152,11 @@ func TestRunMigrationsIsIdempotentOnRerun(t *testing.T) {
 	assertSchedulingObjectsExist(t, testDB)
 }
 
-// assertSchedulingObjectsExist asserts that migrations 020-025 created the scheduling
+// assertSchedulingObjectsExist asserts that migrations 020-026 created the scheduling
 // tables, the columns added to existing tables, and the supporting indexes — including
-// the session-based unique index idx_cek_login_unique_session and the content-token
-// lookup index idx_cek_login_content_token (Requirements 1.2, 2.1, 3.6, 4.1, 5.1, 7.2,
+// the session-based unique index idx_cek_login_unique_session, the content-token lookup
+// index idx_cek_login_content_token, and the unique capability-key index
+// idx_cek_login_content_token_unique (Requirements 1.2, 2.1, 3.6, 4.1, 5.1, 7.2, 8.1,
 // 10.2, 14.1, 14.7). Shared between the schema-object test and the idempotency-rerun
 // test so both assert the same comprehensive set rather than drifting apart.
 func assertSchedulingObjectsExist(t *testing.T, database *sql.DB) {
@@ -194,6 +195,7 @@ func assertSchedulingObjectsExist(t *testing.T, database *sql.DB) {
 		"idx_session_ruang_session",
 		"idx_cek_login_unique_session",
 		"idx_cek_login_content_token",
+		"idx_cek_login_content_token_unique",
 	} {
 		if !objectExists(t, database, "index", idx) {
 			t.Errorf("expected index %q to exist after migrations", idx)
@@ -201,14 +203,56 @@ func assertSchedulingObjectsExist(t *testing.T, database *sql.DB) {
 	}
 }
 
-// TestSchedulingMigrationsCreateExpectedObjects verifies that migrations 020-025
+// TestSchedulingMigrationsCreateExpectedObjects verifies that migrations 020-026
 // add the new tables, columns, and indexes for exam scheduling and iSpring
-// delivery (Requirements 1.2, 2.1, 3.6, 4.1, 5.1, 7.2, 10.2, 14.1).
+// delivery (Requirements 1.2, 2.1, 3.6, 4.1, 5.1, 7.2, 8.1, 10.2, 14.1).
 func TestSchedulingMigrationsCreateExpectedObjects(t *testing.T) {
 	testDB, cleanup := runMigrationsInTempDB(t)
 	defer cleanup()
 
 	assertSchedulingObjectsExist(t, testDB)
+}
+
+// TestContentTokenUniqueIndexEnforcesOnePerSession verifies migration 026's unique partial
+// index: a content_token (the capability key for content serving) is held by at most one
+// cek_login row, while NULL tokens do not conflict (sessions that have not started content).
+// This is the data-layer invariant behind the cookie-authorized content-serving path.
+func TestContentTokenUniqueIndexEnforcesOnePerSession(t *testing.T) {
+	testDB, cleanup := runMigrationsInTempDB(t)
+	defer cleanup()
+
+	// Parent rows required by cek_login FKs (peserta -> kelas/ruang -> tenant).
+	for _, q := range []string{
+		`INSERT OR IGNORE INTO tenants (id, slug, name) VALUES (1, 'default', 'Default School')`,
+		`INSERT INTO kelas (id, tenant_id, nama_kelas) VALUES (1, 1, 'XII IPA 1')`,
+		`INSERT INTO ruang (id, tenant_id, nama_ruang, username, password_hash) VALUES (1, 1, 'Ruang A', 'ruang_a', 'hash')`,
+		`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (1, 1, 'p1', 'x', 'P1', 1, 1)`,
+	} {
+		if _, err := testDB.Exec(q); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	insert := func(id int, token sql.NullString) error {
+		_, err := testDB.Exec(`INSERT INTO cek_login (id, tenant_id, peserta_id, content_token) VALUES (?, 1, 1, ?)`, id, token)
+		return err
+	}
+
+	// Two NULL tokens coexist (sessions that have not started content).
+	if err := insert(1, sql.NullString{}); err != nil {
+		t.Fatalf("insert NULL token 1: %v", err)
+	}
+	if err := insert(2, sql.NullString{}); err != nil {
+		t.Fatalf("insert NULL token 2 (NULLs must coexist): %v", err)
+	}
+	// First non-null token succeeds.
+	if err := insert(3, sql.NullString{String: "tok-A", Valid: true}); err != nil {
+		t.Fatalf("insert first tok-A: %v", err)
+	}
+	// A second row claiming the same non-null token is rejected.
+	if err := insert(4, sql.NullString{String: "tok-A", Valid: true}); err == nil {
+		t.Errorf("expected duplicate content_token to be rejected by the unique index")
+	}
 }
 
 // TestSchedulingSchemaSupportsTenantScopedInserts performs a minimal end-to-end
