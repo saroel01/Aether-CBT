@@ -31,18 +31,18 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 1.10 _[Remediasi code-review]_ Refaktor helper migrasi (`runMigrationsInTempDB` dkk.) agar tidak bermutasi pada package-global `DB` dan tidak memakai `os.Chdir` (gunakan DB per-test + path absolut ke direktori migrasi, mis. `RunMigrations(dir string)`), atau dokumentasikan batasan non-paralel secara eksplisit agar tes konkuren tidak saling merusak.
     - _Requirements: 16.4, 16.7_
 
-- [ ] 2. Model & lapisan repository (tenant-scoped, anti god-file)
-  - [ ] 2.1 Tambah struct model di `internal/models` (SoalPackage, Exam, ExamSession, relasi, perluasan sesi aktif)
+- [x] 2. Model & lapisan repository (tenant-scoped, anti god-file)
+  - [x] 2.1 Tambah struct model di `internal/models` (SoalPackage, Exam, ExamSession, relasi, perluasan sesi aktif)
     - _Requirements: 2.1, 3.6, 4.1, 16.1_
-  - [ ] 2.2 Implementasi `internal/repository/soal_package_repo.go` + test CRUD tenant-scoped
+  - [x] 2.2 Implementasi `internal/repository/soal_package_repo.go` + test CRUD tenant-scoped
     - _Requirements: 3.9, 15.2, 16.1, 16.4_
-  - [ ] 2.3 Implementasi `internal/repository/exam_repo.go` + test (validasi referensi mapel/paket, soft delete, tolak hapus bila ada sesi terjadwal/aktif)
+  - [x] 2.3 Implementasi `internal/repository/exam_repo.go` + test (validasi referensi mapel/paket, soft delete, tolak hapus bila ada sesi terjadwal/aktif)
     - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6, 16.1, 16.4_
-  - [ ] 2.4 Implementasi `internal/repository/exam_session_repo.go` + test (CRUD, relasi kelas/ruang, cek token tumpang tindih, lookup token aktif)
+  - [x] 2.4 Implementasi `internal/repository/exam_session_repo.go` + test (CRUD, relasi kelas/ruang, cek token tumpang tindih, lookup token aktif)
     - _Requirements: 4.1, 4.6, 4.7, 15.2, 16.1, 16.4_
-  - [ ] 2.5 Implementasi `internal/repository/grade_repo.go` + test (set/list tingkat)
+  - [x] 2.5 Implementasi `internal/repository/grade_repo.go` + test (set/list tingkat)
     - _Requirements: 1.1, 1.4, 16.1, 16.4_
-  - [ ] 2.6 Implementasi `internal/repository/cek_login_repo.go` + test (start/lock/unlock/progress/lookup berbasis session_id)
+  - [x] 2.6 Implementasi `internal/repository/cek_login_repo.go` + test (start/lock/unlock/progress/lookup berbasis session_id)
     - _Requirements: 7.1, 7.2, 10.1, 10.2, 16.1, 16.4_
 
 - [ ] 3. Lapisan service penjadwalan
