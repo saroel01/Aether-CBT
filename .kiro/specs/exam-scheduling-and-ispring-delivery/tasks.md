@@ -107,12 +107,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 8.3 Test integrasi penyajian: pemilik sah vs bukan pemilik (403), di luar jendela (403), locked (403), traversal (400/404)
     - _Requirements: 8.2, 8.3, 10.3, 16.4_
 
-- [ ] 9. Anti-cheat server-enforced
-  - [ ] 9.1 Perluas `RecordInfraction`: increment di server, set `locked` saat ambang tercapai (konfigurasi)
+- [x] 9. Anti-cheat server-enforced
+  - [x] 9.1 Perluas `RecordInfraction`: increment di server, set `locked` saat ambang tercapai (konfigurasi)
     - _Requirements: 10.1, 10.2, 10.6_
-  - [ ] 9.2 Tegakkan `locked` di start (7.3), penyajian konten (8.2), dan progres; pengawas unlock via reset
+  - [x] 9.2 Tegakkan `locked` di start (7.3), penyajian konten (8.2), dan progres; pengawas unlock via reset
     - _Requirements: 10.3, 10.4_
-  - [ ] 9.3 Test Property 11 (penolakan saat locked di semua jalur; grace-period existing tetap lulus)
+  - [x] 9.3 Test Property 11 (penolakan saat locked di semua jalur; grace-period existing tetap lulus)
     - _Requirements: 10.3, 10.5, 16.4_
 
 - [ ] 10. Webhook & kunci validasi berbasis sesi
