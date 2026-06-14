@@ -53,16 +53,16 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 3.3 Property-based test untuk Property 5, 6, 8 (`pgregory.net/rapid`)
     - _Requirements: 4.4, 4.5, 6.1, 6.3, 7.5_
 
-- [ ] 4. Penyimpanan & penyajian paket iSpring (`internal/soalpkg`)
-  - [ ] 4.1 `storage.go`: ekstraksi ZIP aman (anti zip-slip), validasi `index.html`, batas ukuran/jumlah berkas, deteksi versi best-effort, penulisan ke `data/soal/{slug}/{uuid}/`, checksum, cleanup saat gagal
+- [x] 4. Penyimpanan & penyajian paket iSpring (`internal/soalpkg`)
+  - [x] 4.1 `storage.go`: ekstraksi ZIP aman (anti zip-slip), validasi `index.html`, batas ukuran/jumlah berkas, deteksi versi best-effort, penulisan ke `data/soal/{slug}/{uuid}/`, checksum, cleanup saat gagal
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.6a, 3.7, 15.3_
-  - [ ] 4.2 Test `storage` termasuk Property 2 & 3 (zip-slip, non-ZIP, tanpa index.html, cleanup, isolasi tenant) memakai header fixture `contoh_soal/KIMIA_XII_UAS_2025`
+  - [x] 4.2 Test `storage` termasuk Property 2 & 3 (zip-slip, non-ZIP, tanpa index.html, cleanup, isolasi tenant) memakai header fixture `contoh_soal/KIMIA_XII_UAS_2025`
     - _Requirements: 3.3, 3.7, 15.3, 16.4_
-  - [ ] 4.3 `serve.go`: resolusi path aman (anti traversal) + streaming berkas
+  - [x] 4.3 `serve.go`: resolusi path aman (anti traversal) + streaming berkas
     - _Requirements: 8.1, 8.3, 8.4, 8.6, 13.3_
-  - [ ] 4.4 `shim.go` + `assets/ispring-shim.js` (go:embed): konten shim & logika titik sisip pada `index.html` (tanpa mengubah berkas disk)
+  - [x] 4.4 `shim.go` + `assets/ispring-shim.js` (go:embed): konten shim & logika titik sisip pada `index.html` (tanpa mengubah berkas disk)
     - _Requirements: 9.1, 9.2, 9.3, 9.5_
-  - [ ] 4.5 Test `serve`/`shim`: Property 4 & 12 (penyajian dalam direktori, injeksi hanya pada index.html stream)
+  - [x] 4.5 Test `serve`/`shim`: Property 4 & 12 (penyajian dalam direktori, injeksi hanya pada index.html stream)
     - _Requirements: 8.3, 9.5, 16.4_
 
 - [x] 5. Konfigurasi & connection pool (skala) — _selesai (5.4–5.5 remediasi selesai)_
