@@ -44,6 +44,9 @@ func main() {
 	cfg := config.Load()
 	utils.SetJWTSecret(cfg.JWTSecret) // configure JWT from env/config
 
+	// Configure soal-package upload caps from config (Requirement 3.2, 10.6).
+	handlers.SetSoalUploadLimits(cfg.SoalUploadMaxBytes, cfg.SoalPackageMaxFiles)
+
 	// Connect to database with explicit connection pool tuning (Requirement 13.1)
 	if err := db.Connect(cfg.DatabaseURL, db.PoolConfig{
 		MaxOpenConns:    cfg.DBMaxOpenConns,
@@ -231,6 +234,22 @@ func main() {
 	// Room routes
 	protected.Get("/rooms", adminOnly, handlers.GetRooms)
 	protected.Post("/rooms", adminOnly, handlers.CreateRoom)
+
+	// Exam scheduling & iSpring delivery admin routes (exam-scheduling spec, task 6).
+	protected.Put("/classes/:id/tingkat", adminOnly, handlers.SetClassTingkat)
+	protected.Get("/admin/soal-packages", adminOnly, handlers.ListSoalPackages)
+	protected.Post("/admin/soal-packages/upload", adminOnly, handlers.UploadSoalPackage)
+	protected.Delete("/admin/soal-packages/:id", adminOnly, handlers.DeleteSoalPackage)
+	protected.Get("/admin/exams", adminOnly, handlers.ListExams)
+	protected.Post("/admin/exams", adminOnly, handlers.CreateExam)
+	protected.Put("/admin/exams/:id", adminOnly, handlers.UpdateExam)
+	protected.Delete("/admin/exams/:id", adminOnly, handlers.DeleteExam)
+	protected.Get("/admin/exam-sessions", adminOnly, handlers.ListExamSessions)
+	protected.Post("/admin/exam-sessions", adminOnly, handlers.CreateExamSession)
+	protected.Put("/admin/exam-sessions/:id", adminOnly, handlers.UpdateExamSession)
+	protected.Delete("/admin/exam-sessions/:id", adminOnly, handlers.DeleteExamSession)
+	protected.Post("/admin/exam-sessions/:id/classes", adminOnly, handlers.LinkSessionClasses)
+	protected.Post("/admin/exam-sessions/:id/rooms", adminOnly, handlers.LinkSessionRooms)
 
 	// Serve static frontend from built assets in production
 	app.Static("/", "./web/build")

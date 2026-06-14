@@ -202,3 +202,10 @@ func isWithin(baseDir, target string) bool {
 	}
 	return !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
+
+// RemovePackage deletes a package directory from disk (Requirement 3.10). It is a no-op
+// (returns nil) when the directory is already gone, so callers can invoke it
+// unconditionally after removing the metadata row.
+func RemovePackage(baseDir, tenantSlug, packageUUID string) error {
+	return os.RemoveAll(filepath.Join(baseDir, tenantSlug, packageUUID))
+}

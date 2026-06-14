@@ -77,14 +77,14 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 5.5 _[Remediasi code-review]_ Selesaikan opt-out mati di `applyPoolConfig`: hapus ketiga cabang `if pool.X > 0` beserta komentar yang menyesatkan (nilai selalu positif sehingga ketiga batas wajib selalu diterapkan), ATAU bila 0 bermakna "tak terbatas/matikan", sediakan parser env khusus pool yang mengizinkan 0 secara konsisten.
     - _Requirements: 13.1, 16.6_
 
-- [ ] 6. Handler admin (tipis) + routing
-  - [ ] 6.1 Handler tingkat kelas (`PUT /api/classes/:id/tingkat`) + wiring route + test
+- [x] 6. Handler admin (tipis) + routing
+  - [x] 6.1 Handler tingkat kelas (`PUT /api/classes/:id/tingkat`) + wiring route + test
     - _Requirements: 1.1, 1.5, 16.2_
-  - [ ] 6.2 Handler paket soal (upload multipart, list, delete tak-tertaut) + wiring + test (403 untuk non-admin)
+  - [x] 6.2 Handler paket soal (upload multipart, list, delete tak-tertaut) + wiring + test (403 untuk non-admin)
     - _Requirements: 3.1, 3.8, 3.9, 3.10, 16.2_
-  - [ ] 6.3 Handler exam (list/create/update/delete) + wiring + test
+  - [x] 6.3 Handler exam (list/create/update/delete) + wiring + test
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 16.2_
-  - [ ] 6.4 Handler exam-session (list/create/update/delete, tautkan kelas/ruang) + wiring + test (tolak entitas lintas-tenant)
+  - [x] 6.4 Handler exam-session (list/create/update/delete, tautkan kelas/ruang) + wiring + test (tolak entitas lintas-tenant)
     - _Requirements: 4.1, 4.6, 4.7, 5.1, 5.2, 16.2_
 
 - [ ] 7. Alur siswa berbasis sesi

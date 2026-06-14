@@ -90,9 +90,27 @@ func (s *SchedulingService) ValidateWindow(mulai, selesai time.Time) error {
 	return nil
 }
 
+// validatePackageForStatus enforces the package-required rule when the session's status is
+// terjadwal or aktif: the referenced exam must have a linked soal package (Requirement
+// 2.5, 4.3). Shared by create and update so a session cannot be created directly in an
+// active status without a package.
+func (s *SchedulingService) validatePackageForStatus(tenantID int, in repository.SessionInput) error {
+	if in.Status != models.SessionStatusTerjadwal && in.Status != models.SessionStatusAktif {
+		return nil
+	}
+	exam, err := s.exams.GetByID(tenantID, in.ExamID)
+	if err != nil {
+		return err
+	}
+	if exam.SoalPackageID == nil {
+		return ErrPackageRequired
+	}
+	return nil
+}
+
 // ValidateCreate enforces the rules that must hold before a new session is persisted: a
-// valid window and a token that does not overlap another session's window in the tenant
-// (Requirement 4.2, 4.4).
+// valid window, a token that does not overlap another session's window in the tenant, and
+// (when created directly in terjadwal/aktif) a linked package (Requirement 4.2, 4.4, 4.3).
 func (s *SchedulingService) ValidateCreate(tenantID int, in repository.SessionInput) error {
 	if err := s.ValidateWindow(in.WaktuMulai, in.WaktuSelesai); err != nil {
 		return err
@@ -104,7 +122,7 @@ func (s *SchedulingService) ValidateCreate(tenantID int, in repository.SessionIn
 	if overlaps {
 		return ErrTokenConflict
 	}
-	return nil
+	return s.validatePackageForStatus(tenantID, in)
 }
 
 // ValidateUpdate enforces the rules that must hold before a session is updated: a valid
@@ -122,16 +140,7 @@ func (s *SchedulingService) ValidateUpdate(tenantID, id int, in repository.Sessi
 	if overlaps {
 		return ErrTokenConflict
 	}
-	if in.Status == models.SessionStatusTerjadwal || in.Status == models.SessionStatusAktif {
-		exam, err := s.exams.GetByID(tenantID, in.ExamID)
-		if err != nil {
-			return err
-		}
-		if exam.SoalPackageID == nil {
-			return ErrPackageRequired
-		}
-	}
-	return nil
+	return s.validatePackageForStatus(tenantID, in)
 }
 
 // IsParticipantEligible reports whether the participant may enter the session, computed

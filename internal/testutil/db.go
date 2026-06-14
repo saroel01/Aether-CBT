@@ -6,6 +6,7 @@ package testutil
 import (
 	"database/sql"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/saroel01/aether-cbt/internal/db"
@@ -30,11 +31,16 @@ func NewMigratedDB(t *testing.T) (*sql.DB, func()) {
 	return database, func() { _ = database.Close() }
 }
 
+// migrationsDir resolves the migrations directory from this source file's location
+// (runtime.Caller), so it is correct regardless of which package's test invoked it -
+// the package working directory is not always a sibling of internal/db.
 func migrationsDir(t *testing.T) string {
 	t.Helper()
-	abs, err := filepath.Abs(filepath.Join("..", "db", "migrations"))
-	if err != nil {
-		t.Fatalf("resolve migrations dir: %v", err)
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatalf("runtime.Caller: cannot locate testutil source")
 	}
-	return abs
+	// file = <repo>/internal/testutil/db.go -> repo root is three dirs up.
+	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	return filepath.Join(repoRoot, "internal", "db", "migrations")
 }
