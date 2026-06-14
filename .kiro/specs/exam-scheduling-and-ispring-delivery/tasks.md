@@ -123,12 +123,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 10.3 Verifikasi `cek_login` dihapus per sesi yang tepat setelah hasil masuk (tidak memengaruhi sesi lain)
     - _Requirements: 11.3_
 
-- [ ] 11. Pemantauan pengawas berbasis sesi
-  - [ ] 11.1 Perluas `GetRoomStatus`/SSE agar berbasis `session_id` + status (belum login/mengerjakan/terkunci/terkirim) per sesi
+- [x] 11. Pemantauan pengawas berbasis sesi
+  - [x] 11.1 Perluas `GetRoomStatus`/SSE agar berbasis `session_id` + status (belum login/mengerjakan/terkunci/terkirim) per sesi
     - _Requirements: 11.1, 11.2, 11.5_
-  - [ ] 11.2 Perluas `ResetStudentSession` agar menargetkan (tenant+peserta+session) dan membuka lock
+  - [x] 11.2 Perluas `ResetStudentSession` agar menargetkan (tenant+peserta+session) dan membuka lock
     - _Requirements: 10.4, 11.3_
-  - [ ] 11.3 Test akses role (student ditolak) + isolasi tenant
+  - [x] 11.3 Test akses role (student ditolak) + isolasi tenant
     - _Requirements: 11.4, 11.5, 16.4_
 
 - [ ] 12. Migrasi data warisan (kompatibilitas)
