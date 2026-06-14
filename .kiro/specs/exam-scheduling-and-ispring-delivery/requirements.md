@@ -211,6 +211,7 @@ Spesifikasi ini menggabungkan dua pekerjaan yang saling bergantung (penjadwalan 
 4. THE pengiriman hasil SHALL tetap melalui filesystem submission queue yang sudah ada sehingga lonjakan pengiriman serempak tidak membebani database secara langsung.
 5. THE sistem SHALL menyertakan bukti uji beban yang mensimulasikan login, mulai sesi, pembaruan progres, dan pengiriman hasil pada skala mendekati 500 peserta, memanfaatkan kerangka di `tests/load/`.
 6. WHEN uji beban dijalankan THEN tidak SHALL terjadi kehilangan hasil yang sudah diterima webhook, konsisten dengan jaminan keandalan queue (rename atomic + retry + recovery).
+7. THE konfigurasi default connection pool (batas koneksi & masa hidup) SHALL bersumber dari satu tempat tunggal; literal default TIDAK SHALL diduplikasi lintas paket (mis. antara `db.DefaultPoolConfig()` dan `config.Load()`) sehingga tidak terjadi drift diam-diam saat salah satu diubah.
 
 ### Requirement 14: Migrasi Data & Kompatibilitas Mundur
 
@@ -223,6 +224,8 @@ Spesifikasi ini menggabungkan dua pekerjaan yang saling bergantung (penjadwalan 
 3. WHERE alur token global lama masih dipakai THE sistem SHALL tetap berfungsi hingga admin memindahkan konfigurasi ke model sesi, ATAU menyediakan migrasi data yang membuat sesi awal dari konfigurasi lama (keputusan final pada design).
 4. THE perubahan TIDAK SHALL menghapus kolom atau tabel yang masih dipakai fitur berjalan tanpa jalur migrasi yang jelas.
 5. WHEN aplikasi dimulai setelah pembaruan THEN seluruh migrasi SHALL berhasil diterapkan pada database kosong maupun database existing tanpa intervensi manual.
+6. THE runner migrasi SHALL mengeksekusi tiap berkas migrasi per-pernyataan dan menelan error idempotensi ("duplicate column name"/"already exists") per-pernyataan, sehingga migrasi yang sempat diterapkan sebagian dapat menyembuhkan diri pada eksekusi berulang dan TIDAK SHALL meninggalkan skema tidak lengkap secara diam-diam meskipun `RunMigrations` mengembalikan sukses.
+7. THE pengujian idempotensi SHALL memverifikasi keberadaan seluruh objek skema baru (tabel, kolom, indeks — termasuk `idx_cek_login_unique_session` dan `idx_cek_login_content_token`) setelah `RunMigrations` dijalankan ulang, bukan sekadar menegaskan tidak terjadi error.
 
 ### Requirement 15: Isolasi Multi-Tenant Menyeluruh
 
@@ -247,3 +250,5 @@ Spesifikasi ini menggabungkan dua pekerjaan yang saling bergantung (penjadwalan 
 3. THE tidak SHALL ada satu berkas tunggal yang menggabungkan tanggung jawab unggah, penyajian, penjadwalan, dan pemantauan sekaligus; tanggung jawab SHALL dipisah menjadi unit yang kohesif.
 4. THE setiap unit logika baru yang signifikan SHALL memiliki pengujian otomatis yang relevan (unit/integration) sehingga perilaku terverifikasi, bukan diasumsikan.
 5. THE seluruh perubahan SHALL lulus `go build ./...`, `go vet ./...`, `go test ./...`, dan `npm run build` pada frontend sebelum dianggap selesai.
+6. THE kode TIDAK SHALL menyimpan cabang/kontrak mati yang menyesatkan (mis. "opt-out bila nol" yang tidak terjangkau dari jalur mana pun); komentar dokumentasi SHALL akurat mencerminkan perilaku yang benar-benar terjadi.
+7. THE helper pengujian SHALL tidak bermutasi pada state global proses (package-global `DB`, `os.Chdir`) dengan cara yang tidak aman terhadap eksekusi paralel, atau SHALL mendokumentasikan batasan non-paralel secara eksplisit; pengujian konkuren TIDAK SHALL saling merusak.

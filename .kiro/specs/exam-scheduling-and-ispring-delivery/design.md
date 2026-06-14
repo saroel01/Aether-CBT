@@ -80,11 +80,16 @@ Untuk sub-aset (non-index) gunakan `c.SendFile`/streaming Fiber. Untuk `index.ht
 **AD-5. Konfigurasi connection pool eksplisit untuk SQLite WAL.**
 Tetapkan `SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime` pada `db.Connect`. Karena WAL mengizinkan banyak pembaca tetapi satu penulis pada satu waktu, dan `_busy_timeout=5000` sudah aktif, kita menetapkan pool yang memadai untuk pembacaan paralel sembari mengandalkan busy_timeout untuk serialisasi penulisan. Penulisan hasil sudah diserialkan oleh worker queue tunggal. Beban tulis progres dikurangi via debounce (AD-6). Nilai dapat dikonfigurasi via environment dengan default aman.
 
+_Tambahan pasca code-review:_ default pool (25/10/30m) hanya boleh memiliki **satu sumber kebenaran** — `db.DefaultPoolConfig()` sebagai kanonik yang dirujuk `config.Load()`, atau sebaliknya — agar literal default tidak terduplikasi dan berpotensi drift antar paket (Requirement 13.7). Selain itu `applyPoolConfig` tidak boleh menyimpan cabang "opt-out bila nol" yang tidak terjangkau: karena `getEnvInt`/`DefaultPoolConfig` selalu menghasilkan nilai positif, ketiga batas wajib **selalu diterapkan** dan komentar yang menyiratkan adanya "jalur lewati dengan nol" dihapus (Requirement 16.6). Alternatif bila 0 memang bermakna "tak terbatas": sediakan parser env khusus pool yang mengizinkan 0 secara konsisten, bukan setengah-setengah.
+
 **AD-6. Progres siswa di-debounce di klien dan idempoten di server.**
 `POST /api/student/progress` saat ini menulis DB tiap klik. Diubah: klien menahan (debounce) dan mengirim progres secara berkala (mis. saat pindah soal atau interval), server melakukan satu `UPDATE` ringan pada `cek_login`. Ini memangkas beban tulis pada skala 500 siswa (Requirement 13.2).
 
 **AD-7. Akses data baru lewat repository + service; handler tipis (anti god-file).**
 Entitas baru mendapat repository sendiri di `internal/repository`, logika lintas-entitas di `internal/service`, dan handler hanya mengurus HTTP. Penyimpanan/penyajian paket dipisah ke paket `internal/soalpkg`. Tidak ada satu berkas yang menggabungkan upload + serve + schedule + monitor.
+
+**AD-8. Runner migrasi dieksekusi per-pernyataan agar rerun idempoten bersifat self-healing.**
+`RunMigrations` saat ini menjalankan setiap berkas migrasi sebagai satu `DB.Exec` penuh. Driver modernc.org/sqlite menghentikan eksekusi pada pernyataan pertama yang gagal dan `RunMigrations` menelan error per-berkas ("duplicate column name"/"already exists"). Konsekuensinya, bila sebuah migrasi sempat diterapkan sebagian (proses terhenti di tengah, atau kolom ditambah manual tanpa indeks), rerun berikutnya akan gagal pada pernyataan pertama yang idempoten (mis. `ALTER TABLE ADD COLUMN`), error ditelan, dan pernyataan berikutnya (termasuk `CREATE INDEX`) tidak pernah dijalankan — skema tetap tidak lengkap secara diam-diam meskipun `RunMigrations` mengembalikan nil. Untuk menghapus kerentanan ini, runner dipercanggih: tiap berkas migrasi dipecah per-pernyataan (`;`) dan dieksekusi satu per satu, dengan penelan error idempotensi diberlakukan per-pernyataan. Dengan demikian migrasi yang diterapkan sebagian akan menyembuhkan diri pada rerun. Migrasi 020–025 mengandalkan jaminan ini (Requirement 14.6), dan pengujian idempotensi wajib memverifikasi keberadaan objek skema setelah rerun, bukan sekadar menegaskan tidak ada error (Requirement 14.7).
 
 ---
 
@@ -92,7 +97,7 @@ Entitas baru mendapat repository sendiri di `internal/repository`, logika lintas
 
 ### 1. Skema database (migrasi baru, idempoten)
 
-Semua migrasi mengikuti pola `RunMigrations`. Penomoran melanjutkan urutan yang ada (terakhir `019_create_submission_queue.sql`).
+Semua migrasi mengikuti pola `RunMigrations`, yang diperkuat menjadi eksekusi per-pernyataan agar rerun bersifat self-healing (AD-8, Requirement 14.6). Penomoran melanjutkan urutan yang ada (terakhir `019_create_submission_queue.sql`).
 
 #### `020_alter_kelas_tingkat.sql`
 ```sql
