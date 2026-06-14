@@ -93,8 +93,12 @@ func main() {
 	defer worker.Stop()
 
 	app := fiber.New(fiber.Config{
-		AppName:   "Aether CBT v1.0",
-		BodyLimit: 5 * 1024 * 1024, // 5MB - cukup untuk iSpring XML hasil ujian
+		AppName: "Aether CBT v1.0",
+		// Body limit sized to the largest legitimate payload: soal-package uploads.
+		// Quizzes with images commonly run 15-20 MB. Driven from the upload cap so the two
+		// stay in sync; the upload handler (task 6.2) may tighten this to a per-route
+		// middleware so only /soal-packages/upload accepts the full size (Requirement 3.2).
+		BodyLimit: int(cfg.SoalUploadMaxBytes),
 	})
 
 	// CORS - menggunakan allow-list (bukan wildcard)
