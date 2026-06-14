@@ -87,16 +87,16 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 6.4 Handler exam-session (list/create/update/delete, tautkan kelas/ruang) + wiring + test (tolak entitas lintas-tenant)
     - _Requirements: 4.1, 4.6, 4.7, 5.1, 5.2, 16.2_
 
-- [ ] 7. Alur siswa berbasis sesi
-  - [ ] 7.1 Perluas `StudentLogin` (`exam.go`): validasi token terhadap sesi efektif; bedakan "belum dimulai"/"berakhir"; sertakan sesi yang berhak; pertahankan bcrypt/plaintext
+- [x] 7. Alur siswa berbasis sesi
+  - [x] 7.1 Perluas `StudentLogin` (`exam.go`): validasi token terhadap sesi efektif; bedakan "belum dimulai"/"berakhir"; sertakan sesi yang berhak; pertahankan bcrypt/plaintext
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-  - [ ] 7.2 Endpoint `GET /api/student/my-sessions` (sesi yang dapat dimasuki sekarang) + test
+  - [x] 7.2 Endpoint `GET /api/student/my-sessions` (sesi yang dapat dimasuki sekarang) + test
     - _Requirements: 5.3, 6.4_
-  - [ ] 7.3 Perluas `StartExamSession`: referensi `session_id`, terbitkan `attempt_token`, set cookie konten `aether_exam`, tolak di luar jendela/locked
+  - [x] 7.3 Perluas `StartExamSession`: referensi `session_id`, terbitkan `attempt_token`, set cookie konten `aether_exam`, tolak di luar jendela/locked
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 8.2_
-  - [ ] 7.4 Perluas `GetRemainingTime`: `min(durasi, akhir_sesi − now)`, clamp 0 + test (Property 6)
+  - [x] 7.4 Perluas `GetRemainingTime`: `min(durasi, akhir_sesi − now)`, clamp 0 + test (Property 6)
     - _Requirements: 7.5_
-  - [ ] 7.5 Debounce/idempotensi progres: ubah `UpdateStudentProgress` jadi UPSERT ringan; kurangi frekuensi (kontrak server)
+  - [x] 7.5 Debounce/idempotensi progres: ubah `UpdateStudentProgress` jadi UPSERT ringan; kurangi frekuensi (kontrak server)
     - _Requirements: 13.2_
 
 - [ ] 8. Penyajian konten terotorisasi + cookie sesi konten

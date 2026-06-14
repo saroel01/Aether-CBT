@@ -7,7 +7,9 @@ import (
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
-// StudentLogin - Login khusus untuk peserta ujian
+// StudentLogin authenticates a participant against an effective exam session when the token
+// resolves to one (distinguishing "not started yet" from "ended"), and falls back to the
+// legacy global settings.token during the transition (Requirements 6.1-6.6).
 func StudentLogin(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
@@ -20,17 +22,24 @@ func StudentLogin(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
-	// Validate token from settings
-	var globalToken string
-	db.DB.QueryRow("SELECT token FROM settings WHERE tenant_id = ?", tenantID).Scan(&globalToken)
-	if req.Token != globalToken {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid exam token")
+	resolved := resolveSessionForToken(tenantID, req.Token)
+	if resolved.session == nil {
+		if !resolved.legacy {
+			// A session matched but is not enterable right now (Requirement 6.3).
+			return utils.ErrorResponse(c, fiber.StatusUnauthorized, resolved.notEnterable)
+		}
+		// Legacy fallback: validate against the global settings token (Requirement 6.6).
+		var globalToken string
+		db.DB.QueryRow("SELECT token FROM settings WHERE tenant_id = ?", tenantID).Scan(&globalToken)
+		if req.Token == "" || req.Token != globalToken {
+			return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid exam token")
+		}
 	}
 
 	var pesertaID int
 	var storedPassword string
 	err := db.DB.QueryRow(`
-		SELECT id, password FROM peserta 
+		SELECT id, password FROM peserta
 		WHERE no_id = ? AND tenant_id = ? AND deleted_at IS NULL
 	`, req.NoID, tenantID).Scan(&pesertaID, &storedPassword)
 
@@ -43,7 +52,7 @@ func StudentLogin(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to generate student session token")
 	}
 
-	return utils.SuccessResponse(c, fiber.Map{
+	resp := fiber.Map{
 		"peserta_id": pesertaID,
 		"token":      jwtToken,
 		"user": fiber.Map{
@@ -52,5 +61,10 @@ func StudentLogin(c *fiber.Ctx) error {
 			"role":      "student",
 			"tenant_id": tenantID,
 		},
-	}, "Login successful")
+	}
+	if resolved.session != nil {
+		resp["session_id"] = resolved.session.ID
+		resp["exam_id"] = resolved.session.ExamID
+	}
+	return utils.SuccessResponse(c, resp, "Login successful")
 }

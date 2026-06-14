@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/repository"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
@@ -26,7 +29,7 @@ func RecordInfraction(c *fiber.Ctx) error {
 
 	// Increment tab_switch_count in cek_login (active sessions)
 	_, err := db.DB.Exec(`
-		UPDATE cek_login 
+		UPDATE cek_login
 		SET tab_switch_count = tab_switch_count + 1, last_activity = CURRENT_TIMESTAMP
 		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?
 	`, tenantID, req.PesertaID, req.MapelID)
@@ -38,13 +41,16 @@ func RecordInfraction(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, nil, "Infraction recorded successfully")
 }
 
-// UpdateStudentProgress updates the count of answered questions for a student session
+// UpdateStudentProgress records answered/total counts. The client debounces the calls; the
+// server performs a single light UPDATE keyed by session_id (idempotent) when available,
+// falling back to the legacy mapel-based path (Requirement 13.2, AD-6, 6.6).
 func UpdateStudentProgress(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
 	var req struct {
 		PesertaID      int `json:"peserta_id"`
-		MapelID        int `json:"mapel_id"`
+		SessionID      int `json:"session_id"`
+		MapelID        int `json:"mapel_id"` // legacy path
 		AnsweredCount  int `json:"answered_count"`
 		TotalQuestions int `json:"total_questions"`
 	}
@@ -52,22 +58,32 @@ func UpdateStudentProgress(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
 	}
-
-	if req.PesertaID <= 0 || req.MapelID <= 0 {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID or subject ID")
+	if req.PesertaID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
 	}
 
-	// Update in cek_login (active sessions)
+	if req.SessionID > 0 {
+		err := repository.NewCekLoginRepository(db.DB).UpdateProgress(tenantID, req.PesertaID, req.SessionID, req.AnsweredCount, req.TotalQuestions)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return utils.ErrorResponse(c, fiber.StatusNotFound, "No active session found")
+			}
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to update exam progress")
+		}
+		return utils.SuccessResponse(c, nil, "Progress updated successfully")
+	}
+
+	// Legacy mapel-based path (transition).
+	if req.MapelID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
+	}
 	_, err := db.DB.Exec(`
-		UPDATE cek_login 
+		UPDATE cek_login
 		SET answered_count = ?, total_questions = ?, last_activity = CURRENT_TIMESTAMP
 		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?
 	`, req.AnsweredCount, req.TotalQuestions, tenantID, req.PesertaID, req.MapelID)
-
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to update exam progress")
 	}
-
 	return utils.SuccessResponse(c, nil, "Progress updated successfully")
 }
-

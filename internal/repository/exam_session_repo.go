@@ -238,6 +238,37 @@ func (r *ExamSessionRepository) TokenOverlaps(tenantID int, token string, mulai,
 	return count > 0, nil
 }
 
+// SessionsForPeserta returns the tenant's sessions whose linked classes include the
+// participant's class (Requirement 5.1). The caller filters by effective status/window
+// via the scheduling service. Columns are qualified because the join pulls in tables that
+// also expose id/tenant_id.
+func (r *ExamSessionRepository) SessionsForPeserta(tenantID, pesertaID int) ([]models.ExamSession, error) {
+	rows, err := r.db.Query(`
+		SELECT DISTINCT es.id, es.tenant_id, es.exam_id, es.nama, es.waktu_mulai, es.waktu_selesai, es.token, es.status, es.created_at, es.updated_at, es.deleted_at
+		FROM exam_session es
+		JOIN exam_session_kelas esk ON esk.session_id = es.id
+		JOIN peserta p ON p.kelas_id = esk.kelas_id
+		WHERE es.tenant_id = ? AND p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
+		  AND es.deleted_at IS NULL
+		ORDER BY es.waktu_mulai ASC`,
+		tenantID, pesertaID, tenantID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []models.ExamSession
+	for rows.Next() {
+		s, err := scanExamSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, *s)
+	}
+	return sessions, rows.Err()
+}
+
 // FindByToken returns all non-deleted sessions in the tenant that share the token. More
 // than one may exist when their windows do not overlap (Requirement 4.4 / 4.8); the
 // scheduling service selects the effective one. Returns ErrNotFound when none match.

@@ -46,6 +46,8 @@ func main() {
 
 	// Configure soal-package upload caps from config (Requirement 3.2, 10.6).
 	handlers.SetSoalUploadLimits(cfg.SoalUploadMaxBytes, cfg.SoalPackageMaxFiles)
+	// Force the content-session cookie Secure in production behind a TLS proxy (AD-2).
+	handlers.SetContentCookieSecure(cfg.ContentCookieSecure == "true")
 
 	// Connect to database with explicit connection pool tuning (Requirement 13.1)
 	if err := db.Connect(cfg.DatabaseURL, db.PoolConfig{
@@ -181,6 +183,7 @@ func main() {
 	protected.Get("/student/active-info", authenticatedExamUsers, handlers.GetActiveExamInfo)
 	protected.Get("/student/mapels", authenticatedExamUsers, handlers.GetAvailableMapels)
 	protected.Post("/student/start", studentOnly, handlers.StartExamSession)
+	protected.Get("/student/my-sessions", studentOnly, handlers.MySessions)
 	protected.Post("/student/infraction", studentOnly, handlers.RecordInfraction)
 	protected.Post("/student/progress", studentOnly, handlers.UpdateStudentProgress)
 	protected.Get("/student/remaining-time", authenticatedExamUsers, handlers.GetRemainingTime)

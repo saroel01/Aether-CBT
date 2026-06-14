@@ -76,6 +76,24 @@ func (s *SchedulingService) EffectiveEnterable(sess *models.ExamSession) bool {
 	return enterable(sess.Status, sess.WaktuMulai, sess.WaktuSelesai, s.now())
 }
 
+// NotEnterableReason returns a human-readable reason when a session cannot be entered at
+// the service's clock (status not active, before start, or after end), or "" when it is
+// enterable. The distinct messages let the login flow tell students whether the session
+// has not opened yet or has already ended (Requirement 6.3).
+func (s *SchedulingService) NotEnterableReason(sess *models.ExamSession) string {
+	now := s.now()
+	if sess.Status != models.SessionStatusTerjadwal && sess.Status != models.SessionStatusAktif {
+		return "session is not scheduled or active"
+	}
+	if now.Before(sess.WaktuMulai) {
+		return "session has not started yet"
+	}
+	if now.After(sess.WaktuSelesai) {
+		return "session has ended"
+	}
+	return ""
+}
+
 // RemainingSeconds returns the remaining exam seconds for an active session given its exam
 // duration and the session end (Requirement 7.5).
 func (s *SchedulingService) RemainingSeconds(sess *models.ExamSession, exam *models.Exam) int {

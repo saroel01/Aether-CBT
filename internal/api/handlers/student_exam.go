@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/repository"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
@@ -17,8 +19,8 @@ func GetActiveExamInfo(c *fiber.Ctx) error {
 	var title, proctor, footer string
 	var isActive bool
 	err := db.DB.QueryRow(`
-		SELECT exam_title, proctor_name, footer_text, is_exam_active 
-		FROM settings 
+		SELECT exam_title, proctor_name, footer_text, is_exam_active
+		FROM settings
 		WHERE tenant_id = ?
 	`, tenantID).Scan(&title, &proctor, &footer, &isActive)
 
@@ -52,15 +54,15 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 		// Resolve student's class ID
 		var kelasID int
 		err = db.DB.QueryRow(`
-			SELECT kelas_id 
-			FROM peserta 
+			SELECT kelas_id
+			FROM peserta
 			WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 		`, pesertaID, tenantID).Scan(&kelasID)
 
 		if err == nil {
 			// Query only subjects mapped to this class
 			rows, err = db.DB.Query(`
-				SELECT m.id, m.nama_mapel, m.kode_mapel 
+				SELECT m.id, m.nama_mapel, m.kode_mapel
 				FROM mapel m
 				JOIN kelas_mapel km ON m.id = km.mapel_id
 				WHERE km.kelas_id = ? AND km.is_active = TRUE AND m.tenant_id = ? AND m.deleted_at IS NULL
@@ -71,8 +73,8 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 	// Fallback to all subjects if no peserta_id or class resolve failed
 	if rows == nil {
 		rows, err = db.DB.Query(`
-			SELECT id, nama_mapel, kode_mapel 
-			FROM mapel 
+			SELECT id, nama_mapel, kode_mapel
+			FROM mapel
 			WHERE tenant_id = ? AND deleted_at IS NULL
 		`, tenantID)
 	}
@@ -98,24 +100,25 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, list, "Subjects list retrieved successfully")
 }
 
-// StartExamSession registers a student's active exam session in cek_login
+// StartExamSession registers a student's active exam session. When session_id is provided it
+// takes the session-based path (eligibility + lock + content cookie, Requirements 7.1-7.4);
+// otherwise it falls back to the legacy mapel-based upsert during the transition (Req 6.6).
 func StartExamSession(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
+	role := c.Locals("role").(string)
 
 	var req struct {
 		PesertaID int `json:"peserta_id"`
-		MapelID   int `json:"mapel_id"`
+		SessionID int `json:"session_id"`
+		MapelID   int `json:"mapel_id"` // legacy path
 	}
-
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
 	}
-
-	if req.PesertaID <= 0 || req.MapelID <= 0 {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID or subject ID")
+	if req.PesertaID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
 	}
-
-	if role, _ := c.Locals("role").(string); role == "student" {
+	if role == "student" {
 		if userID, _ := c.Locals("user_id").(int); userID != req.PesertaID {
 			return utils.ErrorResponse(c, fiber.StatusForbidden, "Students can only start their own exam session")
 		}
@@ -126,77 +129,135 @@ func StartExamSession(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create exam attempt token")
 	}
 
-	// Insert or replace in cek_login (active sessions)
+	cekRepo := repository.NewCekLoginRepository(db.DB)
+
+	if req.SessionID > 0 {
+		// Session-based path.
+		svc := newSchedulingService()
+		sessionRepo := repository.NewExamSessionRepository(db.DB)
+
+		session, err := sessionRepo.GetByID(tenantID, req.SessionID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return utils.ErrorResponse(c, fiber.StatusNotFound, "Session not found")
+			}
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load session")
+		}
+		if reason := svc.NotEnterableReason(session); reason != "" {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, reason)
+		}
+		eligible, err := svc.IsParticipantEligible(tenantID, req.PesertaID, req.SessionID)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to verify eligibility")
+		}
+		if !eligible {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "You are not eligible for this session")
+		}
+		if locked, _ := cekRepo.IsLocked(tenantID, req.PesertaID, req.SessionID); locked {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
+		}
+		if err := cekRepo.Start(tenantID, req.PesertaID, req.SessionID, attemptToken); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register exam session")
+		}
+
+		// Issue the content-serving cookie (Requirement 8.1, AD-2).
+		if contentToken, err := utils.GenerateSecureToken(32); err == nil {
+			_ = cekRepo.SetContentToken(tenantID, req.PesertaID, req.SessionID, contentToken)
+			setContentCookie(c, contentToken)
+		}
+		return utils.SuccessResponse(c, fiber.Map{
+			"attempt_token": attemptToken,
+			"session_id":    req.SessionID,
+		}, "Exam session registered successfully")
+	}
+
+	// Legacy mapel-based path (transition, Requirement 6.6).
+	if req.MapelID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
+	}
 	_, err = db.DB.Exec(`
 		INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(tenant_id, peserta_id, mapel_id) DO UPDATE SET 
+		ON CONFLICT(tenant_id, peserta_id, mapel_id) DO UPDATE SET
 			attempt_token = excluded.attempt_token,
 			login_time = CURRENT_TIMESTAMP,
 			last_activity = CURRENT_TIMESTAMP
 	`, tenantID, req.PesertaID, req.MapelID, attemptToken)
-
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register active exam session")
 	}
-
-	return utils.SuccessResponse(c, fiber.Map{
-		"attempt_token": attemptToken,
-	}, "Exam session registered successfully")
+	return utils.SuccessResponse(c, fiber.Map{"attempt_token": attemptToken}, "Exam session registered successfully")
 }
 
-// GetRemainingTime calculates a student's remaining exam seconds dynamically from server time
+// GetRemainingTime computes remaining seconds. For session-based sessions it is
+// min(duration, sessionEnd - now) clamped to 0 (Requirement 7.5, Property 6); the legacy
+// mapel-based path keeps the original duration-minus-elapsed behavior (Req 6.6).
 func GetRemainingTime(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 	role := c.Locals("role").(string)
 
 	pesertaID := c.QueryInt("peserta_id", 0)
+	sessionID := c.QueryInt("session_id", 0)
 	mapelID := c.QueryInt("mapel_id", 0)
 
-	// Default to user_id if student role
 	if role == "student" {
 		pesertaID = c.Locals("user_id").(int)
 	}
+	if pesertaID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid peserta_id")
+	}
 
-	if pesertaID <= 0 || mapelID <= 0 {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid peserta_id or mapel_id")
+	if sessionID > 0 {
+		cekRepo := repository.NewCekLoginRepository(db.DB)
+		cek, err := cekRepo.GetBySession(tenantID, pesertaID, sessionID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return utils.SuccessResponse(c, fiber.Map{"remaining_seconds": 0, "is_active": false}, "No active session found, remaining time is 0")
+			}
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check session active time")
+		}
+		session, err := repository.NewExamSessionRepository(db.DB).GetByID(tenantID, sessionID)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load session")
+		}
+		exam, err := repository.NewExamRepository(db.DB).GetByID(tenantID, session.ExamID)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load exam")
+		}
+		remaining := newSchedulingService().RemainingSeconds(session, exam)
+		return utils.SuccessResponse(c, fiber.Map{
+			"remaining_seconds": remaining,
+			"is_active":         remaining > 0 && !cek.Locked,
+			"locked":            cek.Locked,
+		}, "Remaining time calculated successfully")
+	}
+
+	// Legacy mapel-based path (transition).
+	if mapelID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid session_id or mapel_id")
 	}
 
 	var loginTime time.Time
 	err := db.DB.QueryRow(`
-		SELECT login_time 
-		FROM cek_login 
+		SELECT login_time
+		FROM cek_login
 		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?
 	`, tenantID, pesertaID, mapelID).Scan(&loginTime)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Student might not be logged in or has already finished
-			return utils.SuccessResponse(c, fiber.Map{
-				"remaining_seconds": 0,
-				"is_active":         false,
-			}, "No active session found, remaining time is 0")
+			return utils.SuccessResponse(c, fiber.Map{"remaining_seconds": 0, "is_active": false}, "No active session found, remaining time is 0")
 		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check session active time")
 	}
 
 	var durasiMenit int = 90
-	err = db.DB.QueryRow(`
-		SELECT COALESCE(durasi_menit, 90) 
-		FROM mapel 
-		WHERE tenant_id = ? AND id = ?
-	`, tenantID, mapelID).Scan(&durasiMenit)
-
-	if err != nil {
-		// Fallback to default
+	if err := db.DB.QueryRow(`SELECT COALESCE(durasi_menit, 90) FROM mapel WHERE tenant_id = ? AND id = ?`, tenantID, mapelID).Scan(&durasiMenit); err != nil {
 		durasiMenit = 90
 	}
 
 	duration := time.Duration(durasiMenit) * time.Minute
 	elapsed := time.Now().UTC().Sub(loginTime.UTC())
-	remaining := duration - elapsed
-
-	remainingSeconds := int(remaining.Seconds())
+	remainingSeconds := int((duration - elapsed).Seconds())
 	if remainingSeconds < 0 {
 		remainingSeconds = 0
 	}
