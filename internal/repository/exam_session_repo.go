@@ -267,3 +267,35 @@ func (r *ExamSessionRepository) FindByToken(tenantID int, token string) ([]model
 	}
 	return sessions, nil
 }
+
+// ParticipantEligible reports whether the participant may enter the session, computed
+// entirely server-side from class/room membership (Requirement 5.3): the participant's
+// class must be linked to the session, and if the session lists any rooms, the
+// participant's room must also be linked (Requirement 5.1, 5.2). A cross-tenant or
+// unknown participant is never eligible.
+func (r *ExamSessionRepository) ParticipantEligible(tenantID, pesertaID, sessionID int) (bool, error) {
+	var eligible int
+	err := r.db.QueryRow(`
+		SELECT CAST(
+			EXISTS(
+				SELECT 1 FROM exam_session_kelas esk
+				JOIN peserta p ON p.kelas_id = esk.kelas_id
+				WHERE esk.session_id = ? AND p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
+			)
+			AND (
+				NOT EXISTS(SELECT 1 FROM exam_session_ruang esr WHERE esr.session_id = ?)
+				OR EXISTS(
+					SELECT 1 FROM exam_session_ruang esr
+					JOIN peserta p ON p.ruang_id = esr.ruang_id
+					WHERE esr.session_id = ? AND p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
+				)
+			)
+		AS INTEGER)`,
+		sessionID, pesertaID, tenantID, sessionID, sessionID, pesertaID, tenantID,
+	).Scan(&eligible)
+	if err != nil {
+		return false, err
+	}
+	return eligible != 0, nil
+}
+

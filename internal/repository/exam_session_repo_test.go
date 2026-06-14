@@ -238,3 +238,55 @@ func TestExamSessionRepository_FindByToken(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for unknown token, got %v", err)
 	}
 }
+
+func TestExamSessionRepository_ParticipantEligibility(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedTenant(t, database, 2, "other", "Other School")
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedKelas(t, database, 2, 1, "XII IPA 2")
+	seedKelas(t, database, 3, 2, "Other class")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	seedRuang(t, database, 2, 1, "Ruang B", "ruang_b")
+	seedRuang(t, database, 3, 2, "Ruang C", "ruang_c")
+	seedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa A") // kelas 1, ruang 1
+	seedPeserta(t, database, 2, 1, 2, 1, "2026002", "Siswa B") // kelas 2, ruang 1
+	seedPeserta(t, database, 3, 2, 3, 3, "2026003", "Siswa C") // tenant 2
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+
+	repo := NewExamSessionRepository(database)
+	s, _ := repo.Create(1, SessionInput{ExamID: 1, WaktuMulai: atTime(1, 8), WaktuSelesai: atTime(1, 10), Token: "TOK"})
+
+	// No classes linked yet -> nobody eligible.
+	if ok, _ := repo.ParticipantEligible(1, 1, s.ID); ok {
+		t.Error("peserta should not be eligible before any class is linked")
+	}
+
+	// Link kelas 1 only (no rooms) -> peserta in kelas 1 eligible, peserta in kelas 2 not.
+	_ = repo.AttachClasses(1, s.ID, []int{1})
+	if ok, _ := repo.ParticipantEligible(1, 1, s.ID); !ok {
+		t.Error("peserta 1 (kelas 1) should be eligible when class 1 linked")
+	}
+	if ok, _ := repo.ParticipantEligible(1, 2, s.ID); ok {
+		t.Error("peserta 2 (kelas 2) should not be eligible")
+	}
+
+	// Add room restriction to ruang 2: peserta 1 (ruang 1) now excluded.
+	_ = repo.AttachRooms(1, s.ID, []int{2})
+	if ok, _ := repo.ParticipantEligible(1, 1, s.ID); ok {
+		t.Error("peserta 1 (ruang 1) should be excluded when session restricted to ruang 2")
+	}
+
+	// Relax room restriction to include ruang 1: peserta 1 eligible again.
+	_ = repo.AttachRooms(1, s.ID, []int{1})
+	if ok, _ := repo.ParticipantEligible(1, 1, s.ID); !ok {
+		t.Error("peserta 1 should be eligible again when ruang 1 also linked")
+	}
+
+	// Cross-tenant peserta is never eligible.
+	if ok, _ := repo.ParticipantEligible(1, 3, s.ID); ok {
+		t.Error("cross-tenant peserta should not be eligible")
+	}
+}

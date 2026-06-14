@@ -45,12 +45,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 2.6 Implementasi `internal/repository/cek_login_repo.go` + test (start/lock/unlock/progress/lookup berbasis session_id)
     - _Requirements: 7.1, 7.2, 10.1, 10.2, 16.1, 16.4_
 
-- [ ] 3. Lapisan service penjadwalan
-  - [ ] 3.1 `internal/service/scheduling_service.go`: status efektif sesi (dari waktu server), validasi jendela waktu, keunikan token tumpang tindih, transisi status (tolak terjadwal/aktif tanpa paket)
+- [x] 3. Lapisan service penjadwalan
+  - [x] 3.1 `internal/service/scheduling_service.go`: status efektif sesi (dari waktu server), validasi jendela waktu, keunikan token tumpang tindih, transisi status (tolak terjadwal/aktif tanpa paket)
     - _Requirements: 2.5, 4.2, 4.3, 4.4, 4.5, 4.8_
-  - [ ] 3.2 Kelayakan peserta (keanggotaan kelas/ruang, server-side) + test menyeluruh termasuk batas waktu tepat
+  - [x] 3.2 Kelayakan peserta (keanggotaan kelas/ruang, server-side) + test menyeluruh termasuk batas waktu tepat
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
-  - [ ] 3.3 Property-based test untuk Property 5, 6, 8 (`pgregory.net/rapid`)
+  - [x] 3.3 Property-based test untuk Property 5, 6, 8 (`pgregory.net/rapid`)
     - _Requirements: 4.4, 4.5, 6.1, 6.3, 7.5_
 
 - [ ] 4. Penyimpanan & penyajian paket iSpring (`internal/soalpkg`)
