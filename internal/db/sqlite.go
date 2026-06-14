@@ -51,18 +51,16 @@ func Connect(databasePath string, pool PoolConfig) error {
 	return nil
 }
 
-// applyPoolConfig applies pool limits, ignoring non-positive values so callers can
-// opt out of a particular limit by leaving it at zero.
+// applyPoolConfig applies the connection-pool limits. All three limits are always
+// applied: the pool values originate from db.DefaultPoolConfig (25/10/30m) or from the
+// environment via config.Load, both of which are guaranteed positive — getEnvInt
+// falls back on non-positive input, so zero can never reach this code. There is
+// intentionally no "zero means unlimited" escape hatch: such a path would be
+// unreachable and its presence would be a misleading dead branch (Requirement 16.6).
 func applyPoolConfig(database *sql.DB, pool PoolConfig) {
-	if pool.MaxOpenConns > 0 {
-		database.SetMaxOpenConns(pool.MaxOpenConns)
-	}
-	if pool.MaxIdleConns > 0 {
-		database.SetMaxIdleConns(pool.MaxIdleConns)
-	}
-	if pool.ConnMaxLifetime > 0 {
-		database.SetConnMaxLifetime(pool.ConnMaxLifetime)
-	}
+	database.SetMaxOpenConns(pool.MaxOpenConns)
+	database.SetMaxIdleConns(pool.MaxIdleConns)
+	database.SetConnMaxLifetime(pool.ConnMaxLifetime)
 }
 
 func Close() error {

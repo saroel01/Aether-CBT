@@ -8,7 +8,7 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
 
 ## Tasks
 
-- [x] 1. Pondasi skema database (migrasi idempoten)
+- [x] 1. Pondasi skema database (migrasi idempoten) — _selesai (1.8–1.10 remediasi selesai)_
   - [x] 1.1 Tambah migrasi `020_alter_kelas_tingkat.sql` (kolom `tingkat` + indeks), mengikuti pola idempoten `RunMigrations`
     - Tulis SQL `ALTER TABLE` + `CREATE INDEX IF NOT EXISTS`
     - _Requirements: 1.2, 14.1_
@@ -24,6 +24,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
     - _Requirements: 7.2, 10.2, 14.1_
   - [x] 1.7 Perluas `internal/db/migrate_test.go`: verifikasi semua migrasi sukses pada DB kosong & rerun idempoten; verifikasi kolom/indeks baru ada
     - _Requirements: 14.1, 14.5_
+  - [x] 1.8 _[Remediasi code-review]_ Percanggih `RunMigrations` (`internal/db/migrate.go`): pecah tiap berkas migrasi per-pernyataan (`;`) dan eksekusi satu per satu; tetap menelan error idempotensi ("duplicate column name"/"already exists") tetapi **per-pernyataan**, bukan per-berkas. Tujuan: migrasi yang diterapkan sebagian dapat menyembuhkan diri pada rerun (lihat design AD-8).
+    - _Requirements: 14.1, 14.6_
+  - [x] 1.9 _[Remediasi code-review]_ Perkuat `TestRunMigrationsIsIdempotentOnRerun`: selain menegaskan `RunMigrations` mengembalikan nil pada rerun, juga verifikasi keberadaan semua objek 020–025 (tabel/kolom/indeks, termasuk `idx_cek_login_unique_session` & `idx_cek_login_content_token`) setelah run ke-2 dan ke-3 menggunakan helper `objectExists`/`tableHasColumn` yang sudah ada.
+    - _Requirements: 14.1, 14.5, 14.7_
+  - [x] 1.10 _[Remediasi code-review]_ Refaktor helper migrasi (`runMigrationsInTempDB` dkk.) agar tidak bermutasi pada package-global `DB` dan tidak memakai `os.Chdir` (gunakan DB per-test + path absolut ke direktori migrasi, mis. `RunMigrations(dir string)`), atau dokumentasikan batasan non-paralel secara eksplisit agar tes konkuren tidak saling merusak.
+    - _Requirements: 16.4, 16.7_
 
 - [ ] 2. Model & lapisan repository (tenant-scoped, anti god-file)
   - [ ] 2.1 Tambah struct model di `internal/models` (SoalPackage, Exam, ExamSession, relasi, perluasan sesi aktif)
@@ -59,13 +65,17 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [ ] 4.5 Test `serve`/`shim`: Property 4 & 12 (penyajian dalam direktori, injeksi hanya pada index.html stream)
     - _Requirements: 8.3, 9.5, 16.4_
 
-- [x] 5. Konfigurasi & connection pool (skala)
+- [x] 5. Konfigurasi & connection pool (skala) — _selesai (5.4–5.5 remediasi selesai)_
   - [x] 5.1 Tambah field konfigurasi baru di `internal/config/config.go` (DB pool, batas upload, ambang lock, cookie secure)
     - _Requirements: 3.2, 10.6, 13.1_
   - [x] 5.2 Set `SetMaxOpenConns/SetMaxIdleConns/SetConnMaxLifetime` di `internal/db/sqlite.go` (`Connect`) dari konfigurasi
     - _Requirements: 13.1_
   - [x] 5.3 Perbarui `.env.example` dengan variabel baru + nilai aman
     - _Requirements: 13.1, 10.6_
+  - [x] 5.4 _[Remediasi code-review]_ Tetapkan satu sumber kebenaran untuk default pool (25/10/30m): jadikan `db.DefaultPoolConfig()` kanonik dan `config.Load()` membaca nilai darinya (atau sebaliknya), lalu hapus literal default yang terduplikasi antar paket.
+    - _Requirements: 13.1, 13.7_
+  - [x] 5.5 _[Remediasi code-review]_ Selesaikan opt-out mati di `applyPoolConfig`: hapus ketiga cabang `if pool.X > 0` beserta komentar yang menyesatkan (nilai selalu positif sehingga ketiga batas wajib selalu diterapkan), ATAU bila 0 bermakna "tak terbatas/matikan", sediakan parser env khusus pool yang mengizinkan 0 secara konsisten.
+    - _Requirements: 13.1, 16.6_
 
 - [ ] 6. Handler admin (tipis) + routing
   - [ ] 6.1 Handler tingkat kelas (`PUT /api/classes/:id/tingkat`) + wiring route + test
@@ -185,3 +195,4 @@ Jalur kritis: 1 → 2 → 4 → 8 → 14 → 15 (pengiriman konten nyata end-to-
 - **Anti god-file**: akses data baru selalu via repository (task 2); handler tetap tipis (task 6, 7, 8); penyimpanan/penyajian/shim dipisah ke `internal/soalpkg` (task 4). Tidak ada satu berkas yang menggabungkan upload+serve+schedule+monitor.
 - **Kompatibilitas**: tidak ada kolom/tabel existing dihapus; `settings.token`/`is_exam_active` dipertahankan selama transisi (task 12). Perubahan kunci `validasi` tidak mengubah struktur indeks `hasil_tes`.
 - **Gerbang kualitas** dijalankan per task dan final di task 16.1.
+- **Remediasi code-review fondasi**: temuan review pada fondasi ditambahkan sebagai subtask 1.8–1.10 (runner migrasi per-pernyataan, verifikasi objek setelah rerun, helper tes paralel-aman) dan 5.4–5.5 (sumber tunggal default pool, hapus opt-out mati). Task 1 dan 5 kembali dibuka (`[ ]`) hingga remediasi selesai. Kerjakan **1.8–1.10 sebelum melanjutkan ke wave 2 (task 2)** karena peningkatan runner migrasi & pengujian idempotensi adalah prasyarat keandalan seluruh migrasi 020–025.

@@ -16,7 +16,7 @@ func main() {
 	defer db.Close()
 
 	// Ensure tables exist
-	if err := db.RunMigrations(); err != nil {
+	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
 		log.Fatal(err)
 	}
 

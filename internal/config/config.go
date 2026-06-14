@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/saroel01/aether-cbt/internal/db"
 )
 
 type Config struct {
@@ -35,6 +37,11 @@ type Config struct {
 }
 
 func Load() *Config {
+	// Pool defaults come from a single canonical source (db.DefaultPoolConfig) so the
+	// 25/10/30m values are not duplicated across packages and cannot drift silently
+	// when one side changes (Requirement 13.7). Environment values override them.
+	poolDefaults := db.DefaultPoolConfig()
+
 	cfg := &Config{
 		Port:               getEnv("PORT", "3000"),
 		DatabaseURL:        getEnv("DATABASE_URL", "data/cbt_aether.db"),
@@ -42,9 +49,9 @@ func Load() *Config {
 		JWTSecret:          getEnv("JWT_SECRET", ""),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", ""),
 
-		DBMaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 10),
-		DBConnMaxLifetime: time.Duration(getEnvInt("DB_CONN_MAX_LIFETIME_MIN", 30)) * time.Minute,
+		DBMaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", poolDefaults.MaxOpenConns),
+		DBMaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", poolDefaults.MaxIdleConns),
+		DBConnMaxLifetime: time.Duration(getEnvInt("DB_CONN_MAX_LIFETIME_MIN", int(poolDefaults.ConnMaxLifetime/time.Minute))) * time.Minute,
 
 		SoalUploadMaxBytes:  getEnvInt64("SOAL_UPLOAD_MAX_BYTES", 100*1024*1024),
 		SoalPackageMaxFiles: getEnvInt("SOAL_PACKAGE_MAX_FILES", 5000),

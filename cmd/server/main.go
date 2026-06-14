@@ -55,7 +55,7 @@ func main() {
 	defer db.Close()
 
 	// Run migrations (idempotent)
-	if err := db.RunMigrations(); err != nil {
+	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
