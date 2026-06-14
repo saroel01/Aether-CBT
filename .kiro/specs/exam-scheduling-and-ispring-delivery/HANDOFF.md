@@ -1,6 +1,6 @@
 # Handoff — Exam Scheduling & iSpring Delivery
 
-**Status: 8 / 16 tasks complete, all on `main`, `go build/vet/test ./...` green.**
+**Status: 11 / 16 tasks complete, all on `main`, `go build/vet/test ./...` green.**
 Last updated: 2026-06-14. Read this top-to-bottom before continuing.
 
 This file is a working handoff for the agent picking up the exam-scheduling spec.
@@ -18,14 +18,14 @@ been done so far, the conventions you MUST follow, and exactly where to resume.
    ```
    Git identity is set repo-local (`Syahrul Hamdi <saroel.hamdi@gmail.com>`); if a fresh
    clone drops it, re-run `git config user.name "Syahrul Hamdi" && git config user.email "saroel.hamdi@gmail.com"`.
-2. **Read the spec trio** (`requirements.md`, `design.md`, `tasks.md`) — tasks 1–7 are
-   `[x]`, tasks 8–16 are `[ ]`.
+2. **Read the spec trio** (`requirements.md`, `design.md`, `tasks.md`) — tasks 1–11 are
+   `[x]`, tasks 12–16 are `[ ]`.
 3. **Confirm green** before touching anything:
    ```bash
    go build ./... && go vet ./... && go test ./...
    ```
-4. **Resume at Task 8** (content serving) — see §4. It is the critical path
-   (`1→2→4→8→14→15`) and unblocked.
+4. **Resume at Task 12** (legacy data migration) — see §4. Backend tasks 1–11 are done;
+   remaining is `12 → 13 → 14 → 15 → 16`.
 
 ---
 
@@ -41,7 +41,10 @@ been done so far, the conventions you MUST follow, and exactly where to resume.
 | `2e583b1` | (fix) Fiber BodyLimit | raised to upload cap so 15–20 MB zips work |
 | `dafbd81` | **6** admin handlers + routes | 14 handler tests |
 | `29c26d7` | **7** student session flow | 8 handler tests, legacy fallback retained |
-| _(this commit)_ | **8** content serving + shim | `content_session_service.Authorize`, `ServeExamContent` (`GET /api/exam/content/*`), TenantMiddleware content-path exemption, migration 026 (unique `content_token`); 6 service + 12 handler + 2 middleware + 1 migration test |
+| `3fc101b` | **8** content serving + shim | `content_session_service.Authorize`, `ServeExamContent` (`GET /api/exam/content/*`), TenantMiddleware content-path exemption, migration 026 (unique `content_token`); 6 service + 12 handler + 2 middleware + 1 migration test |
+| `4fc786f` | **9** anti-cheat | session-based `RecordInfraction` + lock at `cfg.AntiCheatLockThreshold`; `UpdateStudentProgress` rejects locked (Property 11); 4 handler tests |
+| `b73b2eb` | **10** webhook `validasi` | `validasi` = `tenant_noID_sessionID` (legacy mapel fallback); processor scopes cek_login lookup+delete by `attempt_token` (right-session cleanup); property + cleanup tests |
+| `dc351c5` | **11** supervisor monitoring | `GetRoomStatus`/SSE per-student `Status` (not_logged_in/in_progress/locked/submitted) + `session_id` scope; `ResetStudentSession` session-targeted; 4 handler tests |
 
 ### Task 8 notes (read before Task 9/14)
 - **Content serving derives the tenant from the cookie token, NOT the request.** The iSpring
@@ -64,6 +67,28 @@ been done so far, the conventions you MUST follow, and exactly where to resume.
 - **Deferred to Task 15** (per design AD-4 / HANDOFF §3.7): streaming the entry/asset instead
   of buffering through fasthttp's `BodyWriter`, and caching the 5-query auth chain per asset.
   Functionally correct now; revisit under the ~500-participant load test.
+
+### Tasks 9–11 notes (read before Task 12+)
+- **Anti-cheat (9):** `RecordInfraction` is session-based — `cek_login_repo.IncrementInfraction`
+  then `Lock` when `count >= antiCheatLockThreshold` (package var, wired via
+  `SetAntiCheatLockThreshold(cfg.AntiCheatLockThreshold)` in `main.go`, default 3). Returns
+  `{infraction_count, locked}`. A student may only record their own infractions (owner check,
+  mirrors `StartExamSession`). `UpdateStudentProgress` rejects a locked session (403) —
+  Property 11 now enforced on start + content serve + progress.
+- **Webhook `validasi` (10):** `ISpringWebhook` builds `validasi = tenant_noID_sessionID`
+  (falls back to `tenant_noID_mapelID` when `cek_login.session_id` is NULL, for legacy
+  results). The active session is matched by `(no_id, attempt_token)` in the JOIN (not a
+  separate constant-time compare) so a peserta with multiple sessions resolves the right one.
+  The processor scopes its cek_login lookup AND post-result DELETE by `attempt_token`, so a
+  sibling session survives (Req 11.3). The `hasil_tes(tenant_id, validasi)` unique index is
+  unchanged. Test schemas in `ispring_test.go`/`features_test.go` now include `session_id`.
+- **Supervisor (11):** `fetchRoomStatus(tenantID, ruangID, sessionID)` (in `supervisor.go`) is
+  shared by REST + SSE; each `LiveStudentStatus` now carries `Status`, `Locked`, `SessionID`.
+  **GOTCHA:** the SSE stream-writer closure runs after fasthttp recycles the `Ctx` — capture
+  every request value (`tenantID`, `ruangID`, `sessionID`) as a local BEFORE
+  `SetBodyStreamWriter`; never touch `c` inside the closure. `ResetStudentSession` targets one
+  session when `session_id` is given (row removal clears the lock), else legacy all-sessions
+  reset.
 
 Module: `github.com/saroel01/aether-cbt`. Backend stack: Go/Fiber + SQLite WAL + modernc
 driver + SvelteKit frontend (`web/`, not yet touched).
@@ -162,38 +187,51 @@ repo := repository.NewExamRepository(testDB)     // tests
 
 ---
 
-## 4. What's next — start with Task 9 (anti-cheat)
+## 4. What's next — start with Task 12 (legacy data migration)
 
-Task 8 (content serving) is **DONE** — see the Task 8 notes in §1. The remaining critical
-path to real end-to-end delivery is `14→15` (student UI + load test); wave 5 backend tasks
-`9 → 10 → 12` are now the unblocked next items.
+Tasks 8–11 are **DONE** (content serving, anti-cheat, webhook `validasi`, supervisor
+monitoring) — see the notes in §1. The backend is feature-complete for the session model;
+what remains is **data migration (12)**, the two **SvelteKit frontends (13, 14)**, the
+**load test (15)**, and **docs (16)**.
 
-### Task 9 — Anti-cheat server-enforced (resume here)
-- `cek_login_repo` already has `Lock/Unlock/IsLocked/IncrementInfraction`. Wire
-  `RecordInfraction` (anticheat_handler.go, still mapel-based) to increment + lock at
-  `cfg.AntiCheatLockThreshold`; enforce `locked` in start (**done** in `StartExamSession`) +
-  content serve (**done** — `ContentSessionService.Authorize` checks `cek.Locked` → 403) +
-  progress. Property 11.
+### Task 12 — Legacy data migration (resume here)
+- A Go util run after `RunMigrations` (in `cmd/server/main.go`, after the migrations call):
+  for each tenant that has `settings.token`/`is_exam_active` but **no** `exam_session`,
+  create one `exam` + one `exam_session` "legacy" from those settings, idempotent
+  ("only if absent"). Pick a placeholder mapel deterministically (or create one) — if that
+  can't be done unambiguously, document the limitation. This makes the legacy fallback in
+  `StudentLogin`/`StartExamSession`/`GetRemainingTime`/`UpdateStudentProgress` unnecessary;
+  once verified, the legacy paths + the old mapel-based `idx_cek_login_unique_exam_session`
+  index (migration 025 note) can be dropped.
+- Test: rerun doesn't duplicate; an old install still logs in during transition (Req 14.3, 14.4).
 
-### Then: 10 → 12
-- **Task 10 (webhook):** change `validasi` key to `tenant_id_noID_sessionID` in the webhook
-  handler (`ispring.go:76` builds `tenantID_noID_mapelID` today) + processor; keep UPSERT on
-  `hasil_tes(tenant_id, validasi)`. The shim now ships `sid`(=no_id) + `attempt_token` via
-  `ShimContext` (set in `ServeExamContent`), so the webhook has what it needs. Verify
-  `cek_login` cleanup targets the right session.
-- **Task 12 (legacy data migration):** Go util run after `RunMigrations`; for each tenant
-  with `settings.token` but no `exam_session`, create one exam + session from settings
-  (idempotent "only if absent"). This makes the legacy fallback unnecessary.
+### Task 13 — Admin SvelteKit UI (`web/`)
+- Use `apiUrl`/`authHeaders` from the existing client; **no hardcoded URLs/tokens**. Pages:
+  class tingkat (13.1), soal-package upload/list/delete (13.2), exam create/edit + link
+  package (13.3), exam-session window/token/classes/rooms/effective status (13.4).
+- Skill: `frontend-design:frontend-design` for the UI; gate is `npm run build` (Req 16.5).
 
-### Later waves
-- **11** supervisor monitoring (session-based `GetRoomStatus`/SSE + reset).
-- **13** admin SvelteKit UI (uses `apiUrl`/`authHeaders`, no hardcoded URLs/tokens).
-- **14** student SvelteKit UI — replace `generateQuestions()`/fake XML with an iframe to
-  `/api/exam/content/...`. Keep debounced progress + infraction.
-- **15** load test (~500 participants) in `tests/load/`; shim runtime verification needs a
-  complete iSpring fixture (current `contoh_soal/KIMIA_XII_UAS_2025` lacks `data/player.js`).
-- **16** docs (`Database_Schema.md`, `Technical_Architecture.md`, README, deployment incl.
-  the iSpring export instruction from §3.6) + final gate.
+### Task 14 — Student SvelteKit UI (`web/`)
+- Replace `generateQuestions()`/fake XML in `web/src/routes/student/exam/+page.svelte` with an
+  `<iframe src="/api/exam/content/index.html">` (same-origin; the content cookie is sent).
+- Keep debounced progress (`POST /api/student/progress`) + infraction
+  (`POST /api/student/infraction`); react to `locked:true` / 403 by showing the locked state.
+- Skill: `frontend-design:frontend-design`. Gate: `npm run build`, no hardcode URL/token.
+
+### Task 15 — Scale + shim verification
+- `tests/load/` → ~500 participants (login/start/progress/submit); verify no lost results
+  (Property 10) and acceptable content-serve latency. **Revisit the deferred Task 8 items
+  here**: stream entry/assets (AD-4) instead of buffering via `BodyWriter`, and cache the
+  5-query content auth chain.
+- Shim runtime verification (15.2) needs a **complete** iSpring fixture with `data/player.js`
+  (current `contoh_soal/KIMIA_XII_UAS_2025` lacks it). Drive it headless with the
+  `chrome-devtools-mcp:chrome-devtools` skill, or document as manual verification pre-launch.
+- Use `verify`/`run` skills to launch the app and confirm the iframe + shim end-to-end.
+
+### Task 16 — Docs + final gate
+- Update `docs/Database_Schema.md`, `docs/Technical_Architecture.md`, README, deployment guide
+  (incl. the iSpring "Send quiz result to server" export instruction from §3.6, and kiosk mode).
+- Final gate: `go build/vet/test ./...` + `npm run build` (Req 16.5).
 
 ### Dependency graph (from tasks.md)
 ```
@@ -234,4 +272,4 @@ internal/
 - A property test: `service/scheduling_property_test.go`.
 - A security-critical package with tests: `internal/soalpkg/*_test.go`.
 
-Good luck — the foundation is solid and well-tested; pick up at Task 9.
+Good luck — the foundation is solid and well-tested; pick up at Task 12.
