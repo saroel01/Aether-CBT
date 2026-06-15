@@ -94,7 +94,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize filesystem queue at %s: %v", queueDir, err)
 	}
-	if err := subQueue.RecoverStartup(ctx, true); err != nil {
+	// Recover in-flight jobs on startup. forceAll defaults to false (safer): only jobs
+	// stuck longer than QUEUE_STUCK_THRESHOLD_MIN are promoted, so a quick restart does
+	// not re-enqueue jobs a live worker may still be processing. Set QUEUE_RECOVER_FORCE_ALL
+	// to "true" to promote every in-flight job regardless of age (review finding F4, Task 11).
+	forceAll := strings.EqualFold(strings.TrimSpace(getEnvString("QUEUE_RECOVER_FORCE_ALL", "false")), "true")
+	if err := subQueue.RecoverStartup(ctx, forceAll); err != nil {
 		log.Fatalf("Failed to recover filesystem queue at startup: %v", err)
 	}
 	if err := subQueue.MigrateLegacyTable(ctx, db.DB); err != nil {
