@@ -155,12 +155,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 14.3 Pastikan `npm run build` lulus dan tidak ada hardcode URL/token
     - _Requirements: 12.5, 16.5_
 
-- [ ] 15. Pengujian skala & verifikasi shim
-  - [ ] 15.1 Sediakan paket iSpring lengkap (termasuk `data/player.js`) sebagai fixture uji runtime; dokumentasikan jika hanya verifikasi manual yang memungkinkan
+- [x] 15. Pengujian skala & verifikasi shim
+  - [x] 15.1 Sediakan paket iSpring lengkap (termasuk `data/player.js`) sebagai fixture uji runtime; dokumentasikan jika hanya verifikasi manual yang memungkinkan
     - _Requirements: 9.6_
-  - [ ] 15.2 Uji shim (headless/puppeteer bila fixture lengkap tersedia): konten dimuat, hasil dialihkan ke `/api/ispring/webhook` dengan `attempt_token`/`tenant_id`/`sid`
+  - [x] 15.2 Uji shim (headless/puppeteer bila fixture lengkap tersedia): konten dimuat, hasil dialihkan ke `/api/ispring/webhook` dengan `attempt_token`/`tenant_id`/`sid`
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  - [ ] 15.3 Perluas `tests/load/` ke skenario ~500 peserta (login/start/progress/submit) + verifikasi tanpa kehilangan hasil (Property 10)
+  - [x] 15.3 Perluas `tests/load/` ke skenario ~500 peserta (login/start/progress/submit) + verifikasi tanpa kehilangan hasil (Property 10)
     - _Requirements: 13.1, 13.4, 13.5, 13.6_
 
 - [ ] 16. Gerbang kualitas akhir & dokumentasi

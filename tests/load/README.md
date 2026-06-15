@@ -249,3 +249,48 @@ go run ./tests/load/ --scenario=login --concurrency=500 --duration=30s
 ---
 
 **Dokumen ini dibuat sebagai bagian dari Task 1.4 - Basic Load Testing (Expanded Scope).**
+
+---
+
+## Addendum (Task 15 — pasca filesystem submission queue & model sesi)
+
+Hasil di atas dicatat **sebelum** filesystem submission queue (`internal/submission`) dan
+model sesi diterapkan. Dua perubahan relevan:
+
+1. **Titik gagal "webhook submission 3+ WRITEs" kini diserap oleh queue.** Webhook
+   `POST /api/ispring/webhook` sekarang hanya melakukan `Enqueue` (rename atomic ke
+   `queued/`) — operasi single-writer cepat — dan mengembalikan 200. Worker tunggal
+   memproses batch dalam satu transaksi, menulis `hasil_tes` + detail, lalu menghapus
+   `cek_login` per-sesi. Dengan demikian lonjakan 500 submit serempak tidak lagi
+   bersaing memperebutkan write-lock SQLite secara langsung pada jalur webhook; write
+   diserialisasi oleh worker. **Property 10 (tidak ada kehilangan hasil) kini diverifikasi
+   otomatis** oleh `internal/submission/property10_test.go` (500-job enqueue concurrent →
+   semua diproses, nol hilang).
+
+2. **Verifikasi shim end-to-end tetap manual.** Fixture `contoh_soal/KIMIA_XII_UAS_2025`
+   tidak lengkap (tanpa `data/player.js`), sehingga pengujian runtime penuh pemain iSpring
+   tidak dapat diotomatisasi tanpa paket lengkap. Lihat `SHIM_VERIFICATION.md` untuk
+   checklist verifikasi manual wajib sebelum hari-H.
+
+3. **Connection pool eksplisit.** `SetMaxOpenConns`/`SetMaxIdleConns`/`SetConnMaxLifetime`
+   kini diterapkan di `db.Connect` dari konfigurasi (default kanonik `db.DefaultPoolConfig`,
+   satu sumber kebenaran), mengurangi friksi read yang diamati pada login burst 500.
+
+### Cara menjalankan ulang
+
+```bash
+# Server harus aktif, CORS/ENV dikonfigurasi.
+go run ./tests/load/ --scenario=full-cycle --concurrency=100 --duration=60s
+go run ./tests/load/ --scenario=submission --concurrency=500 --duration=30s
+```
+
+Untuk pengujian no-loss pada lapisan queue (cepat, tanpa server):
+```bash
+go test ./internal/submission/ -run TestProperty10NoLostResultsUnderConcurrentEnqueue -count=1
+```
+
+### Catatan PostgreSQL
+
+Rekomendasi migrasi PostgreSQL di atas tetap berlaku untuk skala besar (300+ siswa) atau
+beban tulis non-ujian yang tinggi; lapisan repository sudah mengisolasi akses data, tetapi
+migrasi itu di luar lingkup spec ini (lihat requirements.md "Di Luar Lingkup").
