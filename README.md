@@ -96,6 +96,12 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
 **Peringatan Keamanan Penting**:
 - `JWT_SECRET` **wajib** diisi melalui environment variable. Aplikasi akan menolak berjalan jika tidak ada.
 - Untuk deployment produksi, set juga `CORS_ALLOWED_ORIGINS` agar hanya domain yang diizinkan yang bisa mengakses.
+- **Migrasi password**: sebelum hari-H ujian, jalankan sekali untuk mengubah sandi siswa
+  yang masih plaintext menjadi hash bcrypt (idempoten — aman dijalankan berulang):
+  ```bash
+  go run ./cmd/migratepasswords
+  ```
+  Pada instalasi baru tanpa data legacy, ini mencetak `0 hashed, 0 already-hashed skipped, 0 empty`.
 
 ### Konfigurasi Frontend
 
