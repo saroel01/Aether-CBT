@@ -485,6 +485,65 @@ func TestExportEssayResults(t *testing.T) {
 	}
 }
 
+// TestWebhookResolvesTenantFromToken verifies that the webhook derives the tenant
+// from the attempt_token (crypto-random, globally unique) rather than trusting the
+// client-controlled X-Tenant-ID header / c.Locals("tenant_id"). The webhook is public
+// and unauthenticated, so only the token is the authoritative tenant key
+// (review finding H6 / iSpring F3, Task 4).
+func TestWebhookResolvesTenantFromToken(t *testing.T) {
+	app, fsQueue, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	// Seed a SECOND tenant with a peserta whose no_id collides with tenant 1's "2026001".
+	// (The unique index is (tenant_id, no_id), so the same no_id is allowed across tenants.)
+	// The session uses a distinct attempt_token that belongs to tenant 2.
+	if _, err := db.DB.Exec(`INSERT INTO tenants (id, slug, name) VALUES (2, 't2', 'Tenant Two')`); err != nil {
+		t.Fatalf("seed tenant 2: %v", err)
+	}
+	if _, err := db.DB.Exec(`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (90, 2, '2026001', 'pw', 'Other Tenant Siswa', 10, 1)`); err != nil {
+		t.Fatalf("seed peserta tenant 2: %v", err)
+	}
+	if _, err := db.DB.Exec(`INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, session_id, attempt_token) VALUES (2, 90, 5, 7, 'token-belongs-to-tenant-2')`); err != nil {
+		t.Fatalf("seed cek_login tenant 2: %v", err)
+	}
+
+	// Submit using the tenant-2 token. The test app's middleware hardcodes
+	// c.Locals("tenant_id") = 1 (tenant 1). The webhook MUST resolve tenant 2 from the
+	// token, not trust the header-derived 1.
+	form := url.Values{}
+	form.Add("sid", "2026001")
+	form.Add("sp", "10")
+	form.Add("tp", "30")
+	form.Add("dr", "")
+	form.Add("attempt_token", "token-belongs-to-tenant-2")
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("token-resolved webhook: status=%d, want 200", resp.StatusCode)
+	}
+
+	// The enqueued job MUST carry tenant_id = 2 (resolved from the token), not 1.
+	job, err := fsQueue.Dequeue(context.Background())
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected a job, got nil")
+	}
+	if job.TenantID != 2 {
+		t.Fatalf("job.TenantID = %d, want 2 (tenant resolved from token, not header)", job.TenantID)
+	}
+	if !strings.HasPrefix(job.Validasi, "2_") {
+		t.Fatalf("job.Validasi = %q, want it to start with '2_' (tenant from token)", job.Validasi)
+	}
+}
+
 // TestWebhookRejectsLockedSession verifies that a submission against a session the
 // supervisor has locked is rejected with 403, so a locked student cannot submit
 // results via the public unauthenticated webhook (review Critical #3, Task 3).

@@ -39,19 +39,21 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		attemptToken = c.FormValue("AETHER_ATTEMPT_TOKEN")
 	}
 
-	// Match the active session by (no_id, attempt_token) so a peserta with multiple active
-	// sessions resolves the one this submission belongs to; the per-session attempt_token is
-	// the secret issued at StartExamSession (Requirements 14.2, 11.3).
+	// Resolve tenant + session from the attempt_token alone. The webhook is public and
+	// the client-controlled X-Tenant-ID (held in c.Locals("tenant_id")) is NOT trusted
+	// (review finding H6 / iSpring F3): the attempt_token is crypto-random and globally
+	// unique, so it is the authoritative key for both tenant and session.
+	var resolvedTenantID int
 	var mapelID int
 	var sessionID sql.NullInt64
 	var locked bool
 	err := db.DB.QueryRowContext(c.Context(), `
-		SELECT cl.mapel_id, cl.session_id, COALESCE(cl.locked, 0)
+		SELECT cl.tenant_id, cl.mapel_id, cl.session_id, COALESCE(cl.locked, 0)
 		  FROM cek_login cl
 		  JOIN peserta p ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
-		 WHERE p.tenant_id = ? AND p.no_id = ? AND cl.attempt_token = ?
+		 WHERE cl.attempt_token = ? AND p.no_id = ?
 		 LIMIT 1
-	`, tenantID, noID, attemptToken).Scan(&mapelID, &sessionID, &locked)
+	`, attemptToken, noID).Scan(&resolvedTenantID, &mapelID, &sessionID, &locked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.Status(fiber.StatusForbidden).SendString("active session not found")
 	}
@@ -61,6 +63,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 	if locked {
 		return c.Status(fiber.StatusForbidden).SendString("session is locked")
 	}
+	tenantID = resolvedTenantID // override the header-derived tenant with the authoritative value
 
 	// validasi: session-based key (tenant_noID_sessionID) for new sessions; the legacy
 	// mapel-based key for sessions without a session_id so old results stay reachable
