@@ -204,7 +204,7 @@ CREATE TABLE hasil_tes (
     waktu_mulai DATETIME,
     waktu_selesai DATETIME,
     status TEXT DEFAULT 'in_progress' CHECK(status IN ('in_progress', 'submitted', 'invalid')),
-    validasi TEXT NOT NULL,                 -- tenant_id + no_id + mapel_id
+    validasi TEXT NOT NULL,                 -- session model: tenant_id + no_id + session_id (legacy: + mapel_id)
     detail_xml TEXT,                        -- Raw XML from iSpring (dr)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -244,6 +244,69 @@ CREATE TABLE hasil_tes_detail (
 CREATE INDEX idx_detail_hasil ON hasil_tes_detail(hasil_tes_id);
 ```
 
+---
+
+## 2.S SESSION & SCHEDULING MODEL (migrations 020–026)
+
+Added by the exam-scheduling & iSpring-delivery spec. All tables are tenant-scoped
+(`tenant_id`) and idempotent under `RunMigrations` (per-statement, self-healing — AD-8).
+
+### 2.S.1 `kelas.tingkat` (migration 020)
+
+Grade level on classes (Requirement 1). `tingkat` is a nullable `TEXT` (e.g. `X`/`XI`/`XII`);
+empty/null means "not yet set" and is still readable (Req 1.3).
+
+```sql
+ALTER TABLE kelas ADD COLUMN tingkat TEXT;
+CREATE INDEX IF NOT EXISTS idx_kelas_tingkat ON kelas(tenant_id, tingkat);
+```
+
+### 2.S.2 `soal_package` (migration 021)
+
+Metadata for an uploaded iSpring QuizMaker HTML5 export, stored on disk under
+`data/soal/{tenant_slug}/{package_uuid}/` (Req 3.5, Property 2).
+
+```sql
+CREATE TABLE IF NOT EXISTS soal_package (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    nama TEXT NOT NULL,
+    package_uuid TEXT NOT NULL,
+    entry_path TEXT NOT NULL DEFAULT 'index.html',
+    ispring_version TEXT,            -- best-effort from index.html header comment
+    total_size INTEGER NOT NULL DEFAULT 0,
+    checksum TEXT,                   -- sha256 of the uploaded archive
+    uploaded_by INTEGER,             -- users.id
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME,
+    UNIQUE(tenant_id, package_uuid)
+);
+```
+
+### 2.S.3 `exam` (migration 022)
+
+Reusable exam definition: mapel + tingkat + soal package + duration + KKM + shuffle flags
+(Req 2). `soal_package_id` is nullable for drafts; soft-deleted, can't be deleted while a
+scheduled/active session references it (Req 2.5).
+
+### 2.S.4 `exam_session` (migration 023)
+
+A scheduled wave of an exam with a time window `[waktu_mulai, waktu_selesai]`, a per-session
+`token`, and status `draft|terjadwal|aktif|selesai|dibatalkan` (Req 4). Effective
+enterability is computed server-side from the window + status (Req 4.5), not stored. Token
+overlap (Req 4.4) is enforced in the scheduling service against overlapping windows.
+
+### 2.S.5 `exam_session_kelas` / `exam_session_ruang` (migration 024)
+
+Many-to-many link from a session to classes/rooms whose participants are eligible (Req 5).
+When rooms are linked, only participants in those rooms may enter (Req 5.2).
+
+### 2.S.6 `cek_login` session columns (migration 025)
+
+`session_id`, `locked`, `content_token` on `cek_login`, plus the session-based unique index
+replacing the legacy mapel-based one — see `cek_login` above.
+
 ### 2.11 `cek_login`
 
 Tracks currently logged-in students (real-time monitoring) — scoped per tenant.
@@ -253,22 +316,32 @@ CREATE TABLE cek_login (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     peserta_id INTEGER NOT NULL,
-    mapel_id INTEGER NOT NULL,
+    mapel_id INTEGER NOT NULL,                  -- legacy path (Req 6.6); nullable in practice via 0
+    session_id INTEGER,                         -- exam_session.id (session model, Req 7.2)
+    locked INTEGER NOT NULL DEFAULT 0,          -- server-side anti-cheat lock (Req 10.2)
+    content_token TEXT,                         -- maps the content cookie to this cek_login (Req 8, AD-2)
     attempt_token TEXT,
+    tab_switch_count INTEGER DEFAULT 0,
+    answered_count INTEGER DEFAULT 0,
+    total_questions INTEGER DEFAULT 0,
     login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (peserta_id) REFERENCES peserta(id),
     FOREIGN KEY (mapel_id) REFERENCES mapel(id),
-    UNIQUE(tenant_id, peserta_id, mapel_id)
+    FOREIGN KEY (session_id) REFERENCES exam_session(id)
 );
 
 CREATE INDEX idx_login_tenant ON cek_login(tenant_id);
 CREATE INDEX idx_login_peserta ON cek_login(peserta_id);
-CREATE UNIQUE INDEX idx_cek_login_unique_exam_session ON cek_login(tenant_id, peserta_id, mapel_id);
+-- Session model: one active attempt per (tenant, peserta, session). The legacy mapel-based
+-- unique index (idx_cek_login_unique_exam_session) was dropped in migration 025 and replaced
+-- by the session-based one below; the legacy path keeps working via mapel_id during transition.
+CREATE UNIQUE INDEX idx_cek_login_unique_session ON cek_login(tenant_id, peserta_id, session_id);
+CREATE INDEX idx_cek_login_content_token ON cek_login(content_token);
 ```
 
-`attempt_token` is generated by `POST /api/student/start` and must be submitted with the iSpring/web simulator result. This ties a final result to the active `cek_login` session.
+`attempt_token` is generated by `POST /api/student/start` and must be submitted with the iSpring/web simulator result. This ties a final result to the active `cek_login` session. The `content_token` maps the same-origin `aether_exam` cookie (set on start) to this row so `GET /api/exam/content/*` can authorize sub-asset requests that carry no Authorization header (AD-2). `locked` is the authoritative server-side anti-cheat flag (Property 11).
 
 ---
 

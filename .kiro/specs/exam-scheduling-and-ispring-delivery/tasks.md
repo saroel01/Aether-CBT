@@ -163,10 +163,10 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 15.3 Perluas `tests/load/` ke skenario ~500 peserta (login/start/progress/submit) + verifikasi tanpa kehilangan hasil (Property 10)
     - _Requirements: 13.1, 13.4, 13.5, 13.6_
 
-- [ ] 16. Gerbang kualitas akhir & dokumentasi
-  - [ ] 16.1 Jalankan `go build ./...`, `go vet ./...`, `go test ./...`, dan `npm run build`; perbaiki temuan
+- [x] 16. Gerbang kualitas akhir & dokumentasi
+  - [x] 16.1 Jalankan `go build ./...`, `go vet ./...`, `go test ./...`, dan `npm run build`; perbaiki temuan
     - _Requirements: 16.5_
-  - [ ] 16.2 Perbarui dokumentasi (`docs/Database_Schema.md`, `docs/Technical_Architecture.md`, `README`, panduan deployment) agar konsisten dengan model sesi & penyajian konten; catat panduan mode kiosk (deployment)
+  - [x] 16.2 Perbarui dokumentasi (`docs/Database_Schema.md`, `docs/Technical_Architecture.md`, `README`, panduan deployment) agar konsisten dengan model sesi & penyajian konten; catat panduan mode kiosk (deployment)
     - _Requirements: 14.2, 14.3_
 
 ## Task Dependency Graph

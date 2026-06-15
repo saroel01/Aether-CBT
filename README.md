@@ -31,6 +31,8 @@ Namun, deployment ujian nyata tetap membutuhkan fixture iSpring sekolah asli, ba
     *   *Excel (XLSX)*: Desain visual premium (Steel Blue header, auto-fit, grid borders, dan wrap text otomatis pada kolom esai siswa).
     *   *PDF Cetak Premium*: Dilengkapi Kop Surat Tenant Sekolah formal, pemisah visual soal (kotak abu-abu lembut `#F5F5F5`), jawaban esai siswa berwarna biru tua, kolom input nilai fisik korektor guru (`Skor: ____ / ____`), dan penomoran halaman dinamis.
 *   **Batas Ruang Pengawas**: Supervisor dapat memantau aktivitas ruang ujian secara real-time dan melakukan reset sesi siswa jika terdeteksi kecurangan atau kendala teknis.
+*   **Penjadwalan Ujian Detail (baru)**: tingkatan kelas (X/XI/XII), definisi ujian (mapel + paket + durasi + KKM), sesi/gelombang dengan jendela waktu & token per-sesi, dan penautan kelas/ruang peserta. Server menegakkan jendela waktu, sesi tunggal, dan kunci anti-cheat (Req 10, Property 11).
+*   **Pengiriman Konten iSpring Nyata (baru)**: admin mengunggah paket ekspor iSpring QuizMaker HTML5; siswa yang berhak mendapatkannya via iframe same-origin (cookie sesi konten, AD-2). Shim yang disuntikkan saat penyajian mengalihkan pengiriman hasil ke webhook internal tanpa URL hardcoded — guru cukup aktifkan "Send quiz result to server" saat export.
 
 ---
 

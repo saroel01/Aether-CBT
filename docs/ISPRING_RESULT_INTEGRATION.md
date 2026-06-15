@@ -64,11 +64,20 @@ Tipe yang belum dikenal tetap tidak boleh dianggap sebagai jawaban valid otomati
 
 ## Aturan Penyimpanan
 
-- `hasil_tes.validasi` menggunakan format `tenant_id + no_id + mapel_id`.
-- `hasil_tes(tenant_id, validasi)` memiliki unique index agar satu peserta hanya memiliki satu hasil final per mata pelajaran dalam satu tenant.
-- `cek_login(tenant_id, peserta_id, mapel_id)` memiliki unique index agar sesi aktif tidak dobel.
+- `hasil_tes.validasi` menggunakan format **`tenant_id + no_id + session_id`** (model sesi, Req 14.2). Sebelum model sesi, formatnya `tenant_id + no_id + mapel_id`; hasil lama tetap terbaca karena struktur kolom & indeks tidak berubah, hanya komposisi string-nya. Saat `session_id` tidak tersedia (data warisan), handler fallback ke format lama.
+- `hasil_tes(tenant_id, validasi)` memiliki unique index sehingga satu peserta hanya memiliki satu hasil final per kunci validasi (kini per-sesi) dalam satu tenant (Property 9, idempoten terhadap kiriman ulang).
+- `cek_login(tenant_id, peserta_id, session_id)` memiliki unique index (migrasi 025, `idx_cek_login_unique_session`) agar sesi aktif tidak dobel; indeks lama berbasis `mapel_id` sudah di-drop.
 - `cek_login.attempt_token` menyimpan rahasia per sesi. Kiriman hasil tanpa token ini ditolak dengan HTTP `403`.
-- Setelah hasil diterima, sesi aktif siswa dihapus dari `cek_login`.
+- Setelah hasil diterima & diproses worker, baris `cek_login` untuk sesi yang tepat dihapus (scoped by `attempt_token` agar sesi saudara tidak terkena, Req 11.3).
+
+## Konfigurasi Export iSpring (wajib sebelum hari-H)
+
+Di iSpring QuizMaker → **Reporting**, aktifkan **"Send quiz result to server"** saat export.
+**Kolom alamat server boleh berupa placeholder apa pun** — shim yang disuntikkan server pada
+`index.html` saat disajikan meng-override tujuan ke `/api/ispring/webhook` same-origin dan
+menambahkan `attempt_token`/`tenant_id`/`sid` otomatis. Tanpa setting ini, player tidak
+mengirim POST dan shim tidak ada yang diintercept. Lihat `tests/load/SHIM_VERIFICATION.md`
+untuk checklist verifikasi manual end-to-end.
 
 ## Batasan Saat Ini
 
