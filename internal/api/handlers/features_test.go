@@ -68,6 +68,7 @@ func SetupFeaturesTestDB(t *testing.T) {
 			tab_switch_count INTEGER DEFAULT 0,
 			answered_count INTEGER DEFAULT 0,
 			total_questions INTEGER DEFAULT 0,
+			locked INTEGER NOT NULL DEFAULT 0,
 			UNIQUE(tenant_id, peserta_id, mapel_id)
 		);`,
 		`CREATE TABLE IF NOT EXISTS hasil_tes (

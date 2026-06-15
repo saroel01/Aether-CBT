@@ -55,6 +55,7 @@ func setupStudentAuthFlowDB(t *testing.T) {
 			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+			locked INTEGER NOT NULL DEFAULT 0,
 			UNIQUE(tenant_id, peserta_id, mapel_id)
 		);`,
 	}

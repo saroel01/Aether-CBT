@@ -44,18 +44,22 @@ func ISpringWebhook(c *fiber.Ctx) error {
 	// the secret issued at StartExamSession (Requirements 14.2, 11.3).
 	var mapelID int
 	var sessionID sql.NullInt64
+	var locked bool
 	err := db.DB.QueryRowContext(c.Context(), `
-		SELECT cl.mapel_id, cl.session_id
+		SELECT cl.mapel_id, cl.session_id, COALESCE(cl.locked, 0)
 		  FROM cek_login cl
 		  JOIN peserta p ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
 		 WHERE p.tenant_id = ? AND p.no_id = ? AND cl.attempt_token = ?
 		 LIMIT 1
-	`, tenantID, noID, attemptToken).Scan(&mapelID, &sessionID)
+	`, tenantID, noID, attemptToken).Scan(&mapelID, &sessionID, &locked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.Status(fiber.StatusForbidden).SendString("active session not found")
 	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("session lookup failed")
+	}
+	if locked {
+		return c.Status(fiber.StatusForbidden).SendString("session is locked")
 	}
 
 	// validasi: session-based key (tenant_noID_sessionID) for new sessions; the legacy

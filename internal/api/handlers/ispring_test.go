@@ -53,6 +53,7 @@ func setupTestDB(t *testing.T) func() {
 			session_id INTEGER,
 			attempt_token TEXT,
 			login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+			locked INTEGER NOT NULL DEFAULT 0,
 			UNIQUE(tenant_id, peserta_id, mapel_id)
 		);`,
 		`CREATE TABLE IF NOT EXISTS hasil_tes (
@@ -481,6 +482,46 @@ func TestExportEssayResults(t *testing.T) {
 		if sig != "%PDF" {
 			t.Errorf("Exported PDF does not feature valid PDF signature header! sig=%s", sig)
 		}
+	}
+}
+
+// TestWebhookRejectsLockedSession verifies that a submission against a session the
+// supervisor has locked is rejected with 403, so a locked student cannot submit
+// results via the public unauthenticated webhook (review Critical #3, Task 3).
+func TestWebhookRejectsLockedSession(t *testing.T) {
+	app, fsQueue, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	// Lock the active session directly.
+	if _, err := db.DB.Exec(`UPDATE cek_login SET locked = 1 WHERE attempt_token = 'attempt-secret'`); err != nil {
+		t.Fatalf("lock session: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("sid", "2026001")
+	form.Add("sp", "10")
+	form.Add("tp", "30")
+	form.Add("dr", "")
+	form.Add("attempt_token", "attempt-secret")
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("locked session: status=%d, want 403", resp.StatusCode)
+	}
+
+	// No job should have been enqueued.
+	stats, err := fsQueue.GetStats(context.Background())
+	if err != nil {
+		t.Fatalf("queue stats: %v", err)
+	}
+	if stats.PendingCount != 0 {
+		t.Fatalf("locked session enqueued %d job(s), want 0", stats.PendingCount)
 	}
 }
 

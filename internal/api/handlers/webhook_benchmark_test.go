@@ -27,7 +27,7 @@ func BenchmarkISpringWebhookConcurrent500(b *testing.B) {
 	defer db.DB.Close()
 	for _, stmt := range []string{
 		`CREATE TABLE peserta (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, no_id TEXT NOT NULL, password TEXT, nama_peserta TEXT, kelas_id INTEGER, ruang_id INTEGER, UNIQUE(tenant_id,no_id));`,
-		`CREATE TABLE cek_login (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, attempt_token TEXT, login_time DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(tenant_id,peserta_id,mapel_id));`,
+		`CREATE TABLE cek_login (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, attempt_token TEXT, login_time DATETIME DEFAULT CURRENT_TIMESTAMP, locked INTEGER NOT NULL DEFAULT 0, UNIQUE(tenant_id,peserta_id,mapel_id));`,
 		`CREATE INDEX idx_peserta_no_id ON peserta(tenant_id,no_id);`,
 	} {
 		if _, err := db.DB.Exec(stmt); err != nil {
