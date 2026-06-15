@@ -190,6 +190,53 @@ func TestFilesystemQueueGetStatsCountsAllStateDirectories(t *testing.T) {
 	}
 }
 
+// TestMarkFailedAtomicNoDuplicateAfterRename verifies that MarkFailed is crash-safe: if
+// a crash left both a processing copy AND a pending copy of the same job on disk (the
+// dangerous half-completed state the OLD MarkFailed could produce), re-running MarkFailed
+// must NOT create a duplicate — the final state is exactly one file in pending (or failed)
+// and zero in processing (review Critical #5, Task 9).
+func TestMarkFailedAtomicNoDuplicateAfterRename(t *testing.T) {
+	ctx := context.Background()
+	q, err := NewFilesystemQueue(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFilesystemQueue: %v", err)
+	}
+	q.maxRetries = 5 // keep retrying so the destination is pending/, not failed/
+
+	if err := q.Enqueue(ctx, testJob("dup")); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	job, err := q.Dequeue(ctx)
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+
+	// Simulate the dangerous half-completed state: a crash AFTER the new pending copy was
+	// written but BEFORE the processing copy was deleted. Manually copy processing→pending.
+	procPath := filepath.Join(q.processingDir, job.fileName)
+	pendPath := filepath.Join(q.pendingDir, job.fileName)
+	data, rerr := os.ReadFile(procPath)
+	if rerr != nil {
+		t.Fatalf("read processing file: %v", rerr)
+	}
+	if err := os.WriteFile(pendPath, data, 0644); err != nil {
+		t.Fatalf("seed duplicate pending: %v", err)
+	}
+
+	// Now MarkFailed. The crash-safe implementation must end with exactly ONE pending file
+	// and ZERO processing files, regardless of the pre-existing duplicate.
+	if err := q.MarkFailed(ctx, job.ID, errors.New("simulated")); err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+
+	if pending := len(jsonNames(t, q.pendingDir)); pending != 1 {
+		t.Fatalf("pending = %d files, want 1 (no duplication)", pending)
+	}
+	if processing := len(jsonNames(t, q.processingDir)); processing != 0 {
+		t.Fatalf("processing = %d files, want 0 (processing cleared)", processing)
+	}
+}
+
 func TestFilesystemQueueDequeueMovesCorruptJSONToFailed(t *testing.T) {
 	ctx := context.Background()
 	q, err := NewFilesystemQueue(t.TempDir())

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -350,23 +351,18 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 		return fmt.Errorf("markFailed: marshal job: %w", err)
 	}
 
-	tmpPath := filepath.Join(q.tmpDir, fileName)
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("markFailed: create tmp file: %w", err)
-	}
-	_, writeErr := f.Write(newData)
-	closeErr := f.Close()
-	if writeErr != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("markFailed: write tmp file: %w", writeErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("markFailed: close tmp file: %w", closeErr)
+	// Step 7-9: durable write to a UNIQUE tmp name (retry-count-suffixed so concurrent
+	// retries of the same job can never collide on the tmp filename). fsync before rename
+	// so the retry payload survives a crash (review Critical #4/#5, Task 9).
+	tmpPath := filepath.Join(q.tmpDir, fileName+".retry."+strconv.FormatInt(int64(job.RetryCount), 10))
+	if err := writeDurable(tmpPath, newData); err != nil {
+		return fmt.Errorf("markFailed: write tmp: %w", err)
 	}
 
-	// Step 10-13: determine destination and rename
+	// Step 10-13: determine destination and rename. A SINGLE rename atomically replaces
+	// the destination (same filename) — even if a crash left a stale pending copy from a
+	// previous half-completed attempt, the rename overwrites it, so there is never more
+	// than one copy of the job on disk.
 	var dstDir string
 	if job.RetryCount >= q.maxRetries {
 		dstDir = q.failedDir
@@ -379,6 +375,9 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("markFailed: rename to %s: %w", dstDir, err)
 	}
+	// Durability: make the rename visible on disk. Best-effort (no-op on filesystems that
+	// reject directory fsync, e.g. Windows).
+	_ = syncDir(dstPath)
 
 	// Step 14-15: remove old processing file and clean up inFlight
 	_ = os.Remove(processingPath)
