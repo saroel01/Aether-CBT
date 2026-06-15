@@ -74,6 +74,15 @@ func RecordInfraction(c *fiber.Ctx) error {
 	if req.MapelID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
 	}
+	// Lock guard on the legacy path mirrors the session-based path (review H1, Task 13).
+	var legacyLocked bool
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COALESCE(locked, 0) FROM cek_login WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?`,
+		tenantID, req.PesertaID, req.MapelID,
+	).Scan(&legacyLocked)
+	if legacyLocked {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; infraction not recorded")
+	}
 	_, err := db.DB.Exec(`
 		UPDATE cek_login
 		SET tab_switch_count = tab_switch_count + 1, last_activity = CURRENT_TIMESTAMP
@@ -133,6 +142,15 @@ func UpdateStudentProgress(c *fiber.Ctx) error {
 	// Legacy mapel-based path (transition).
 	if req.MapelID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
+	}
+	// Lock guard on the legacy path mirrors the session-based path (review H1, Task 13).
+	var legacyLocked bool
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COALESCE(locked, 0) FROM cek_login WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?`,
+		tenantID, req.PesertaID, req.MapelID,
+	).Scan(&legacyLocked)
+	if legacyLocked {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; progress not recorded")
 	}
 	_, err := db.DB.Exec(`
 		UPDATE cek_login

@@ -118,6 +118,35 @@ func TestUpdateStudentProgress_AllowedWhenUnlocked(t *testing.T) {
 	}
 }
 
+// TestStartLegacySessionRejectsLocked: the LEGACY mapel-based path (session_id == 0) must
+// also refuse to register a new attempt when an existing (tenant, peserta, mapel) cek_login
+// row is server-locked. Without this guard a locked student could start fresh via the legacy
+// path and bypass the lock (review H1, Task 13).
+func TestStartLegacySessionRejectsLocked(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "student")
+	defer cleanup()
+	app.Post("/api/student/start", StartExamSession)
+
+	now := time.Now()
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	testutil.SeedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
+
+	// Pre-existing LEGACY cek_login row (session_id NULL) that is locked.
+	if _, err := database.Exec(`INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, locked)
+		VALUES (1, 1, 1, 'prev-legacy-token', ?, 1)`, now.Add(-5*time.Minute)); err != nil {
+		t.Fatalf("seed locked legacy cek_login: %v", err)
+	}
+
+	// Start via the legacy path: session_id omitted, only mapel_id.
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"mapel_id":1}`))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("locked legacy start: status = %d, want 403", resp.StatusCode)
+	}
+}
+
 // TestStartExamSession_LockedRejected completes Property 11 coverage: a server-locked session
 // is refused on the start path too (the serve and progress paths are covered above and in
 // content_serving_test.go). The peserta is made eligible first so the 403 is specifically for

@@ -175,6 +175,17 @@ func StartExamSession(c *fiber.Ctx) error {
 	if req.MapelID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
 	}
+	// Lock guard: if an existing (tenant, peserta, mapel) cek_login row is server-locked,
+	// refuse to register a fresh attempt. Without this a locked student could bypass the lock
+	// via the legacy path (review H1, Task 13).
+	var legacyLocked bool
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COALESCE(locked, 0) FROM cek_login WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?`,
+		tenantID, req.PesertaID, req.MapelID,
+	).Scan(&legacyLocked)
+	if legacyLocked {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
+	}
 	_, err = db.DB.Exec(`
 		INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
