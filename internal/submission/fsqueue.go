@@ -47,6 +47,7 @@ type FilesystemQueue struct {
 	doneDir       string
 	failedDir     string
 	tmpDir        string
+	retryDir      string // sidecar attempt counters for parse-failing files
 
 	maxRetries     int           // default 5
 	stuckThreshold time.Duration // default 5 * time.Minute
@@ -98,6 +99,7 @@ func NewFilesystemQueueWithConfig(root string, cfg FilesystemQueueConfig) (*File
 		doneDir:        filepath.Join(root, "done"),
 		failedDir:      filepath.Join(root, "failed"),
 		tmpDir:         filepath.Join(root, "tmp"),
+		retryDir:       filepath.Join(root, "retry"),
 		maxRetries:     maxRetries,
 		stuckThreshold: stuckThreshold,
 		doneRetention:  doneRetention,
@@ -111,6 +113,7 @@ func NewFilesystemQueueWithConfig(root string, cfg FilesystemQueueConfig) (*File
 		q.doneDir,
 		q.failedDir,
 		q.tmpDir,
+		q.retryDir,
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -238,13 +241,32 @@ func (q *FilesystemQueue) Dequeue(ctx context.Context) (*SubmissionJob, error) {
 
 		job, err := UnmarshalJob(data)
 		if err != nil {
-			// Corrupt file: move to failed/ with a companion .error.txt.
-			failedPath := filepath.Join(q.failedDir, entry.Name())
-			_ = os.Rename(dst, failedPath)
-			errTxtPath := filepath.Join(q.failedDir, strings.TrimSuffix(entry.Name(), ".json")+".error.txt")
-			_ = os.WriteFile(errTxtPath, []byte(err.Error()), 0644)
+			// Corrupt/partial file: retry before dead-lettering (review Critical #4, Task 10).
+			// A parse failure may be a transient partial write still being fsync'd; count
+			// failures via a sidecar attempt counter in retry/ and only promote to failed/
+			// after maxRetries attempts so the file gets a real chance to become valid.
+			attemptPath := filepath.Join(q.retryDir, entry.Name()+".attempts")
+			var attempts int
+			if b, rerr := os.ReadFile(attemptPath); rerr == nil {
+				attempts, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+			}
+			attempts++
+			_ = os.WriteFile(attemptPath, []byte(strconv.Itoa(attempts)), 0644)
+			if attempts >= q.maxRetries {
+				// Exhausted: dead-letter to failed/ with a companion .error.txt.
+				failedPath := filepath.Join(q.failedDir, entry.Name())
+				_ = os.Rename(dst, failedPath)
+				errTxtPath := filepath.Join(q.failedDir, strings.TrimSuffix(entry.Name(), ".json")+".error.txt")
+				_ = os.WriteFile(errTxtPath, []byte(err.Error()), 0644)
+				_ = os.Remove(attemptPath)
+			} else {
+				// Move back to pending/ for the next dequeue cycle.
+				_ = os.Rename(dst, src)
+			}
 			continue
 		}
+		// Successful parse: clear any leftover attempt sidecar from prior transient failures.
+		_ = os.Remove(filepath.Join(q.retryDir, entry.Name()+".attempts"))
 
 		job.fileName = entry.Name()
 

@@ -237,16 +237,65 @@ func TestMarkFailedAtomicNoDuplicateAfterRename(t *testing.T) {
 	}
 }
 
+// TestDequeueCorruptFileRetriesBeforeDeadLetter verifies that a corrupt/unparseable job
+// file is NOT dead-lettered on the first attempt. It is retried maxRetries times (via a
+// sidecar attempt counter) and only promoted to failed/ after exhaustion, so a transient
+// partial write (still being fsync'd) gets a chance to become valid (review Critical #4).
+func TestDequeueCorruptFileRetriesBeforeDeadLetter(t *testing.T) {
+	ctx := context.Background()
+	q, err := NewFilesystemQueue(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFilesystemQueue: %v", err)
+	}
+	q.maxRetries = 2 // small so the test exhausts quickly
+
+	// Drop a corrupt JSON file directly into pending/.
+	corrupt := filepath.Join(q.pendingDir, "1730_invalid.json")
+	if err := os.WriteFile(corrupt, []byte("not valid json {{{"), 0644); err != nil {
+		t.Fatalf("write corrupt file: %v", err)
+	}
+
+	// Each Dequeue attempt moves the file processing→(retry→pending or failed). Until
+	// maxRetries is reached the file must NOT be dead-lettered: it stays in flight via
+	// pending, and Dequeue returns nil (no valid job).
+	for attempt := 1; attempt <= q.maxRetries; attempt++ {
+		job, derr := q.Dequeue(ctx)
+		if derr != nil {
+			t.Fatalf("dequeue attempt %d: %v", attempt, derr)
+		}
+		if job != nil {
+			t.Fatalf("attempt %d: corrupt file yielded a job, want nil", attempt)
+		}
+		// Not yet dead-lettered until the final attempt.
+		if attempt < q.maxRetries {
+			if failed := len(jsonNames(t, q.failedDir)); failed != 0 {
+				t.Fatalf("attempt %d: failed dir = %d, want 0 (should still be retrying)", attempt, failed)
+			}
+		}
+	}
+
+	// After maxRetries attempts the corrupt file must be in failed/.
+	if failed := len(jsonNames(t, q.failedDir)); failed != 1 {
+		t.Fatalf("after exhaustion: failed dir = %d files, want 1", failed)
+	}
+	if pending := len(jsonNames(t, q.pendingDir)); pending != 0 {
+		t.Fatalf("after exhaustion: pending dir = %d files, want 0", pending)
+	}
+}
+
 func TestFilesystemQueueDequeueMovesCorruptJSONToFailed(t *testing.T) {
 	ctx := context.Background()
 	q, err := NewFilesystemQueue(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewFilesystemQueue: %v", err)
 	}
+	q.maxRetries = 1 // dead-letter on the first parse failure (Task 10: attempts++ then >= maxRetries)
 	if err := os.WriteFile(filepath.Join(q.pendingDir, "0000000000000000001-1-bad-12345678.json"), []byte("{bad json"), 0644); err != nil {
 		t.Fatalf("WriteFile corrupt: %v", err)
 	}
 
+	// With maxRetries=1, the first parse failure increments the counter to 1 (>= maxRetries)
+	// and dead-letters immediately.
 	job, err := q.Dequeue(ctx)
 	if err != nil {
 		t.Fatalf("Dequeue corrupt: %v", err)
