@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	ispringparser "github.com/saroel01/aether-cbt/internal/ispring"
@@ -110,6 +111,27 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 			log.Printf("[PROCESSOR] Invalid iSpring detail XML for job %d: %v", job.ID, err)
 			return fmt.Errorf("invalid detail XML: %w", err)
 		}
+	}
+
+	// Step 4b: verify the client-supplied score against the server-derived score.
+	// The webhook is unauthenticated and attempt_token is in the student's hands,
+	// so sp/tp cannot be trusted. We derive the score from the parsed XML and reject
+	// jobs whose client score diverges beyond a small rounding tolerance.
+	if detailReport != nil {
+		derivedScore, _ := ispringparser.DerivedScore(detailReport)
+		clientScore, parseErr := strconv.ParseFloat(job.Score, 64)
+		if parseErr != nil {
+			return fmt.Errorf("invalid client score %q: %w", job.Score, parseErr)
+		}
+		const scoreTolerance = 0.05
+		if !ispringparser.ScoresConsistent(clientScore, derivedScore, scoreTolerance) {
+			log.Printf("[PROCESSOR] score mismatch: client=%.2f derived=%.2f job_id=%d peserta=%d tenant=%d",
+				clientScore, derivedScore, job.ID, pesertaID, job.TenantID)
+			return fmt.Errorf("score mismatch (client=%.2f, derived=%.2f) for peserta %d",
+				clientScore, derivedScore, pesertaID)
+		}
+		// Use the derived (authoritative) value for the UPSERT.
+		job.Score = strconv.FormatFloat(derivedScore, 'f', 2, 64)
 	}
 
 	// Step 5: use Validasi from job (already set by handler as <tenant_id>_<no_id>_<mapel_id>).

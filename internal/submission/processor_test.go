@@ -73,7 +73,7 @@ func TestProcessorProcessBatchInsertsDetailRows(t *testing.T) {
 	defer db.Close()
 
 	err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{
-		processorJob("80", detailXMLWithQuestions()),
+		processorJob("10", detailXMLWithQuestions()), // client score matches XML-derived 10 (Task 2)
 	})
 	if err != nil {
 		t.Fatalf("ProcessBatch: %v", err)
@@ -94,7 +94,7 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 
 	processor := NewProcessor(db)
 	if err := processor.ProcessBatch(context.Background(), []*SubmissionJob{
-		processorJob("80", detailXMLWithQuestions()),
+		processorJob("10", detailXMLWithQuestions()), // client score matches XML-derived 10 (Task 2)
 	}); err != nil {
 		t.Fatalf("first ProcessBatch: %v", err)
 	}
@@ -150,6 +150,32 @@ func TestProcessorCleanupTargetsOnlyTheSubmittedSession(t *testing.T) {
 	}
 	if remaining != 1 {
 		t.Fatalf("second session was also deleted; remaining=%d, want 1 (cleanup must target only the submitted session)", remaining)
+	}
+}
+
+// TestProcessorRejectsInflatedClientScore verifies that the processor rejects a
+// client-supplied score that diverges from the server-derived score parsed from the
+// iSpring detail XML. The webhook is unauthenticated and attempt_token is in the
+// student's hands, so sp/tp cannot be trusted (review Critical #1, Task 2).
+func TestProcessorRejectsInflatedClientScore(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	// XML where the student actually scored 2/8.
+	xml := `<quizReport version="1"><questions>` +
+		`<multipleChoiceQuestion id="Q1" evaluationEnabled="true" awardedPoints="2" maxPoints="8" status="incorrect">` +
+		`<direction><text>q</text></direction>` +
+		`<answers correctAnswerIndex="1" userAnswerIndex="0"><answer correct="false"><text>a</text></answer><answer correct="true"><text>b</text></answer></answers>` +
+		`</multipleChoiceQuestion>` +
+		`</questions></quizReport>`
+
+	job := processorJob("8", xml) // client claims 8 — TAMPERED (derived is 2)
+	err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{job})
+	if err == nil {
+		t.Fatal("expected error for inflated client score, got nil")
+	}
+	if !strings.Contains(err.Error(), "score mismatch") {
+		t.Fatalf("expected 'score mismatch' error, got: %v", err)
 	}
 }
 
