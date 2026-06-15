@@ -86,6 +86,23 @@ func TestUpdateStudentProgress_LockedRejected(t *testing.T) {
 	}
 }
 
+// TestUpdateStudentProgress_NonOwnerRejected: a student may only update their OWN progress.
+// The test middleware authenticates user_id = 1; posting peserta_id 999 (someone else) must
+// be rejected with 403, mirroring the RecordInfraction ownership check (review H2, Task 12).
+func TestUpdateStudentProgress_NonOwnerRejected(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "student")
+	defer cleanup()
+	app.Post("/api/student/progress", UpdateStudentProgress)
+	sid := seedContentGraph(t, database, defaultTenant1Seed("ignored"))
+
+	// user_id = 1 (set by test middleware); peserta_id 999 is a different student.
+	body := strings.NewReader(fmt.Sprintf(`{"peserta_id":999,"session_id":%d,"answered_count":5,"total_questions":10}`, sid))
+	resp := doJSON(t, app, "POST", "/api/student/progress", body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (non-owner progress update)", resp.StatusCode)
+	}
+}
+
 // TestUpdateStudentProgress_AllowedWhenUnlocked: the happy path still records progress when
 // the session is not locked (regression guard for the lock check).
 func TestUpdateStudentProgress_AllowedWhenUnlocked(t *testing.T) {

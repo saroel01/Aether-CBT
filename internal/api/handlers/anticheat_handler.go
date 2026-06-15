@@ -106,6 +106,13 @@ func UpdateStudentProgress(c *fiber.Ctx) error {
 	if req.PesertaID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
 	}
+	// Ownership: a student may only update their OWN progress (review H2, Task 12). Admin/
+	// supervisor roles (proctor resets) are unaffected; this mirrors RecordInfraction's check.
+	if role := c.Locals("role"); role == "student" {
+		if userID, _ := c.Locals("user_id").(int); userID != req.PesertaID {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Students can only update their own progress")
+		}
+	}
 
 	if req.SessionID > 0 {
 		cekRepo := repository.NewCekLoginRepository(db.DB)
