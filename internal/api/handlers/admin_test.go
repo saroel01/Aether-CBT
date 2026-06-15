@@ -87,3 +87,31 @@ func TestSetClassTingkat_NotFound(t *testing.T) {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
 }
+
+// TestGetClasses_IncludesTingkat verifies Requirement 1.4: the class list includes the
+// tingkat attribute on every row (so the admin UI can display and edit it).
+func TestGetClasses_IncludesTingkat(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Get("/api/classes", GetClasses)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	if _, err := database.Exec(`UPDATE kelas SET tingkat = 'XII' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSON(t, app, "GET", "/api/classes", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := decodeJSON(t, resp)
+	rows, ok := body["data"].([]interface{})
+	if !ok || len(rows) != 1 {
+		t.Fatalf("data = %v, want 1 row", body["data"])
+	}
+	first := rows[0].(map[string]interface{})
+	if first["tingkat"] != "XII" {
+		t.Errorf("tingkat = %v, want XII", first["tingkat"])
+	}
+}

@@ -12,8 +12,8 @@ func GetClasses(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
 	rows, err := db.DB.Query(`
-		SELECT id, nama_kelas, created_at 
-		FROM kelas 
+		SELECT id, nama_kelas, tingkat, created_at
+		FROM kelas
 		WHERE tenant_id = ? AND deleted_at IS NULL
 	`, tenantID)
 	if err != nil {
@@ -22,15 +22,18 @@ func GetClasses(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type Class struct {
-		ID        int    `json:"id"`
-		NamaKelas string `json:"nama_kelas"`
-		CreatedAt string `json:"created_at"`
+		ID        int     `json:"id"`
+		NamaKelas string  `json:"nama_kelas"`
+		Tingkat   *string `json:"tingkat"`
+		CreatedAt string  `json:"created_at"`
 	}
 
 	var classes []Class
 	for rows.Next() {
 		var k Class
-		rows.Scan(&k.ID, &k.NamaKelas, &k.CreatedAt)
+		if err := rows.Scan(&k.ID, &k.NamaKelas, &k.Tingkat, &k.CreatedAt); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read classes")
+		}
 		classes = append(classes, k)
 	}
 

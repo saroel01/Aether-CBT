@@ -11,7 +11,7 @@
   let items: any[] = [];
   let allSubjects: any[] = [];
   let mappedSubjects: any[] = [];
-  
+
   let newName = '';
   let selectedClass: any = null;
   let selectedSubjectToLink = 0;
@@ -20,9 +20,30 @@
   let createLoading = false;
   let mappingLoading = false;
 
+  // Tingkat (grade level) inline-editing state (Requirement 1.1, 1.4).
+  const TINGKAT_OPTIONS = ['X', 'XI', 'XII'];
+  let editingTingkat: Record<number, string> = {};
+  let tingkatLoading: Record<number, boolean> = {};
+
   onMount(async () => {
     await loadInitialData();
   });
+
+  async function updateTingkat(kelasId: number, namaKelas: string) {
+    const tingkat = editingTingkat[kelasId] ?? '';
+    tingkatLoading[kelasId] = true;
+    try {
+      await api(`/classes/${kelasId}/tingkat`, {
+        method: 'PUT',
+        body: JSON.stringify({ tingkat })
+      });
+      toast.success(`Tingkat kelas "${namaKelas}" diperbarui menjadi "${tingkat || '—'}".`);
+      await loadInitialData();
+    } catch (e: any) {
+      toast.error('Gagal memperbarui tingkat: ' + e.message);
+    }
+    tingkatLoading[kelasId] = false;
+  }
 
   async function loadInitialData() {
     loading = true;
@@ -175,6 +196,7 @@
             <tr>
               <th class="w-20">ID</th>
               <th>Nama Kelas</th>
+              <th class="w-40">Tingkat</th>
               <th class="text-center w-24">Aksi</th>
             </tr>
           </thead>
@@ -182,16 +204,37 @@
             {#each items as c}
               {@const isSelected = selectedClass?.id === c.id}
               <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
-              <tr 
+              <tr
                 class="cursor-pointer transition-all duration-300 {isSelected ? 'bg-indigo-50/70 text-indigo-900 font-semibold ring-1 ring-indigo-200 rounded-2xl shadow-sm' : 'hover:bg-slate-50/50'}"
                 on:click={() => selectClass(c)}
               >
                 <td class="font-mono text-slate-400 font-bold">{c.id}</td>
                 <td class="font-semibold text-slate-800">{c.nama_kelas}</td>
+                <td on:click|stopPropagation>
+                  <div class="flex items-center gap-2">
+                    <select
+                      class="h-9 px-3 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-200 text-slate-800 text-xs font-semibold"
+                      value={c.tingkat ?? ''}
+                      on:change={(e) => { editingTingkat[c.id] = e.currentTarget.value; updateTingkat(c.id, c.nama_kelas); }}
+                      disabled={tingkatLoading[c.id]}
+                    >
+                      <option value="">— belum ditetapkan —</option>
+                      {#each TINGKAT_OPTIONS as t}
+                        <option value={t}>{t}</option>
+                      {/each}
+                    </select>
+                    {#if tingkatLoading[c.id]}
+                      <svg class="animate-spin h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                      </svg>
+                    {/if}
+                  </div>
+                </td>
                 <td class="text-center">
-                  <Button 
-                    variant="danger" 
-                    size="sm" 
+                  <Button
+                    variant="danger"
+                    size="sm"
                     theme="light"
                     on:click={(e) => { e.stopPropagation(); deleteClass(c.id, c.nama_kelas); }}
                   >
@@ -201,7 +244,7 @@
               </tr>
             {:else}
               <tr>
-                <td colspan="3" class="text-center py-12 text-slate-400 font-medium">
+                <td colspan="4" class="text-center py-12 text-slate-400 font-medium">
                   Belum ada kelas terdaftar. Gunakan panel kanan untuk menambah.
                 </td>
               </tr>

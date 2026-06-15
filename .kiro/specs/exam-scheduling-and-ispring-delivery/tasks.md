@@ -137,14 +137,14 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 12.2 Test: rerun tidak menduplikasi; instalasi lama tetap dapat login pada masa transisi
     - _Requirements: 14.3, 14.4, 16.4_
 
-- [ ] 13. Frontend admin (SvelteKit)
-  - [ ] 13.1 UI tingkat pada manajemen kelas (pakai `apiUrl`/`authHeaders`)
+- [x] 13. Frontend admin (SvelteKit)
+  - [x] 13.1 UI tingkat pada manajemen kelas (pakai `apiUrl`/`authHeaders`)
     - _Requirements: 12.1, 12.5_
-  - [ ] 13.2 UI manajemen paket soal: upload ZIP (progress), list, delete; umpan balik sukses/gagal
+  - [x] 13.2 UI manajemen paket soal: upload ZIP (progress), list, delete; umpan balik sukses/gagal
     - _Requirements: 12.4, 12.5, 12.6_
-  - [ ] 13.3 UI manajemen ujian: buat/sunting + tautkan paket
+  - [x] 13.3 UI manajemen ujian: buat/sunting + tautkan paket
     - _Requirements: 12.2, 12.5_
-  - [ ] 13.4 UI manajemen sesi: jendela waktu, token (auto-generate), kelas, ruang, status efektif
+  - [x] 13.4 UI manajemen sesi: jendela waktu, token (auto-generate), kelas, ruang, status efektif
     - _Requirements: 12.3, 12.5, 12.6_
 
 - [ ] 14. Frontend siswa (SvelteKit) — konten nyata
