@@ -181,21 +181,10 @@ func (q *FilesystemQueue) enqueueDirect(ctx context.Context, job *SubmissionJob)
 		return fmt.Errorf("enqueue: marshal job: %w", err)
 	}
 
-	// Step 7-9: write to tmp/ with O_WRONLY|O_CREATE|O_EXCL
+	// Step 7-9: durable write to tmp/ (fsync before rename so the file survives a crash).
 	tmpPath := filepath.Join(q.tmpDir, fileName)
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return fmt.Errorf("enqueue: create tmp file: %w", err)
-	}
-	_, writeErr := f.Write(data)
-	closeErr := f.Close()
-	if writeErr != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("enqueue: write tmp file: %w", writeErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("enqueue: close tmp file: %w", closeErr)
+	if err := writeDurable(tmpPath, data); err != nil {
+		return fmt.Errorf("enqueue: durable write: %w", err)
 	}
 
 	// Step 10-12: atomic rename tmp/ → pending/
@@ -204,6 +193,9 @@ func (q *FilesystemQueue) enqueueDirect(ctx context.Context, job *SubmissionJob)
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("enqueue: rename to pending: %w", err)
 	}
+	// Durability: make the rename visible on disk. Best-effort — on filesystems that
+	// reject directory fsync (e.g. Windows) this is a harmless no-op (review Critical #4).
+	_ = syncDir(pendingPath)
 
 	return nil
 }
