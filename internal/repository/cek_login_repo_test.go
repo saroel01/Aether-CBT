@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/saroel01/aether-cbt/internal/testutil"
@@ -186,5 +187,34 @@ func TestCekLoginRepository_GetBySessionCrossTenantNotFound(t *testing.T) {
 	_ = repo.Start(1, 1, 1, "tok")
 	if _, err := repo.GetBySession(2, 1, 1); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound cross-tenant, got %v", err)
+	}
+}
+
+// TestCekLoginRepository_StartRejectsSecondActiveSession verifies the partial unique index
+// (tenant_id, peserta_id) WHERE session_id IS NOT NULL: a peserta may not hold two concurrent
+// active session-based sessions. Starting a second distinct session must return ErrConflict
+// (review H4, Task 14).
+func TestCekLoginRepository_StartRejectsSecondActiveSession(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	seedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+	seedExamSession(t, database, 1, 1, 1, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK1", "aktif")
+	seedExamSession(t, database, 2, 1, 1, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK2", "aktif")
+
+	repo := NewCekLoginRepository(database)
+	// First start (session 1) succeeds.
+	if err := repo.Start(1, 1, 1, "attempt-1"); err != nil {
+		t.Fatalf("first Start: %v", err)
+	}
+	// Second start for a DIFFERENT session (2) must be rejected: the peserta already has an
+	// active session-based row, and the partial unique index forbids a second.
+	err := repo.Start(1, 1, 2, "attempt-2")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("second Start: err = %v, want ErrConflict", err)
 	}
 }

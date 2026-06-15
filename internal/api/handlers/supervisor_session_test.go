@@ -85,8 +85,10 @@ func TestGetRoomStatus_ComputesSessionStatus(t *testing.T) {
 	}
 }
 
-// TestResetStudentSession_TargetsSpecificSession: resetting targets only the named session,
-// clearing its lock and leaving any other active session intact (Requirement 10.4, 11.3).
+// TestResetStudentSession_TargetsSpecificSession: resetting clears the named session's
+// cek_login row (lock cleared by row removal). Task 14 enforces one active session per
+// peserta via a partial unique index, so the previous "second concurrent session survives"
+// scenario can no longer be seeded; the reset's targeted-removal property is still asserted.
 func TestResetStudentSession_TargetsSpecificSession(t *testing.T) {
 	app, _, database, cleanup := newAdminTestApp(t, "supervisor")
 	defer cleanup()
@@ -94,10 +96,6 @@ func TestResetStudentSession_TargetsSpecificSession(t *testing.T) {
 
 	sid := seedContentGraph(t, database, defaultTenant1Seed("ct-reset"))
 	cekRepo := repository.NewCekLoginRepository(database)
-	// A second active session for the same peserta (different session id) that must survive.
-	if err := cekRepo.Start(1, 1, 999, "att-other"); err != nil {
-		t.Fatalf("seed second session: %v", err)
-	}
 	if err := cekRepo.Lock(1, 1, sid); err != nil {
 		t.Fatalf("lock: %v", err)
 	}
@@ -111,10 +109,6 @@ func TestResetStudentSession_TargetsSpecificSession(t *testing.T) {
 	// The targeted session's cek_login is gone (lock cleared by row removal).
 	if _, err := cekRepo.GetBySession(1, 1, sid); !errors.Is(err, repository.ErrNotFound) {
 		t.Errorf("targeted session still present: %v (want ErrNotFound)", err)
-	}
-	// The sibling session survives.
-	if _, err := cekRepo.GetBySession(1, 1, 999); err != nil {
-		t.Errorf("sibling session was removed; want it to survive: %v", err)
 	}
 }
 

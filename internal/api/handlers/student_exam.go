@@ -157,6 +157,9 @@ func StartExamSession(c *fiber.Ctx) error {
 			return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
 		}
 		if err := cekRepo.Start(tenantID, req.PesertaID, req.SessionID, attemptToken); err != nil {
+			if errors.Is(err, repository.ErrConflict) {
+				return utils.ErrorResponse(c, fiber.StatusConflict, "You already have an active exam session; submit or have it reset first")
+			}
 			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register exam session")
 		}
 

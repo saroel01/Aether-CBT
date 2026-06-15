@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/saroel01/aether-cbt/internal/models"
 )
@@ -58,7 +59,17 @@ func (r *CekLoginRepository) Start(tenantID, pesertaID, sessionID int, attemptTo
 			login_time = CURRENT_TIMESTAMP,
 			last_activity = CURRENT_TIMESTAMP
 	`, tenantID, pesertaID, sessionID, attemptToken)
-	return err
+	if err != nil {
+		// The partial unique index idx_cek_login_one_active_session (tenant_id, peserta_id)
+		// WHERE session_id IS NOT NULL fires when a peserta already holds a different active
+		// session-based row. Map it to ErrConflict so the handler returns 409 (review H4, Task 14).
+		if strings.Contains(err.Error(), "idx_cek_login_one_active_session") ||
+			strings.Contains(err.Error(), "UNIQUE constraint failed: cek_login.tenant_id, cek_login.peserta_id") {
+			return ErrConflict
+		}
+		return err
+	}
+	return nil
 }
 
 // SetContentToken records the content-serving token issued for the active session
