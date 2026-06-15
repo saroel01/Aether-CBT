@@ -131,10 +131,10 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 11.3 Test akses role (student ditolak) + isolasi tenant
     - _Requirements: 11.4, 11.5, 16.4_
 
-- [ ] 12. Migrasi data warisan (kompatibilitas)
-  - [ ] 12.1 Util migrasi data di Go (dipanggil setelah `RunMigrations`): buat exam+session warisan dari `settings` bila tenant belum punya sesi (penjagaan idempoten "hanya bila belum ada")
+- [x] 12. Migrasi data warisan (kompatibilitas)
+  - [x] 12.1 Util migrasi data di Go (dipanggil setelah `RunMigrations`): buat exam+session warisan dari `settings` bila tenant belum punya sesi (penjagaan idempoten "hanya bila belum ada")
     - _Requirements: 14.3_
-  - [ ] 12.2 Test: rerun tidak menduplikasi; instalasi lama tetap dapat login pada masa transisi
+  - [x] 12.2 Test: rerun tidak menduplikasi; instalasi lama tetap dapat login pada masa transisi
     - _Requirements: 14.3, 14.4, 16.4_
 
 - [ ] 13. Frontend admin (SvelteKit)

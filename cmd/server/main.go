@@ -16,6 +16,8 @@ import (
 	"github.com/saroel01/aether-cbt/internal/api/middleware"
 	"github.com/saroel01/aether-cbt/internal/config"
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/repository"
+	"github.com/saroel01/aether-cbt/internal/service"
 	"github.com/saroel01/aether-cbt/internal/submission"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
@@ -64,6 +66,18 @@ func main() {
 	// Run migrations (idempotent)
 	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Legacy data migration: for any tenant still on the old global settings.token model
+	// (i.e. has a settings row but no exam_session), create one legacy exam + exam_session
+	// so the install keeps working after the upgrade (Requirement 14.3, design AD-1).
+	// Idempotent: tenants already on the session model are skipped (Requirement 14.4).
+	legacyMigrator := service.NewLegacyMigrator(
+		repository.NewExamRepository(db.DB),
+		repository.NewExamSessionRepository(db.DB),
+	)
+	if err := legacyMigrator.Migrate(db.DB); err != nil {
+		log.Fatalf("Failed to run legacy data migration: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
