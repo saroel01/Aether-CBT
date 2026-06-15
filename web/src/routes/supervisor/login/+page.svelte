@@ -6,8 +6,8 @@
   import Input from '$lib/components/ui/Input.svelte';
   import { toast } from '$lib/stores/toast';
 
-  let username = 'ruang_a';
-  let password = 'ruang123';
+  let username = import.meta.env.DEV ? 'ruang_a' : '';
+  let password = import.meta.env.DEV ? 'ruang123' : '';
   let error = '';
   let loading = false;
 
@@ -136,9 +136,11 @@
         </div>
       </div>
 
-      <div class="mt-6 text-center text-xs text-slate-500">
-        Default: <span class="font-mono text-indigo-400 font-bold">ruang_a</span> / <span class="font-mono text-indigo-400 font-bold">ruang123</span>
-      </div>
+      {#if import.meta.env.DEV}
+        <div class="mt-6 text-center text-xs text-slate-500">
+          Dev only: <span class="font-mono text-indigo-400 font-bold">ruang_a</span> / <span class="font-mono text-indigo-400 font-bold">ruang123</span>
+        </div>
+      {/if}
     </Card>
 
     <div class="mt-8 text-center text-xs text-slate-600 font-mono">

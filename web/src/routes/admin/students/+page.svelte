@@ -237,7 +237,7 @@
             </td>
             <td class="font-semibold text-slate-600">{getClassName(s.kelas_id)}</td>
             <td class="font-semibold text-slate-600">{getRoomName(s.ruang_id)}</td>
-            <td class="font-mono text-slate-400 text-xs">siswa123</td>
+            <td class="font-mono text-slate-400 text-xs">{s.password ? '••••••' : '—'}</td>
             <td class="text-center">
               <!-- Tactile Delete Button themed for light screen -->
               <Button 

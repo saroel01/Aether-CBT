@@ -8,8 +8,8 @@
   import Table from '$lib/components/ui/Table.svelte';
   import { toast } from '$lib/stores/toast';
 
-  let username = 'admin';
-  let password = 'admin123';
+  let username = import.meta.env.DEV ? 'admin' : '';
+  let password = import.meta.env.DEV ? 'admin123' : '';
   let error = '';
   let loading = false;
   let loggedIn = false;
@@ -183,9 +183,11 @@
             </Button>
           </form>
 
-          <p class="text-xs text-center text-slate-400 mt-6 leading-relaxed">
-            Kredensial Default: <span class="font-mono text-indigo-600 font-bold">admin</span> / <span class="font-mono text-indigo-600 font-bold">admin123</span>
-          </p>
+          {#if import.meta.env.DEV}
+            <p class="text-xs text-center text-slate-400 mt-6 leading-relaxed">
+              Dev only: <span class="font-mono text-indigo-600 font-bold">admin</span> / <span class="font-mono text-indigo-600 font-bold">admin123</span>
+            </p>
+          {/if}
         </Card>
       </div>
     </div>

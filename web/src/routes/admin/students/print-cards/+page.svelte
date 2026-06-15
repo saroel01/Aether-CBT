@@ -46,9 +46,11 @@
     return found ? found.nama_ruang : `ID: ${id}`;
   }
 
-  // Generates the login URL to encode in the QR Code
+  // Generates the login URL to encode in the QR Code.
+  // NOTE: never embed a password. The student authenticates with their own per-student
+  // password, printed separately on the card by the admin (review Critical #3, Task 7).
   function getLoginURL(noId: string): string {
-    return `http://${window.location.hostname}:5173/student/login?no_id=${noId}&password=siswa123&token=${activeToken}`;
+    return `http://${window.location.hostname}:5173/student/login?no_id=${noId}&token=${activeToken}`;
   }
 </script>
 
@@ -115,7 +117,7 @@
               </div>
               <div class="grid grid-cols-3 pt-1 border-t border-slate-100 mt-2">
                 <span class="text-slate-500 font-medium">Sandi</span>
-                <span class="col-span-2 font-mono font-bold text-indigo-600">: siswa123</span>
+                <span class="col-span-2 font-mono font-bold text-indigo-600">: ____________________</span>
               </div>
             </div>
 
