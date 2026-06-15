@@ -147,12 +147,12 @@ Konvensi penyelesaian (gerbang kualitas, Requirement 16.5): setiap task backend 
   - [x] 13.4 UI manajemen sesi: jendela waktu, token (auto-generate), kelas, ruang, status efektif
     - _Requirements: 12.3, 12.5, 12.6_
 
-- [ ] 14. Frontend siswa (SvelteKit) — konten nyata
-  - [ ] 14.1 Ganti `generateQuestions()`/XML tiruan di `student/exam/+page.svelte` dengan embed konten dari `/api/exam/content/...` (iframe same-origin)
+- [x] 14. Frontend siswa (SvelteKit) — konten nyata
+  - [x] 14.1 Ganti `generateQuestions()`/XML tiruan di `student/exam/+page.svelte` dengan embed konten dari `/api/exam/content/...` (iframe same-origin)
     - _Requirements: 8.1, 9.1_
-  - [ ] 14.2 Sesuaikan alur login/pilih-sesi/start agar menyimpan konteks sesi & memuat konten; pertahankan pelaporan progres (debounced) & infraction
+  - [x] 14.2 Sesuaikan alur login/pilih-sesi/start agar menyimpan konteks sesi & memuat konten; pertahankan pelaporan progres (debounced) & infraction
     - _Requirements: 6.4, 7.3, 10.1, 13.2_
-  - [ ] 14.3 Pastikan `npm run build` lulus dan tidak ada hardcode URL/token
+  - [x] 14.3 Pastikan `npm run build` lulus dan tidak ada hardcode URL/token
     - _Requirements: 12.5, 16.5_
 
 - [ ] 15. Pengujian skala & verifikasi shim
