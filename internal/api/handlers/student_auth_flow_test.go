@@ -67,7 +67,11 @@ func setupStudentAuthFlowDB(t *testing.T) {
 
 	_, _ = db.DB.Exec(`INSERT INTO tenants (id, slug, name) VALUES (1, 'default', 'Default')`)
 	_, _ = db.DB.Exec(`INSERT INTO settings (tenant_id, token, is_exam_active) VALUES (1, 'ujian2026', TRUE)`)
-	_, _ = db.DB.Exec(`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', 'siswa123', 'Siswa Tes', 1, 1)`)
+	hashedPW, err := utils.HashPassword("siswa123")
+	if err != nil {
+		t.Fatalf("hash seed password: %v", err)
+	}
+	_, _ = db.DB.Exec(`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', ?, 'Siswa Tes', 1, 1)`, hashedPW)
 	_, _ = db.DB.Exec(`INSERT INTO mapel (id, tenant_id, nama_mapel) VALUES (5, 1, 'Matematika')`)
 }
 
@@ -86,7 +90,7 @@ func TestStudentLoginReturnsJWTUsableForProtectedExamStart(t *testing.T) {
 
 	loginReq := httptest.NewRequest("POST", "/auth/student-login", bytes.NewBufferString(`{"no_id":"2026001","password":"siswa123","token":"ujian2026"}`))
 	loginReq.Header.Set("Content-Type", "application/json")
-	loginResp, err := app.Test(loginReq)
+	loginResp, err := app.Test(loginReq, -1)
 	if err != nil {
 		t.Fatalf("student login request failed: %v", err)
 	}
@@ -110,7 +114,7 @@ func TestStudentLoginReturnsJWTUsableForProtectedExamStart(t *testing.T) {
 	startReq := httptest.NewRequest("POST", "/student/start", bytes.NewBufferString(`{"peserta_id":42,"mapel_id":5}`))
 	startReq.Header.Set("Content-Type", "application/json")
 	startReq.Header.Set("Authorization", "Bearer "+loginBody.Data.Token)
-	startResp, err := app.Test(startReq)
+	startResp, err := app.Test(startReq, -1)
 	if err != nil {
 		t.Fatalf("start exam request failed: %v", err)
 	}

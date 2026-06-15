@@ -3,7 +3,6 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -45,17 +44,15 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-// CheckPasswordHash compares password with hash
+// CheckPasswordHash compares a plaintext password against a stored bcrypt hash using
+// bcrypt's constant-time comparison. A stored value that is not a bcrypt hash (empty,
+// too short, or plaintext) is always rejected — there is no plaintext fallback. The
+// short-prefix guard avoids feeding garbage into CompareHashAndPassword.
 func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
-func CheckPasswordOrPlaintext(password, stored string) bool {
-	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
-		return CheckPasswordHash(password, stored)
+	if len(hash) < 7 || (hash[:4] != "$2a$" && hash[:4] != "$2b$" && hash[:4] != "$2y$") {
+		return false
 	}
-	return password == stored
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
 // GenerateToken generates a JWT token

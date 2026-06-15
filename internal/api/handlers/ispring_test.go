@@ -17,6 +17,7 @@ import (
 
 	"github.com/saroel01/aether-cbt/internal/db"
 	"github.com/saroel01/aether-cbt/internal/submission"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // setupTestDB initializes an in-memory SQLite database and creates the necessary schemas.
@@ -100,11 +101,13 @@ func setupTestDB(t *testing.T) func() {
 		}
 	}
 
-	// Seed basic test data
+	// Seed basic test data. The peserta password is a bcrypt hash of "siswa123" so
+	// any login-based test in this package authenticates (Task 6 removed plaintext fallback).
+	hashedSeedPW, _ := utils.HashPassword("siswa123")
 	_, _ = db.DB.Exec("INSERT INTO tenants (id, slug, name) VALUES (1, 'default', 'Sekolah Contoh')")
 	_, _ = db.DB.Exec("INSERT INTO kelas (id, nama_kelas) VALUES (10, 'XII-RPL')")
 	_, _ = db.DB.Exec("INSERT INTO mapel (id, tenant_id, nama_mapel, durasi_menit) VALUES (5, 1, 'Matematika', 90)")
-	_, _ = db.DB.Exec("INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', 'siswa123', 'Syahrul Hamdi', 10, 1)")
+	_, _ = db.DB.Exec("INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (42, 1, '2026001', ?, 'Syahrul Hamdi', 10, 1)", hashedSeedPW)
 	_, _ = db.DB.Exec("INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, session_id, attempt_token) VALUES (1, 42, 5, 7, 'attempt-secret')") // Active Exam Session
 
 	return func() {

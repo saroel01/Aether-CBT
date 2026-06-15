@@ -43,7 +43,7 @@ func StudentLogin(c *fiber.Ctx) error {
 		WHERE no_id = ? AND tenant_id = ? AND deleted_at IS NULL
 	`, req.NoID, tenantID).Scan(&pesertaID, &storedPassword)
 
-	if err != nil || !utils.CheckPasswordOrPlaintext(req.Password, storedPassword) {
+	if err != nil || !utils.CheckPasswordHash(req.Password, storedPassword) {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 

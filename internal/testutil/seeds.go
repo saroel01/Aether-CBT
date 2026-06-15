@@ -3,6 +3,8 @@ package testutil
 import (
 	"database/sql"
 	"testing"
+
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 // Seed helpers shared across repository, service, and handler tests. Each inserts a
@@ -41,11 +43,16 @@ func SeedRuang(t *testing.T, database *sql.DB, id, tenantID int, nama, username 
 	}
 }
 
-// SeedPeserta inserts a participant row. kelasID and ruangID must reference existing
+// SeedPeserta inserts a participant row whose password is the bcrypt hash of "siswa123"
+// (the convention every caller logs in with). kelasID and ruangID must reference existing
 // classes/rooms in the same tenant (peserta.ruang_id is NOT NULL).
 func SeedPeserta(t *testing.T, database *sql.DB, id, tenantID, kelasID, ruangID int, noID, nama string) {
 	t.Helper()
-	if _, err := database.Exec(`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, tenantID, noID, "siswa123", nama, kelasID, ruangID); err != nil {
+	hashed, err := utils.HashPassword("siswa123")
+	if err != nil {
+		t.Fatalf("seed peserta %d: hash password: %v", id, err)
+	}
+	if _, err := database.Exec(`INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, tenantID, noID, hashed, nama, kelasID, ruangID); err != nil {
 		t.Fatalf("seed peserta %d: %v", id, err)
 	}
 }
