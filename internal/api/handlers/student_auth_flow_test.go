@@ -47,6 +47,19 @@ func setupStudentAuthFlowDB(t *testing.T) {
 			durasi_menit INTEGER DEFAULT 90,
 			deleted_at DATETIME
 		);`,
+		`CREATE TABLE kelas (
+			id INTEGER PRIMARY KEY,
+			tenant_id INTEGER NOT NULL,
+			nama_kelas TEXT NOT NULL,
+			deleted_at DATETIME
+		);`,
+		`CREATE TABLE ruang (
+			id INTEGER PRIMARY KEY,
+			tenant_id INTEGER NOT NULL,
+			nama_ruang TEXT NOT NULL,
+			username TEXT,
+			password_hash TEXT
+		);`,
 		`CREATE TABLE cek_login (
 			id INTEGER PRIMARY KEY,
 			tenant_id INTEGER NOT NULL,
@@ -67,6 +80,9 @@ func setupStudentAuthFlowDB(t *testing.T) {
 
 	_, _ = db.DB.Exec(`INSERT INTO tenants (id, slug, name) VALUES (1, 'default', 'Default')`)
 	_, _ = db.DB.Exec(`INSERT INTO settings (tenant_id, token, is_exam_active) VALUES (1, 'ujian2026', TRUE)`)
+	// Seed kelas + ruang so CreateStudent's tenant-ref validation (Task 23) passes for kelas_id=1/ruang_id=1.
+	_, _ = db.DB.Exec(`INSERT INTO kelas (id, tenant_id, nama_kelas) VALUES (1, 1, 'XII IPA 1')`)
+	_, _ = db.DB.Exec(`INSERT INTO ruang (id, tenant_id, nama_ruang, username, password_hash) VALUES (1, 1, 'Ruang A', 'ruang_a', 'hash')`)
 	hashedPW, err := utils.HashPassword("siswa123")
 	if err != nil {
 		t.Fatalf("hash seed password: %v", err)

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
@@ -57,6 +59,40 @@ func CreateStudent(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
+	// Validation (review H14, Task 23): no_id required + unique within tenant; kelas/ruang
+	// refs must belong to the caller's tenant.
+	if strings.TrimSpace(req.NoID) == "" {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "no_id is required")
+	}
+	var dup int
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COUNT(*) FROM peserta WHERE tenant_id = ? AND no_id = ? AND deleted_at IS NULL`,
+		tenantID, req.NoID,
+	).Scan(&dup)
+	if dup > 0 {
+		return utils.ErrorResponse(c, fiber.StatusConflict, "no_id already exists in this tenant")
+	}
+	if req.KelasID > 0 {
+		var k int
+		_ = db.DB.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+			req.KelasID, tenantID,
+		).Scan(&k)
+		if k == 0 {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, "class not found in tenant")
+		}
+	}
+	if req.RuangID > 0 {
+		var r int
+		_ = db.DB.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
+			req.RuangID, tenantID,
+		).Scan(&r)
+		if r == 0 {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, "room not found in tenant")
+		}
+	}
+
 	if req.Password == "" {
 		req.Password = "siswa123"
 	}
@@ -72,6 +108,10 @@ func CreateStudent(c *fiber.Ctx) error {
 	`, tenantID, req.NoID, passwordHash, req.NamaPeserta, req.KelasID, req.RuangID, req.JenisKelamin)
 
 	if err != nil {
+		// Defensive: a concurrent create could win the uniqueness race; map it to 409.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return utils.ErrorResponse(c, fiber.StatusConflict, "no_id already exists in this tenant")
+		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create student")
 	}
 

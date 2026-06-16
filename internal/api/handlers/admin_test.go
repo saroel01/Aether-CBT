@@ -143,6 +143,43 @@ func TestGetSettings_SeedsRandomToken(t *testing.T) {
 	}
 }
 
+// TestCreateStudent_RejectsDuplicateNoID verifies CreateStudent rejects a duplicate no_id
+// within the same tenant with 409 (review H14, Task 23).
+func TestCreateStudent_RejectsDuplicateNoID(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/students", CreateStudent)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	testutil.SeedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa") // existing
+
+	resp := doJSON(t, app, "POST", "/api/students", strings.NewReader(`{"no_id":"2026001","password":"pw","nama_peserta":"Dup","kelas_id":1,"ruang_id":1}`))
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate no_id: status = %d, want 409", resp.StatusCode)
+	}
+}
+
+// TestCreateStudent_RejectsCrossTenantRef verifies CreateStudent rejects a kelas_id from
+// another tenant with 400 (review H14, Task 23).
+func TestCreateStudent_RejectsCrossTenantRef(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/students", CreateStudent)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedTenant(t, database, 2, "other", "Other School")
+	testutil.SeedKelas(t, database, 2, 2, "Other Tenant Class") // tenant 2
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+
+	// Caller is tenant 1; kelas_id 2 belongs to tenant 2.
+	resp := doJSON(t, app, "POST", "/api/students", strings.NewReader(`{"no_id":"2026099","password":"pw","nama_peserta":"X","kelas_id":2,"ruang_id":1}`))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("cross-tenant kelas ref: status = %d, want 400", resp.StatusCode)
+	}
+}
+
 // TestLinkClassSubject_RejectsCrossTenant verifies LinkClassSubject rejects a link between
 // a kelas in the caller's tenant and a mapel from a DIFFERENT tenant (review H16, Task 17).
 func TestLinkClassSubject_RejectsCrossTenant(t *testing.T) {
