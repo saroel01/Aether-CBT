@@ -1,6 +1,9 @@
 package repository
 
 import (
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -288,5 +291,54 @@ func TestExamSessionRepository_ParticipantEligibility(t *testing.T) {
 	// Cross-tenant peserta is never eligible.
 	if ok, _ := repo.ParticipantEligible(1, 3, s.ID); ok {
 		t.Error("cross-tenant peserta should not be eligible")
+	}
+}
+
+// TestExamSessionRepository_ConcurrentCreateSameTokenRejectsOne verifies the token-overlap
+// check + insert are atomic (no TOCTOU): two concurrent creates of the same token with
+// overlapping windows must not both succeed. Exactly one should win; the other must get
+// ErrTokenConflict (review H5, Task 15).
+func TestExamSessionRepository_ConcurrentCreateSameTokenRejectsOne(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+
+	// Two concurrent creates with the SAME token and overlapping windows.
+	in := SessionInput{
+		ExamID:       1,
+		Nama:         strPtr("Concurrent"),
+		WaktuMulai:   atTime(1, 9),
+		WaktuSelesai: atTime(1, 11),
+		Token:        "TOK-DUP",
+	}
+
+	var wg sync.WaitGroup
+	var successCount int32
+	var conflictCount int32
+	const goroutines = 2
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			repo := NewExamSessionRepository(database)
+			_, err := repo.Create(1, in)
+			if err == nil {
+				atomic.AddInt32(&successCount, 1)
+			} else if errors.Is(err, ErrConflict) {
+				atomic.AddInt32(&conflictCount, 1)
+			} else {
+				t.Logf("unexpected error type: %T: %v", err, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if successCount != 1 {
+		t.Fatalf("concurrent same-token creates: %d succeeded, want exactly 1 (successCount=%d conflictCount=%d)", successCount, successCount, conflictCount)
+	}
+	if conflictCount != 1 {
+		t.Fatalf("concurrent same-token creates: %d conflicts, want exactly 1 (successCount=%d conflictCount=%d)", conflictCount, successCount, conflictCount)
 	}
 }

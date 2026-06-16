@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/saroel01/aether-cbt/internal/models"
@@ -85,6 +87,11 @@ func (r *ExamSessionRepository) tenantHasRow(table string, tenantID, id int) (bo
 }
 
 // Create inserts a new exam session (Requirement 4.1), defaulting status to "draft".
+// Create inserts a new session. The token-overlap check and the INSERT run inside a
+// single BEGIN IMMEDIATE transaction so concurrent creates of the same token with
+// overlapping windows cannot both succeed (closes the TOCTOU that ValidateCreate + Create
+// previously had as two separate statements — review H5, Task 15). On conflict it returns
+// ErrConflict. The scheduling service's ValidateCreate is kept as a cheap pre-check.
 func (r *ExamSessionRepository) Create(tenantID int, in SessionInput) (*models.ExamSession, error) {
 	if err := r.validateExam(tenantID, in.ExamID); err != nil {
 		return nil, err
@@ -93,11 +100,50 @@ func (r *ExamSessionRepository) Create(tenantID int, in SessionInput) (*models.E
 	if status == "" {
 		status = models.SessionStatusDraft
 	}
-	res, err := r.db.Exec(`
+
+	// BEGIN IMMEDIATE acquires the write lock up front; modernc.org/sqlite maps
+	// sql.LevelSerializable to it. The overlap SELECT then reads a stable snapshot that no
+	// concurrent writer can change before this tx commits. A concurrent writer that hits the
+	// lock gets SQLITE_BUSY; we retry briefly with backoff so the loser eventually acquires
+	// the lock and sees the winner's row, returning a clean ErrConflict (review H5, Task 15).
+	var tx *sql.Tx
+	var err error
+	for attempt := 0; ; attempt++ {
+		tx, err = r.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err == nil {
+			break
+		}
+		if !isBusyErr(err) {
+			return nil, err
+		}
+		if attempt >= busyRetries {
+			return nil, err
+		}
+		time.Sleep(busyBackoff << uint(attempt)) // 5ms, 10ms, 20ms, 40ms, 80ms
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Authoritative in-tx overlap check.
+	var count int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*) FROM exam_session
+		WHERE tenant_id = ? AND token = ? AND deleted_at IS NULL AND id <> 0
+		  AND waktu_mulai < ? AND waktu_selesai > ?
+	`, tenantID, in.Token, sqlDatetime(in.WaktuSelesai), sqlDatetime(in.WaktuMulai)).Scan(&count); err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return nil, ErrConflict
+	}
+
+	res, err := tx.Exec(`
 		INSERT INTO exam_session (tenant_id, exam_id, nama, waktu_mulai, waktu_selesai, token, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`, tenantID, in.ExamID, in.Nama, sqlDatetime(in.WaktuMulai), sqlDatetime(in.WaktuSelesai), in.Token, status)
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	id, err := res.LastInsertId()
@@ -328,5 +374,23 @@ func (r *ExamSessionRepository) ParticipantEligible(tenantID, pesertaID, session
 		return false, err
 	}
 	return eligible != 0, nil
+}
+
+// busyRetries / busyBackoff govern the BEGIN IMMEDIATE retry loop in Create. SQLite hands a
+// concurrent writer SQLITE_BUSY; retrying with backoff lets the loser acquire the lock and
+// observe the winner's row instead of surfacing a hard error (review H5, Task 15).
+const (
+	busyRetries = 5
+	busyBackoff = 5 * time.Millisecond
+)
+
+// isBusyErr reports whether err is a SQLite SQLITE_BUSY error (modernc.org/sqlite surfaces
+// it as "database is locked (5) (SQLITE_BUSY)").
+func isBusyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
 

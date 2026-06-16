@@ -44,6 +44,9 @@ func CreateExamSession(c *fiber.Ctx) error {
 	}
 	sess, err := repository.NewExamSessionRepository(db.DB).Create(tenantID, in)
 	if err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			return utils.ErrorResponse(c, fiber.StatusConflict, "Session token overlaps another session's window")
+		}
 		if errors.Is(err, repository.ErrInvalidReference) {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, "Referenced exam not found in tenant")
 		}
