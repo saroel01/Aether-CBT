@@ -90,12 +90,19 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		}
 	}
 
-	// Step 3: check grace period (durasi_menit + 5 minutes).
+	// Step 3: check grace period (durasi_menit + 5 minutes). The authoritative duration is
+	// the EXAM's (via the session), not the mapel's, falling back to mapel then 90 only if the
+	// session→exam chain is missing (legacy rows). This prevents a long mapel default from
+	// masking a shorter exam duration (review data finding #21, Task 35).
 	var durasiMenit int = 90
-	_ = tx.QueryRowContext(ctx,
-		"SELECT COALESCE(durasi_menit, 90) FROM mapel WHERE id = ? AND tenant_id = ?",
-		mapelID, job.TenantID,
-	).Scan(&durasiMenit)
+	_ = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(ex.durasi_menit, m.durasi_menit, 90)
+		FROM cek_login cl
+		LEFT JOIN exam_session es ON es.id = cl.session_id AND es.tenant_id = cl.tenant_id
+		LEFT JOIN exam ex ON ex.id = es.exam_id AND ex.tenant_id = es.tenant_id
+		LEFT JOIN mapel m ON m.id = cl.mapel_id AND m.tenant_id = cl.tenant_id
+		WHERE cl.peserta_id = ? AND cl.tenant_id = ? AND cl.attempt_token = ?
+	`, pesertaID, job.TenantID, job.AttemptToken).Scan(&durasiMenit)
 
 	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
 	actualDuration := time.Now().UTC().Sub(loginTime.UTC())
