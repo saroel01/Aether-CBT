@@ -56,11 +56,12 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	// (Requirement 11.3, Task 10.3). Anti-cheat token validation is done in the handler.
 	var mapelID int
 	var loginTime time.Time
+	var sessionID sql.NullInt64
 	requiresGraceCheck := true
 	err = tx.QueryRowContext(ctx,
-		"SELECT mapel_id, login_time FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?",
+		"SELECT mapel_id, login_time, session_id FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?",
 		pesertaID, job.TenantID, job.AttemptToken,
-	).Scan(&mapelID, &loginTime)
+	).Scan(&mapelID, &loginTime, &sessionID)
 	if err != nil {
 		if err == sql.ErrNoRows && job.Validasi != "" {
 			if existingErr := tx.QueryRowContext(ctx,
@@ -149,16 +150,25 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	}
 
 	// Step 6: UPSERT hasil_tes using ON CONFLICT(tenant_id, validasi) DO UPDATE.
+	// exam_session_id is set so each result is attributable to its wave (Task 37). The replay
+	// guard (Task 38) only bumps waktu_selesai when the prior value is NULL or within a
+	// 10-minute (600s) admin-replay window, so a stale replay cannot rewrite the finish time.
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, skor, skor_maks, detail_xml, status, validasi, waktu_selesai)
-		VALUES (?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
+		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, exam_session_id, skor, skor_maks, detail_xml, status, validasi, waktu_selesai)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(tenant_id, validasi) DO UPDATE SET
+			exam_session_id = COALESCE(excluded.exam_session_id, hasil_tes.exam_session_id),
 			skor = excluded.skor,
 			skor_maks = excluded.skor_maks,
 			detail_xml = excluded.detail_xml,
 			status = 'submitted',
-			waktu_selesai = CURRENT_TIMESTAMP
-	`, job.TenantID, pesertaID, mapelID, job.Score, job.MaxScore, job.DetailXML, validasi)
+			waktu_selesai = CASE
+				WHEN hasil_tes.waktu_selesai IS NULL
+					OR (julianday(CURRENT_TIMESTAMP) - julianday(hasil_tes.waktu_selesai)) * 86400 < 600
+				THEN CURRENT_TIMESTAMP
+				ELSE hasil_tes.waktu_selesai
+			END
+	`, job.TenantID, pesertaID, mapelID, sessionID, job.Score, job.MaxScore, job.DetailXML, validasi)
 	if err != nil {
 		return fmt.Errorf("upsert hasil_tes: %w", err)
 	}
