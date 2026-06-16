@@ -72,8 +72,8 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 				// Diagnostic: count remaining sessions for this peserta and tenant.
 				var sameTenant int
 				var samePesertaAnyMapel int
-				_ = p.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE tenant_id = ?", job.TenantID).Scan(&sameTenant)
-				_ = p.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, job.TenantID).Scan(&samePesertaAnyMapel)
+				_ = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE tenant_id = ?", job.TenantID).Scan(&sameTenant)
+				_ = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, job.TenantID).Scan(&samePesertaAnyMapel)
 				log.Printf("[PROCESSOR] cek_login miss: peserta=%d tenant=%d sessions_for_peserta=%d total_sessions_in_tenant=%d sql_err=%v",
 					pesertaID, job.TenantID, samePesertaAnyMapel, sameTenant, err)
 				return fmt.Errorf("active session not found for peserta %d (tenant %d): %w", pesertaID, job.TenantID, err)
