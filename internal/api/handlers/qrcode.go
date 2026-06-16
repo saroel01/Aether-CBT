@@ -6,11 +6,13 @@ import (
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
-// GetTokenQRCode generates and returns a QR Code PNG image for a text parameter
+// GetTokenQRCode generates and returns a QR Code PNG image for a text parameter. The text
+// length is capped to bound the cost of QR generation and deter abuse of the public endpoint
+// (review F14, Task 28).
 func GetTokenQRCode(c *fiber.Ctx) error {
 	text := c.Query("text", "")
-	if text == "" {
-		return c.Status(fiber.StatusBadRequest).SendString("Missing text parameter")
+	if text == "" || len(text) > 256 {
+		return c.Status(fiber.StatusBadRequest).SendString("invalid text")
 	}
 
 	pngBytes, err := utils.GenerateQRCode(text, 256)

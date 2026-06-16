@@ -194,15 +194,19 @@ func main() {
 	// Protected routes (require login)
 	protected := api.Group("", middleware.AuthMiddleware())
 
-	// Room Supervisor routes
+	// Role middlewares (declared up front so any route below can reference them).
 	supervisorOnly := middleware.RequireRoles("supervisor", "admin")
+	adminOnly := middleware.RequireRoles("admin", "superadmin")
+
+	// Room Supervisor routes
 	protected.Get("/supervisor/room-status", supervisorOnly, handlers.GetRoomStatus)
 	protected.Get("/supervisor/room-status/live", supervisorOnly, handlers.GetRoomStatusSSE)
 	protected.Get("/supervisor/settings", supervisorOnly, handlers.GetSupervisorSettings)
 	protected.Post("/supervisor/reset", supervisorOnly, handlers.ResetStudentSession)
 
-	// Debug routes
-	protected.Get("/debug/queue", supervisorOnly, handlers.GetQueueStatus(subQueue))
+	// Debug routes — admin-only so internal queue diagnostics never leak to room supervisors
+	// (review F13, Task 28).
+	protected.Get("/debug/queue", adminOnly, handlers.GetQueueStatus(subQueue))
 
 	// Student Exam Active session routes
 	authenticatedExamUsers := middleware.RequireRoles("student", "admin", "supervisor")
@@ -216,7 +220,6 @@ func main() {
 	protected.Get("/student/remaining-time", authenticatedExamUsers, handlers.GetRemainingTime)
 
 	// Admin Settings & Mapping routes
-	adminOnly := middleware.RequireRoles("admin", "superadmin")
 	protected.Get("/admin/settings", adminOnly, handlers.GetSettings)
 	protected.Post("/admin/settings", adminOnly, handlers.UpdateSettings)
 	protected.Post("/admin/curriculum/link", adminOnly, handlers.LinkClassSubject)
