@@ -85,7 +85,10 @@ func UpdateMyProfile(c *fiber.Ctx) error {
 		if len(req.NewPassword) < 6 {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, "New password must be at least 6 characters")
 		}
-		newHash, _ := utils.HashPassword(req.NewPassword)
+		newHash, err := utils.HashPassword(req.NewPassword)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to hash password")
+		}
 		updates = append(updates, "password_hash = ?")
 		args = append(args, newHash)
 	}
