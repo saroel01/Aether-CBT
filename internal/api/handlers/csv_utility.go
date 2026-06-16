@@ -157,6 +157,7 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 		LEFT JOIN mapel m ON ht.mapel_id = m.id
 		WHERE ht.tenant_id = ?
 		ORDER BY k.nama_kelas ASC, p.no_id ASC
+		LIMIT 5000
 	`, tenantID)
 
 	if err != nil {
@@ -176,6 +177,7 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 
 		err = rows.Scan(&noID, &namaPeserta, &namaKelas, &namaMapel, &skor, &skorMaks, &status, &createdAt)
 		if err != nil {
+			log.Printf("[export-csv] scan error: %v", err)
 			continue
 		}
 
@@ -189,6 +191,9 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 			status,
 			createdAt,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[export-csv] row iteration error: %v", err)
 	}
 	writer.Flush()
 
@@ -208,7 +213,7 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusForbidden, "Unauthorized access")
 	}
 
-	// Fetch student essay answers
+	// Fetch student essay answers (capped at 5000 rows — review H17, Task 26).
 	rows, err := db.DB.Query(`
 		SELECT p.no_id, p.nama_peserta, COALESCE(k.nama_kelas, '—'), COALESCE(m.nama_mapel, '—'),
 		       hd.question_id, hd.question_text, hd.user_answer, hd.awarded_points, hd.max_points
@@ -219,6 +224,7 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		LEFT JOIN mapel m ON ht.mapel_id = m.id
 		WHERE ht.tenant_id = ? AND hd.question_type = 'essayQuestion'
 		ORDER BY k.nama_kelas ASC, p.no_id ASC
+		LIMIT 5000
 	`, tenantID)
 
 	if err != nil {
