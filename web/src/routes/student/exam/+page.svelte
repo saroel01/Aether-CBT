@@ -30,6 +30,52 @@
   let showConfirmExit = false;
   let showResultModal = false;
 
+  // Iframe load state (Task 21): detect a failed/blank content load and offer retry.
+  // Same-origin content lets us sanity-check the loaded document; cross-origin falls back
+  // to assuming success. A timeout guard catches network failures (which never fire 'error').
+  let iframeError = false;
+  let iframeLoaded = false;
+  let iframeLoadTimer: ReturnType<typeof setTimeout> | null = null;
+  const IFRAME_LOAD_TIMEOUT_MS = 8000;
+
+  function reloadIframe() {
+    iframeError = false;
+    iframeLoaded = false;
+    const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
+    if (f) {
+      // Force a reload by reassigning src.
+      const src = f.src;
+      f.src = 'about:blank';
+      requestAnimationFrame(() => { f.src = src; });
+    }
+    armLoadTimeout();
+  }
+
+  function armLoadTimeout() {
+    if (iframeLoadTimer) clearTimeout(iframeLoadTimer);
+    iframeLoadTimer = setTimeout(() => {
+      if (!iframeLoaded) iframeError = true;
+    }, IFRAME_LOAD_TIMEOUT_MS);
+  }
+
+  function onIframeLoad() {
+    iframeLoaded = true;
+    iframeLoadTimer && clearTimeout(iframeLoadTimer);
+    // Same-origin: sanity-check the document isn't a near-empty error page.
+    try {
+      const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
+      const doc = f?.contentDocument;
+      if (doc && doc.body && doc.body.innerHTML.replace(/\s/g, '').length < 100) {
+        iframeError = true;
+      } else {
+        iframeError = false;
+      }
+    } catch {
+      // cross-origin: assume loaded OK.
+      iframeError = false;
+    }
+  }
+
   // Debounced progress ticker (Requirement 13.2): coalesce frequent iSpring progress events into
   // periodic light writes instead of writing on every click.
   let pendingAnswered = 0;
@@ -81,6 +127,9 @@
 
     // Debounced progress flush interval.
     progressTimer = setInterval(flushProgress, PROGRESS_DEBOUNCE_MS);
+
+    // Arm the iframe load timeout so a network failure surfaces an error overlay.
+    armLoadTimeout();
   });
 
   onDestroy(() => {
@@ -90,6 +139,7 @@
     if (progressTimer) clearInterval(progressTimer);
     if (tickHandle) clearInterval(tickHandle);
     if (resyncHandle) clearInterval(resyncHandle);
+    if (iframeLoadTimer) clearTimeout(iframeLoadTimer);
   });
 
   async function refreshRemainingTime() {
@@ -256,13 +306,34 @@
        served index.html which redirects result POSTs to /api/ispring/webhook with the
        attempt_token/tenant_id/sid. No hardcoded URL/token here (Req 12.5). -->
   <div class="flex-1 relative z-10">
+    {#if iframeError}
+      <div class="absolute inset-0 bg-red-950/40 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-30">
+        <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md shadow-2xl">
+          <div class="h-16 w-16 bg-red-950/40 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-900/30">
+            <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.7-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-slate-100 mb-2 font-display">Gagal memuat soal ujian</h3>
+          <p class="text-sm text-slate-400 mb-5 leading-relaxed">
+            Periksa koneksi internet, lalu coba lagi. Jika masih gagal, hubungi pengawas.
+          </p>
+          <div class="flex flex-col gap-2">
+            <Button variant="primary" size="md" on:click={reloadIframe}>Coba Muat Ulang</Button>
+            <Button variant="danger" size="sm" on:click={confirmExit}>Hentikan Ujian</Button>
+          </div>
+        </div>
+      </div>
+    {/if}
     <iframe
+      id="exam-iframe"
       title="Lembar Ujian iSpring"
       src={apiUrl('/exam/content/index.html')}
       class="w-full h-full border-0"
       style="min-height: calc(100vh - 73px);"
       allow="fullscreen; autoplay; clipboard-write"
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      on:load={onIframeLoad}
     ></iframe>
   </div>
 
