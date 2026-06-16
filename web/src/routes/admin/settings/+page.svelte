@@ -74,15 +74,13 @@
     saveLoading = false;
   }
 
-  // Helper to rotate token by generating a random 6-character string
+  // Rotate the exam token using the Web Crypto CSPRNG (review frontend finding #21, Task 42).
+  // Math.random is NOT cryptographically secure; crypto.getRandomValues is.
   function rotateToken() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    activeToken = code;
-    toast.info(`Token diubah menjadi: "${code}". Simpan perubahan untuk mengaktifkannya.`);
+    const bytes = new Uint8Array(12); // 12 bytes -> 24 hex chars
+    crypto.getRandomValues(bytes);
+    activeToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    toast.info(`Token diubah. Simpan perubahan untuk mengaktifkannya.`);
   }
 
   function prepareUpdateProfile() {
