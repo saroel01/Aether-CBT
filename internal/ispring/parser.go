@@ -3,6 +3,7 @@ package ispring
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -171,10 +172,37 @@ func (r *richTextXML) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error
 	return nil
 }
 
+// maxParseBytes caps the accepted iSpring detail XML size (2 MiB). Legitimate quiz reports
+// are well under this; the cap bounds memory and parse cost on a public webhook input
+// (review iSpring F5, Task 29).
+const maxParseBytes = 2 * 1024 * 1024
+
+// maxParseDepth caps XML nesting depth so a malicious deeply-nested payload cannot exhaust
+// the parse stack (review iSpring F5, Task 29). Real iSpring reports nest < 20 levels.
+const maxParseDepth = 64
+
+// ErrTooDeeplyNested is returned when the parsed XML exceeds maxParseDepth.
+var ErrTooDeeplyNested = fmt.Errorf("iSpring detail XML exceeds max nesting depth (%d)", maxParseDepth)
+
+// ErrTooLarge is returned when the parsed XML exceeds maxParseBytes.
+var ErrTooLarge = fmt.Errorf("iSpring detail XML exceeds max size (%d bytes)", maxParseBytes)
+
+// ParseDetailedResults parses the iSpring detail XML string. It enforces a size cap and a
+// nesting-depth cap before unmarshalling, so a malformed or hostile payload cannot exhaust
+// memory or the parse stack (review iSpring F5, Task 29).
 func ParseDetailedResults(detailXML string) (*Report, error) {
 	detailXML = strings.TrimSpace(detailXML)
 	if detailXML == "" {
 		return &Report{}, nil
+	}
+	if len(detailXML) > maxParseBytes {
+		return nil, ErrTooLarge
+	}
+
+	// Pre-scan the token stream to enforce a depth cap before the structural unmarshal, so a
+	// deeply-nested payload is rejected rather than recursing through the unmarshaler.
+	if err := enforceDepthLimit(detailXML); err != nil {
+		return nil, err
 	}
 
 	var parsed quizReportXML
@@ -199,6 +227,37 @@ func ParseDetailedResults(detailXML string) (*Report, error) {
 	}
 
 	return report, nil
+}
+
+// enforceDepthLimit walks the XML token stream, tracking nesting depth, and returns
+// ErrTooDeeplyNested if it exceeds maxParseDepth. This runs over an io.LimitReader so a
+// stream just over the size cap is also rejected (defense in depth).
+func enforceDepthLimit(detailXML string) error {
+	lr := io.LimitReader(strings.NewReader(detailXML), int64(maxParseBytes)+1)
+	dec := xml.NewDecoder(lr)
+	depth := 0
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			// A structural error here is fine; the main unmarshal will report a clean message.
+			return nil
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			depth++
+			if depth > maxParseDepth {
+				return ErrTooDeeplyNested
+			}
+		case xml.EndElement:
+			if depth > 0 {
+				depth--
+			}
+			_ = t
+		}
+	}
 }
 
 func parseSummary(s *summaryXML) *Summary {

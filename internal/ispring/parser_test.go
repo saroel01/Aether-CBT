@@ -2,6 +2,7 @@ package ispring
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -192,5 +193,23 @@ func TestParseDetailedResultsHandlesRealProductionFixture(t *testing.T) {
 	}
 	if report.PassingPercent == nil || *report.PassingPercent != 25 {
 		t.Fatalf("expected passingPercent 25 from quizSettings, got %v", report.PassingPercent)
+	}
+}
+
+// TestParseRejectsDeeplyNestedXML verifies the parser caps nesting depth so a malicious
+// deeply-nested payload cannot exhaust the stack (review iSpring F5, Task 29).
+func TestParseRejectsDeeplyNestedXML(t *testing.T) {
+	deep := strings.Repeat("<a>", 200) + strings.Repeat("</a>", 200)
+	if _, err := ParseDetailedResults(deep); err == nil {
+		t.Fatal("expected depth-limit error, got nil")
+	}
+}
+
+// TestParseRejectsOversizedInput verifies the parser rejects input beyond the size cap.
+func TestParseRejectsOversizedInput(t *testing.T) {
+	// ~3MB of content — beyond the 2MB cap.
+	big := "<quizReport><questions>" + strings.Repeat("<multipleChoiceQuestion id=\"Q\" awardedPoints=\"1\" maxPoints=\"1\"><answers><answer><text>x</text></answer></answers></multipleChoiceQuestion>", 200000) + "</questions></quizReport>"
+	if _, err := ParseDetailedResults(big); err == nil {
+		t.Fatal("expected size-limit error, got nil")
 	}
 }
