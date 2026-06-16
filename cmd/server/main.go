@@ -143,6 +143,9 @@ func main() {
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 	}))
 
+	// Baseline browser-security headers (review security finding #14, Task 41).
+	app.Use(middleware.SecurityHeaders())
+
 	// Apply tenant middleware globally
 	app.Use(middleware.TenantMiddleware())
 
