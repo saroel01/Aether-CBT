@@ -110,10 +110,11 @@ func (r *SoalPackageRepository) List(tenantID int) ([]models.SoalPackage, error)
 	return packages, rows.Err()
 }
 
-// Delete removes the package metadata row. It returns ErrConflict if any non-deleted
-// exam still links this package (Requirement 3.10), and ErrNotFound if no such package
-// belongs to the tenant. The package files on disk are removed separately by the storage
-// layer once the metadata row is gone.
+// Delete soft-deletes the package metadata row (sets deleted_at) so audit attribution is
+// preserved consistently with other soft-deletable entities (review data finding #15, Task 36).
+// It returns ErrConflict if any non-deleted exam still links this package, and ErrNotFound if
+// no such package belongs to the tenant. The package files on disk are removed separately by
+// the storage layer once the metadata row is soft-deleted.
 func (r *SoalPackageRepository) Delete(tenantID, id int) error {
 	if _, err := r.GetByID(tenantID, id); err != nil {
 		return err // ErrNotFound
@@ -128,6 +129,9 @@ func (r *SoalPackageRepository) Delete(tenantID, id int) error {
 	if linked > 0 {
 		return ErrConflict
 	}
-	_, err := r.db.Exec(`DELETE FROM soal_package WHERE id = ? AND tenant_id = ?`, id, tenantID)
+	_, err := r.db.Exec(
+		`UPDATE soal_package SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		id, tenantID,
+	)
 	return err
 }
