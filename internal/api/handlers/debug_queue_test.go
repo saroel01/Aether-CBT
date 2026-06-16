@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -68,11 +69,18 @@ func TestGetQueueStatusReturns500WhenDirectoryUnreadable(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	var body map[string]string
+	// Task 28: the handler returns a generic message (utils.ErrorResponse envelope), never
+	// the raw internal error (which would leak filesystem paths). Decode as a generic map and
+	// assert the error is the generic message, not the leaked path.
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if body["error"] == "" {
+	errMsg, _ := body["error"].(string)
+	if errMsg == "" {
 		t.Fatalf("error body = %#v, want non-empty error", body)
+	}
+	if strings.Contains(errMsg, "pending") || strings.Contains(errMsg, root) {
+		t.Fatalf("error leaked internal path: %q", errMsg)
 	}
 }

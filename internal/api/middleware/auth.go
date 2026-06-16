@@ -35,9 +35,23 @@ func AuthMiddleware() fiber.Handler {
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
-		c.Locals("user_id", int(claims["user_id"].(float64)))
-		c.Locals("tenant_id", int(claims["tenant_id"].(float64)))
-		c.Locals("role", claims["role"].(string))
+		// Two-value type assertions so a token missing/mistyping a claim returns 401 instead
+		// of panicking (review security finding #12, Task 40).
+		userID, ok := claims["user_id"].(float64)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+		tenantID, ok := claims["tenant_id"].(float64)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+		role, ok := claims["role"].(string)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+		c.Locals("user_id", int(userID))
+		c.Locals("tenant_id", int(tenantID))
+		c.Locals("role", role)
 
 		return c.Next()
 	}

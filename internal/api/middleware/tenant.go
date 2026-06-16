@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -96,9 +96,10 @@ func TenantMiddleware() fiber.Handler {
 }
 
 func parseInt(s string) (int, error) {
-	var i int
-	_, err := fmt.Sscanf(s, "%d", &i)
-	return i, err
+	// strconv.Atoi rejects trailing garbage (e.g. "1abc"), unlike the previous fmt.Sscanf
+	// which silently parsed a leading int — strict parsing closes a small injection surface
+	// (review security finding #7, Task 39).
+	return strconv.Atoi(strings.TrimSpace(s))
 }
 
 // GetTenantID retrieves tenant_id from context.

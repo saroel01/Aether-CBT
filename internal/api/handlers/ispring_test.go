@@ -62,6 +62,7 @@ func setupTestDB(t *testing.T) func() {
 			tenant_id INTEGER NOT NULL,
 			peserta_id INTEGER NOT NULL,
 			mapel_id INTEGER NOT NULL,
+			exam_session_id INTEGER,
 			skor REAL,
 			skor_maks REAL,
 			detail_xml TEXT,
