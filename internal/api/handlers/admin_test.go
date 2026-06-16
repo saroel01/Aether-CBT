@@ -115,3 +115,39 @@ func TestGetClasses_IncludesTingkat(t *testing.T) {
 		t.Errorf("tingkat = %v, want XII", first["tingkat"])
 	}
 }
+
+// TestLinkClassSubject_RejectsCrossTenant verifies LinkClassSubject rejects a link between
+// a kelas in the caller's tenant and a mapel from a DIFFERENT tenant (review H16, Task 17).
+func TestLinkClassSubject_RejectsCrossTenant(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/admin/curriculum/link", LinkClassSubject)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedTenant(t, database, 2, "other", "Other School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1") // tenant 1
+	testutil.SeedMapel(t, database, 5, 2, "Biologi", "BIO") // tenant 2 — different tenant
+
+	// Caller is tenant 1 (test middleware); linking kelas 1 (tenant 1) to mapel 5 (tenant 2).
+	resp := doJSON(t, app, "POST", "/api/admin/curriculum/link", strings.NewReader(`{"kelas_id":1,"mapel_id":5}`))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("cross-tenant link: status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestLinkClassSubject_AcceptsSameTenant verifies a same-tenant link still succeeds (regression
+// guard for the tenant validation added in Task 17).
+func TestLinkClassSubject_AcceptsSameTenant(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/admin/curriculum/link", LinkClassSubject)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedMapel(t, database, 5, 1, "Kimia", "KIM") // same tenant 1
+
+	resp := doJSON(t, app, "POST", "/api/admin/curriculum/link", strings.NewReader(`{"kelas_id":1,"mapel_id":5}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("same-tenant link: status = %d, want 200", resp.StatusCode)
+	}
+}

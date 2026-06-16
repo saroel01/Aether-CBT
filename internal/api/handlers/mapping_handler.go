@@ -30,11 +30,27 @@ func LinkClassSubject(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Class ID and Subject ID are required")
 	}
 
+	// Tenant scope: both the kelas and the mapel must belong to the caller's tenant. Without
+	// this, an admin in tenant A could link a mapel from tenant B (review H16, Task 17).
+	tenantID := c.Locals("tenant_id").(int)
+	var kelasOK, mapelOK int
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		req.KelasID, tenantID,
+	).Scan(&kelasOK)
+	_ = db.DB.QueryRowContext(c.Context(),
+		`SELECT COUNT(*) FROM mapel WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		req.MapelID, tenantID,
+	).Scan(&mapelOK)
+	if kelasOK == 0 || mapelOK == 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Class or subject not found in your tenant")
+	}
+
 	_, err := db.DB.Exec(`
-		INSERT INTO kelas_mapel (kelas_id, mapel_id, is_active)
-		VALUES (?, ?, TRUE)
-		ON CONFLICT(kelas_id, mapel_id) DO UPDATE SET is_active = TRUE
-	`, req.KelasID, req.MapelID)
+		INSERT INTO kelas_mapel (kelas_id, mapel_id, tenant_id, is_active)
+		VALUES (?, ?, ?, TRUE)
+		ON CONFLICT(kelas_id, mapel_id) DO UPDATE SET is_active = TRUE, tenant_id = excluded.tenant_id
+	`, req.KelasID, req.MapelID, tenantID)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to map subject to class")
