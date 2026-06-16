@@ -4,6 +4,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import { toast } from '$lib/stores/toast';
+  import { makeCountdown, deadlineFromServerRemaining, formatHMS } from '$lib/timer';
 
   // Task 14: replace the hardcoded question simulator with the real iSpring package served
   // same-origin via the content-session cookie. The iSpring player (inside the iframe) sends
@@ -62,6 +63,10 @@
 
     // Fetch authoritative remaining time once; the local timer counts down from there.
     await refreshRemainingTime();
+    anchorDeadlineFromServer();
+    startTicker();
+    // Resync the deadline every 60s to absorb clock drift and catch server-side expiry.
+    resyncHandle = setInterval(resyncFromServer, RESYNC_INTERVAL_MS);
 
     // Listen for progress/lock messages posted by the shim inside the iframe. The iSpring
     // player does not natively postMessage; the shim (injected server-side on index.html)
@@ -83,6 +88,8 @@
     window.removeEventListener('blur', recordTabSwitch);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     if (progressTimer) clearInterval(progressTimer);
+    if (tickHandle) clearInterval(tickHandle);
+    if (resyncHandle) clearInterval(resyncHandle);
   });
 
   async function refreshRemainingTime() {
@@ -152,20 +159,43 @@
   }
 
   function handleVisibilityChange() {
-    if (document.hidden) recordTabSwitch();
+    if (document.hidden) {
+      recordTabSwitch();
+    } else {
+      // Tab refocused: recompute from the wall clock immediately + pull the server value so
+      // a long-backgrounded tab jumps to the correct remaining time (Task 20).
+      remainingSeconds = countdown ? countdown.remaining() : 0;
+      resyncFromServer();
+    }
   }
 
-  // Local countdown; the server remains authoritative (Requirement 7.5) — this is a UX timer.
+  // Wall-clock-anchored countdown (Task 20): remaining() recomputes from Date.now() vs an
+  // absolute deadline, so background-tab throttling cannot make it undercount. Resync every
+  // 60s and on tab refocus so the deadline tracks the server's authoritative clock.
+  let countdown: ReturnType<typeof makeCountdown> | null = null;
   let tickHandle: ReturnType<typeof setInterval> | null = null;
-  $: if (remainingSeconds > 0 && !submitted && !locked) {
+  let resyncHandle: ReturnType<typeof setInterval> | null = null;
+  const RESYNC_INTERVAL_MS = 60000;
+
+  function anchorDeadlineFromServer() {
+    countdown = makeCountdown(deadlineFromServerRemaining(remainingSeconds));
+    remainingSeconds = countdown.remaining();
+  }
+
+  function startTicker() {
     if (tickHandle) clearInterval(tickHandle);
     tickHandle = setInterval(() => {
-      remainingSeconds -= 1;
-      if (remainingSeconds <= 0) {
+      remainingSeconds = countdown ? countdown.remaining() : 0;
+      if (countdown && countdown.expired() && !submitted && !locked) {
         remainingSeconds = 0;
         handleTimeExpired();
       }
     }, 1000);
+  }
+
+  async function resyncFromServer() {
+    await refreshRemainingTime();
+    anchorDeadlineFromServer();
   }
 
   function handleTimeExpired() {
