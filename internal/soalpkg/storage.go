@@ -155,6 +155,12 @@ func detectVersion(zr *zip.Reader) *string {
 func extractZip(zr *zip.Reader, destDir string) error {
 	cleanDest := filepath.Clean(destDir)
 	for _, f := range zr.File {
+		// Reject non-regular entries (symlinks, devices) so an archive cannot plant a link
+		// that escapes the package dir on extraction (review iSpring F6, Task 30).
+		mode := f.FileInfo().Mode()
+		if mode&os.ModeSymlink != 0 || !mode.IsRegular() {
+			return fmt.Errorf("refusing to extract non-regular entry: %s", f.Name)
+		}
 		target := filepath.Join(destDir, f.Name)
 		if !isWithin(cleanDest, target) {
 			return fmt.Errorf("%w: %s", ErrZipSlip, f.Name)
@@ -175,6 +181,11 @@ func extractZip(zr *zip.Reader, destDir string) error {
 	return nil
 }
 
+// perEntrySizeLimit caps the decompressed size of a single zip entry (256 MiB). A zip bomb
+// inflates a tiny compressed entry into gigabytes; the cap aborts the copy before that
+// exhausts disk/memory (review iSpring F6, Task 30).
+const perEntrySizeLimit = 256 * 1024 * 1024
+
 func copyZipEntry(f *zip.File, target string) error {
 	rc, err := f.Open()
 	if err != nil {
@@ -186,8 +197,14 @@ func copyZipEntry(f *zip.File, target string) error {
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, rc)
-	return err
+	n, err := io.Copy(out, io.LimitReader(rc, perEntrySizeLimit+1))
+	if err != nil {
+		return err
+	}
+	if n > perEntrySizeLimit {
+		return fmt.Errorf("entry %s decompressed beyond %d-byte limit", f.Name, perEntrySizeLimit)
+	}
+	return nil
 }
 
 // isWithin reports whether target resolves inside baseDir. It is the anti-traversal guard
