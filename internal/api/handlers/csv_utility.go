@@ -38,7 +38,16 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 	}
 	defer src.Close()
 
-	reader := csv.NewReader(src)
+	// Read all bytes so we can strip a UTF-8 BOM (Excel exports prepend one) before parsing.
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read uploaded file")
+	}
+	if len(raw) >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF {
+		raw = raw[3:] // strip UTF-8 BOM so the header parses correctly (review H16, Task 25)
+	}
+
+	reader := csv.NewReader(bytes.NewReader(raw))
 	// Skip header line
 	header, err := reader.Read()
 	if err != nil {
@@ -50,45 +59,63 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid CSV format. Required fields: no_id, nama_peserta, kelas_id, ruang_id, jenis_kelamin")
 	}
 
-	var successCount int
-	var errorCount int
+	// All-or-nothing import: every row is validated and inserted inside a single transaction,
+	// so a bad row rolls back the whole batch instead of leaving a partial import
+	// (review H16, Task 25).
+	tx, err := db.DB.BeginTx(c.Context(), nil)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to begin import transaction")
+	}
+	defer tx.Rollback() //nolint:errcheck
 
+	rowIdx := 1 // header is row 0
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			errorCount++
-			continue
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("CSV parse error on row %d", rowIdx+1))
 		}
+		rowIdx++
 
-		noID := record[0]
-		namaPeserta := record[1]
-		kelasIDStr := record[2]
-		ruangIDStr := record[3]
-		jenisKelamin := record[4]
+		noID := strings.TrimSpace(record[0])
+		namaPeserta := strings.TrimSpace(record[1])
+		kelasID, kErr := strconv.Atoi(strings.TrimSpace(record[2]))
+		ruangID, rErr := strconv.Atoi(strings.TrimSpace(record[3]))
+		jenisKelamin := strings.TrimSpace(record[4])
 		password := "siswa123" // default password if not provided
 		if len(record) > 5 && record[5] != "" {
 			password = record[5]
 		}
 
-		kelasID, _ := strconv.Atoi(kelasIDStr)
-		ruangID, _ := strconv.Atoi(ruangIDStr)
+		if noID == "" || namaPeserta == "" || kErr != nil || rErr != nil || kelasID <= 0 || ruangID <= 0 {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
+		}
 
-		if noID == "" || namaPeserta == "" || kelasID <= 0 || ruangID <= 0 {
-			errorCount++
-			continue
+		// Tenant-ref validation (mirrors CreateStudent, Task 23).
+		var refOK int
+		_ = tx.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+			kelasID, tenantID,
+		).Scan(&refOK)
+		if refOK == 0 {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: kelas_id %d not found in tenant", rowIdx, kelasID))
+		}
+		_ = tx.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
+			ruangID, tenantID,
+		).Scan(&refOK)
+		if refOK == 0 {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: ruang_id %d not found in tenant", rowIdx, ruangID))
 		}
 
 		passwordHash, err := utils.HashPassword(password)
 		if err != nil {
-			errorCount++
-			continue
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, fmt.Sprintf("Row %d: failed to hash password", rowIdx))
 		}
 
-		// Insert into db (ignore duplicates)
-		_, err = db.DB.Exec(`
+		_, err = tx.ExecContext(c.Context(), `
 			INSERT INTO peserta (tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id, jenis_kelamin)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(tenant_id, no_id) DO UPDATE SET
@@ -98,18 +125,18 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 				jenis_kelamin = excluded.jenis_kelamin,
 				password = excluded.password
 		`, tenantID, noID, passwordHash, namaPeserta, kelasID, ruangID, jenisKelamin)
-
 		if err != nil {
-			errorCount++
-		} else {
-			successCount++
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: failed to insert (%v)", rowIdx, err))
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to commit import")
+	}
+
 	return utils.SuccessResponse(c, fiber.Map{
-		"success_count": successCount,
-		"error_count":   errorCount,
-	}, "CSV Import processed")
+		"imported": rowIdx - 1,
+	}, "Import succeeded")
 }
 
 // ExportResultsCSV queries results and streams them back as a downloadable CSV sheet
