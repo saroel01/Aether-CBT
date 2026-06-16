@@ -127,15 +127,21 @@ func DeleteStudent(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can delete students")
 	}
 
-	id := c.Params("id")
-	_, err := db.DB.Exec(`
-		UPDATE peserta 
-		SET deleted_at = CURRENT_TIMESTAMP 
-		WHERE id = ? AND tenant_id = ?
+	// Validate the id path param and return 404 when no row matches (review H3-handlers, Task 27).
+	id, err := c.ParamsInt("id")
+	if err != nil || id <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid id")
+	}
+	res, err := db.DB.Exec(`
+		UPDATE peserta
+		SET deleted_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 	`, id, tenantID)
-
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to delete student")
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "student not found")
 	}
 
 	return utils.SuccessResponse(c, nil, "Student deleted successfully")

@@ -143,6 +143,31 @@ func TestGetSettings_SeedsRandomToken(t *testing.T) {
 	}
 }
 
+// TestDeleteStudent_Returns404ForUnknownID verifies DeleteStudent validates the id path
+// param and returns 404 when no matching row exists in the tenant (review H3-handlers, Task 27).
+func TestDeleteStudent_Returns404ForUnknownID(t *testing.T) {
+	app, _, _, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Delete("/api/students/:id", DeleteStudent)
+
+	resp := doJSON(t, app, "DELETE", "/api/students/99999", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete unknown student: status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// TestDeleteStudent_RejectsNonIntegerID verifies a non-integer id returns 400.
+func TestDeleteStudent_RejectsNonIntegerID(t *testing.T) {
+	app, _, _, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Delete("/api/students/:id", DeleteStudent)
+
+	resp := doJSON(t, app, "DELETE", "/api/students/abc", nil)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("delete non-integer id: status = %d, want 400", resp.StatusCode)
+	}
+}
+
 // TestCreateUser_RejectsSuperadminRole verifies CreateUser rejects a "superadmin" role
 // (and any role outside the admin/supervisor allowlist) so an admin cannot mint a superadmin
 // (review H15, Task 24).
