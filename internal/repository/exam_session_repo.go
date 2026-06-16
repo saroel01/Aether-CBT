@@ -380,8 +380,8 @@ func (r *ExamSessionRepository) ParticipantEligible(tenantID, pesertaID, session
 // concurrent writer SQLITE_BUSY; retrying with backoff lets the loser acquire the lock and
 // observe the winner's row instead of surfacing a hard error (review H5, Task 15).
 const (
-	busyRetries = 5
-	busyBackoff = 5 * time.Millisecond
+	busyRetries = 20
+	busyBackoff = 25 * time.Millisecond
 )
 
 // isBusyErr reports whether err is a SQLite SQLITE_BUSY error (modernc.org/sqlite surfaces
