@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // RunMigrations executes all .sql files in migrationsDir in lexical order against the
@@ -61,19 +62,40 @@ func RunMigrations(database *sql.DB, migrationsDir string) error {
 // is fatal and is returned so the caller aborts with a clear message rather than
 // leaving a half-applied migration.
 func execMigrationStatement(database *sql.DB, file, stmt string) error {
-	_, err := database.Exec(stmt)
+	err := execWithBusyRetry(database, stmt)
 	if err == nil {
 		return nil
 	}
 	errStr := err.Error()
 	if strings.Contains(errStr, "duplicate column name") ||
-		strings.Contains(errStr, "already exists") ||
-		strings.Contains(errStr, "SQLITE_BUSY") {
-		log.Printf("Migration %s statement skipped: %v", file, err)
+		strings.Contains(errStr, "already exists") {
+		log.Printf("Migration %s statement skipped (idempotent): %v", file, err)
 		return nil
 	}
 	log.Printf("Migration %s statement failed: %v", file, err)
 	return err
+}
+
+// execWithBusyRetry runs stmt, retrying transient SQLITE_BUSY errors with a short backoff so
+// a concurrent writer cannot make a migration silently skip (review data finding #2, Task 32).
+func execWithBusyRetry(database *sql.DB, stmt string) error {
+	const maxRetries = 3
+	var err error
+	for i := 0; ; i++ {
+		_, err = database.Exec(stmt)
+		if err == nil || !isBusyErr(err) {
+			return err
+		}
+		if i >= maxRetries {
+			return err
+		}
+		time.Sleep(time.Duration(100*(i+1)) * time.Millisecond)
+	}
+}
+
+// isBusyErr reports whether err is a SQLite SQLITE_BUSY error.
+func isBusyErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "SQLITE_BUSY")
 }
 
 // splitSQLStatements splits migration SQL into individual statements. It respects
