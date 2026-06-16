@@ -1,6 +1,5 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth';
-  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import Button from '$lib/components/ui/Button.svelte';
@@ -12,24 +11,25 @@
   $: activeRoute = $page.url.pathname;
 
   onMount(() => {
-    // Check authentication
+    // Check authentication. A non-admin (or unauthenticated) user is sent to "/" via a full
+    // reload so /me can re-route by role — goto('/admin') looped because /admin is itself under
+    // this layout (review finding #8, Task 22).
     const unsub = authStore.subscribe((state) => {
       if (!state.isAuthenticated) {
         const storedToken = localStorage.getItem('aether_token');
         const storedUser = localStorage.getItem('aether_user');
-        
+
         if (storedToken && storedUser) {
           const u = JSON.parse(storedUser);
-          if (u.role === 'admin') {
+          if (u.role === 'admin' || u.role === 'superadmin') {
             authStore.login(storedToken, u);
           } else {
-            goto('/admin');
+            // A logged-in non-admin has no business under /admin — send them home.
+            window.location.href = '/';
           }
-        } else {
-          // If we are not on the main /admin login page, redirect to login
-          if (window.location.pathname !== '/admin') {
-            goto('/admin');
-          }
+        } else if (window.location.pathname !== '/admin') {
+          // Not logged in and not on the login page: go to the admin login form.
+          window.location.href = '/admin';
         }
       }
       loading = false;
