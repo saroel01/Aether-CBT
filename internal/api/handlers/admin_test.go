@@ -143,6 +143,32 @@ func TestGetSettings_SeedsRandomToken(t *testing.T) {
 	}
 }
 
+// TestCreateUser_RejectsSuperadminRole verifies CreateUser rejects a "superadmin" role
+// (and any role outside the admin/supervisor allowlist) so an admin cannot mint a superadmin
+// (review H15, Task 24).
+func TestCreateUser_RejectsSuperadminRole(t *testing.T) {
+	app, _, _, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/users", CreateUser)
+
+	resp := doJSON(t, app, "POST", "/api/users", strings.NewReader(`{"username":"x","password":"y","role":"superadmin"}`))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("superadmin creation: status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestCreateUser_AcceptsSupervisorRole verifies the allowlist still permits a supervisor.
+func TestCreateUser_AcceptsSupervisorRole(t *testing.T) {
+	app, _, _, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/users", CreateUser)
+
+	resp := doJSON(t, app, "POST", "/api/users", strings.NewReader(`{"username":"sup2","password":"y","role":"supervisor"}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("supervisor creation: status = %d, want 200", resp.StatusCode)
+	}
+}
+
 // TestCreateStudent_RejectsDuplicateNoID verifies CreateStudent rejects a duplicate no_id
 // within the same tenant with 409 (review H14, Task 23).
 func TestCreateStudent_RejectsDuplicateNoID(t *testing.T) {

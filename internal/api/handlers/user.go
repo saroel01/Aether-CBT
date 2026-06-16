@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
@@ -54,10 +56,23 @@ func CreateUser(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
-	hash, _ := utils.HashPassword(req.Password)
+	// Role allowlist (review H15, Task 24): an admin may only mint admin/supervisor accounts,
+	// never superadmin (which is reserved for out-of-band provisioning).
+	allowedRoles := map[string]bool{"admin": true, "supervisor": true}
+	if !allowedRoles[req.Role] {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "role must be 'admin' or 'supervisor'")
+	}
+	if strings.TrimSpace(req.Username) == "" || req.Password == "" {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "username and password are required")
+	}
 
-	_, err := db.DB.Exec(`
-		INSERT INTO users (tenant_id, username, password_hash, role, full_name) 
+	hash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to hash password")
+	}
+
+	_, err = db.DB.Exec(`
+		INSERT INTO users (tenant_id, username, password_hash, role, full_name)
 		VALUES (?, ?, ?, ?, ?)
 	`, tenantID, req.Username, hash, req.Role, req.FullName)
 
