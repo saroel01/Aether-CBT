@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -56,14 +57,20 @@ func getSettingsForTenant(tenantID int) (SettingsResponse, error) {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Seed settings automatically if missing
+			// Seed settings automatically if missing. The default token is a crypto-random
+			// value per tenant (NOT a known constant) so it cannot be guessed (review H22,
+			// Task 18). GenerateSecureToken(16) yields 32 hex chars.
+			randomToken, genErr := utils.GenerateSecureToken(16)
+			if genErr != nil {
+				return SettingsResponse{}, fmt.Errorf("generate default exam token: %w", genErr)
+			}
 			_, _ = db.DB.Exec(`
 				INSERT INTO settings (tenant_id, exam_title, token, is_exam_active)
-				VALUES (?, 'Ujian Akhir Semester 2025/2026', 'ujian2026', TRUE)
-			`, tenantID)
+				VALUES (?, 'Ujian Akhir Semester 2025/2026', ?, TRUE)
+			`, tenantID, randomToken)
 
 			s.ExamTitle = "Ujian Akhir Semester 2025/2026"
-			s.Token = "ujian2026"
+			s.Token = randomToken
 			s.IsExamActive = true
 		} else {
 			return SettingsResponse{}, err

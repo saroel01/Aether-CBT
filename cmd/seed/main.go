@@ -85,16 +85,24 @@ func main() {
 		`, tenantID, st.no_id, "siswa123", st.nama, st.kelas, st.ruang)
 	}
 
-	// Ensure settings token exists
+	// Ensure settings token exists. A random per-tenant token is generated so the seed is
+	// not a known constant (review H22, Task 18). The generated token is printed below.
+	token, _ := utils.GenerateSecureToken(16)
 	_, _ = db.DB.Exec(`
 		INSERT OR IGNORE INTO settings (tenant_id, exam_title, token, is_exam_active)
-		VALUES (1, 'Ujian Akhir Semester 2025/2026', 'ujian2026', TRUE)
-	`)
+		VALUES (1, 'Ujian Akhir Semester 2025/2026', ?, TRUE)
+	`, token)
+	// If a row already existed (INSERT OR IGNORE no-op), read its token so we print the truth.
+	var actualToken string
+	_ = db.DB.QueryRow(`SELECT token FROM settings WHERE tenant_id = 1`).Scan(&actualToken)
+	if actualToken == "" {
+		actualToken = token
+	}
 
 	fmt.Println("✅ Sample data seeded successfully for tenant 'default'")
 	fmt.Println("   - 3 Classes")
 	fmt.Println("   - 4 Subjects")
 	fmt.Println("   - 2 Rooms (supervisor login: ruang_a / ruang123)")
 	fmt.Println("   - 8 Students (student login: no_id + password 'siswa123')")
-	fmt.Println("   - Settings with exam token 'ujian2026'")
+	fmt.Printf("   - Settings with random exam token '%s'\n", actualToken)
 }

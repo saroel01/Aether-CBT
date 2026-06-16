@@ -116,6 +116,33 @@ func TestGetClasses_IncludesTingkat(t *testing.T) {
 	}
 }
 
+// TestGetSettings_SeedsRandomToken verifies the auto-seed path generates a random
+// per-tenant token instead of the known constant "ujian2026" (review H22, Task 18). Uses
+// tenant 2 because migration 005 already seeds tenant 1's settings with 'ujian2026'.
+func TestGetSettings_SeedsRandomToken(t *testing.T) {
+	_, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	testutil.SeedTenant(t, database, 2, "other", "Other School")
+	// Tenant 2 has NO settings row -> getSettingsForTenant must auto-seed a random token.
+
+	s, err := getSettingsForTenant(2)
+	if err != nil {
+		t.Fatalf("getSettingsForTenant(2): %v", err)
+	}
+	if s.Token == "ujian2026" {
+		t.Fatal("seeded token must not be the known constant ujian2026")
+	}
+	if len(s.Token) < 16 {
+		t.Fatalf("seeded token too short: %q (want >= 16 chars)", s.Token)
+	}
+
+	// A second fetch must return the SAME persisted token (not a new random one).
+	s2, _ := getSettingsForTenant(2)
+	if s2.Token != s.Token {
+		t.Fatalf("second fetch token = %q, want stable %q", s2.Token, s.Token)
+	}
+}
+
 // TestLinkClassSubject_RejectsCrossTenant verifies LinkClassSubject rejects a link between
 // a kelas in the caller's tenant and a mapel from a DIFFERENT tenant (review H16, Task 17).
 func TestLinkClassSubject_RejectsCrossTenant(t *testing.T) {
