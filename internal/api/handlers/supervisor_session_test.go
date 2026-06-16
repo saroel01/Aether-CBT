@@ -112,6 +112,33 @@ func TestResetStudentSession_TargetsSpecificSession(t *testing.T) {
 	}
 }
 
+// TestRecordInfraction_SupervisorScopedToOwnRoom: a supervisor (user_id = ruang_id) may
+// only record infractions for peserta in their own room. A peserta in another room must be
+// rejected with 403 (review H3, Task 16).
+func TestRecordInfraction_SupervisorScopedToOwnRoom(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "supervisor")
+	defer cleanup()
+	app.Post("/api/student/infraction", RecordInfraction)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a") // supervisor's room (user_id=1)
+	testutil.SeedRuang(t, database, 2, 1, "Ruang B", "ruang_b") // a DIFFERENT room
+	// Peserta in room 2 — NOT the supervisor's room 1.
+	testutil.SeedPeserta(t, database, 1, 1, 1, 2, "2026001", "Other Room Siswa")
+	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
+	cekRepo := repository.NewCekLoginRepository(database)
+	if err := cekRepo.Start(1, 1, 1, "tok-other-room"); err != nil {
+		t.Fatalf("seed cek_login: %v", err)
+	}
+
+	// Supervisor (room 1) records an infraction on a peserta in room 2.
+	resp := doJSON(t, app, "POST", "/api/student/infraction", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("supervisor infraction on other room: status = %d, want 403", resp.StatusCode)
+	}
+}
+
 // TestResetStudentSession_StudentRoleForbidden (Requirement 11.4).
 func TestResetStudentSession_StudentRoleForbidden(t *testing.T) {
 	app, _, _, cleanup := newAdminTestApp(t, "student")

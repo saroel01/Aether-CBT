@@ -42,9 +42,25 @@ func RecordInfraction(c *fiber.Ctx) error {
 	if req.PesertaID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
 	}
-	if role == "student" {
+	// Authorization by role:
+	//   student    -> may only record their OWN infractions.
+	//   supervisor -> may only record infractions for peserta in their OWN room
+	//                 (user_id maps to ruang_id; review H3, Task 16).
+	//   admin/superadmin -> unrestricted.
+	switch role {
+	case "student":
 		if userID, _ := c.Locals("user_id").(int); userID != req.PesertaID {
 			return utils.ErrorResponse(c, fiber.StatusForbidden, "Students can only record their own infractions")
+		}
+	case "supervisor":
+		ruangID, _ := c.Locals("user_id").(int)
+		var belongs int
+		_ = db.DB.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM peserta WHERE id = ? AND tenant_id = ? AND ruang_id = ? AND deleted_at IS NULL`,
+			req.PesertaID, tenantID, ruangID,
+		).Scan(&belongs)
+		if belongs == 0 {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Supervisor can only record infractions in their own room")
 		}
 	}
 
