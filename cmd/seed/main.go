@@ -63,8 +63,9 @@ func main() {
 	db.DB.QueryRow(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang A'`).Scan(&ruangA)
 	db.DB.QueryRow(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang B'`).Scan(&ruangB)
 
-	// Sample Students (password is plaintext for easy student login in this version)
-	// PERINGATAN: Jangan gunakan password 'siswa123' di data produksi!
+	// Sample Students. Password is bcrypt-hashed (Task 6 removed the plaintext fallback, so a
+	// plaintext seed would never authenticate). The default password is "siswa123" for all
+	// sample students; change per-student before production use.
 	students := []struct {
 		no_id, nama  string
 		kelas, ruang int
@@ -78,11 +79,15 @@ func main() {
 		{"2024007", "Andi Wijaya", kelas1, ruangB},
 		{"2024008", "Maya Putri", kelas2, ruangA},
 	}
+	studentPWHash, err := utils.HashPassword("siswa123")
+	if err != nil {
+		log.Fatalf("hash seed student password: %v", err)
+	}
 	for _, st := range students {
 		_, _ = db.DB.Exec(`
 			INSERT OR IGNORE INTO peserta (tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`, tenantID, st.no_id, "siswa123", st.nama, st.kelas, st.ruang)
+		`, tenantID, st.no_id, studentPWHash, st.nama, st.kelas, st.ruang)
 	}
 
 	// Ensure settings token exists. A random per-tenant token is generated so the seed is
