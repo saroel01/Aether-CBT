@@ -46,6 +46,7 @@ web/build/
 bin/
 dist/
 release/
+release-test/
 aether-cbt-release.zip
 contoh_soal/*.zip
 
