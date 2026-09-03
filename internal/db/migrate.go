@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"embed"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,10 +11,16 @@ import (
 	"time"
 )
 
+//go:embed migrations/*.sql
+var embeddedMigrations embed.FS
+
 // RunMigrations executes all .sql files in migrationsDir in lexical order against the
 // given database, one statement at a time. The directory and database are passed
 // explicitly so callers (CLI entrypoints, tests) are not coupled to package-global
 // state or the process working directory (Requirement 16.7).
+//
+// If migrationsDir does not exist on disk (e.g. running standalone binary), it falls
+// back to embedded migrations automatically.
 //
 // Each statement is executed independently so that a migration applied only partially
 // (an interrupted startup, or a column added manually without the companion index)
@@ -31,32 +38,65 @@ func RunMigrations(database *sql.DB, migrationsDir string) error {
 		return err
 	}
 
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		return err
+	type migrationFile struct {
+		name    string
+		content []byte
 	}
+	var migFiles []migrationFile
 
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			files = append(files, e.Name())
+	// Check if migrationsDir exists on the filesystem (e.g. during local tests or dev)
+	if migrationsDir != "" {
+		if fi, err := os.Stat(migrationsDir); err == nil && fi.IsDir() {
+			entries, err := os.ReadDir(migrationsDir)
+			if err != nil {
+				return err
+			}
+			var files []string
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+					files = append(files, e.Name())
+				}
+			}
+			sort.Strings(files)
+			for _, f := range files {
+				content, err := os.ReadFile(filepath.Join(migrationsDir, f))
+				if err != nil {
+					return err
+				}
+				migFiles = append(migFiles, migrationFile{name: f, content: content})
+			}
 		}
 	}
-	sort.Strings(files)
 
-	for _, f := range files {
-		path := filepath.Join(migrationsDir, f)
-		content, err := os.ReadFile(path)
+	// Fallback to embedded migrations if no files loaded from disk
+	if len(migFiles) == 0 {
+		entries, err := embeddedMigrations.ReadDir("migrations")
 		if err != nil {
 			return err
 		}
+		var files []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+				files = append(files, e.Name())
+			}
+		}
+		sort.Strings(files)
+		for _, f := range files {
+			content, err := embeddedMigrations.ReadFile("migrations/" + f)
+			if err != nil {
+				return err
+			}
+			migFiles = append(migFiles, migrationFile{name: f, content: content})
+		}
+	}
 
-		for _, stmt := range splitSQLStatements(string(content)) {
-			if err := execMigrationStatement(database, f, stmt); err != nil {
+	for _, mf := range migFiles {
+		for _, stmt := range splitSQLStatements(string(mf.content)) {
+			if err := execMigrationStatement(database, mf.name, stmt); err != nil {
 				return err
 			}
 		}
-		log.Printf("Applied migration: %s", f)
+		log.Printf("Applied migration: %s", mf.name)
 	}
 
 	log.Println("All migrations applied successfully")
