@@ -17,12 +17,23 @@ import (
 // and applies every migration against it, returning the database together with a
 // cleanup that closes it. The package-global db.DB is never touched, so tests that use
 // this helper can run in parallel without clobbering process-wide state (Requirement 16.7).
+//
+// The database is opened through db.DSN — the same connection string production uses — so
+// fixtures run with WAL, a 5s busy timeout and, above all, FOREIGN KEY enforcement actually
+// on (codebase-bug-sweep clause 2.1). This is deliberate and load-bearing: a fixture with its
+// own DSN would give the suite different pragma semantics from the application, which is how a
+// project-wide absence of FK enforcement stayed invisible through a fully green test suite.
+// db.VerifyPragmas is asserted here for the same reason it is asserted in db.Connect.
 func NewMigratedDB(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "aether-test.db")
-	database, err := sql.Open("sqlite", databasePath+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
+	database, err := sql.Open("sqlite", db.DSN(databasePath))
 	if err != nil {
 		t.Fatalf("open sqlite database: %v", err)
+	}
+	if err := db.VerifyPragmas(database); err != nil {
+		_ = database.Close()
+		t.Fatalf("test fixture database does not have the required pragmas: %v", err)
 	}
 	if err := db.RunMigrations(database, migrationsDir(t)); err != nil {
 		_ = database.Close()

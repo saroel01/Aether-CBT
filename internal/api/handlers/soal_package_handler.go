@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -71,7 +72,11 @@ func UploadSoalPackage(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to store package")
 	}
 
-	nama := strings.TrimSuffix(file.Filename, strings.ToLower(".zip"))
+	ext := filepath.Ext(file.Filename)
+	nama := file.Filename
+	if strings.EqualFold(ext, ".zip") {
+		nama = file.Filename[:len(file.Filename)-len(ext)]
+	}
 	if nama == "" {
 		nama = res.PackageUUID
 	}

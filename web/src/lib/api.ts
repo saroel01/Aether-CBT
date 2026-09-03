@@ -7,7 +7,12 @@
 import { apiFetch } from './api-auth';
 
 const configuredApiBase = import.meta.env.VITE_API_BASE as string | undefined;
-const API_BASE = configuredApiBase || (typeof window !== 'undefined' && window.location.port === '5173' ? 'http://localhost:3000/api' : '/api');
+// Relative '/api' keeps every request same-origin with the page: in dev, Vite's server.proxy
+// (vite.config.js) forwards /api/* to the Go backend, which fixes cross-origin frame blocking
+// for the exam iframe and the cross-port SameSite cookie. In production the backend serves the
+// built SPA itself, so '/api' is naturally same-origin too. Set VITE_API_BASE to an absolute URL
+// to bypass the proxy and target a different backend.
+const API_BASE = configuredApiBase || '/api';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;

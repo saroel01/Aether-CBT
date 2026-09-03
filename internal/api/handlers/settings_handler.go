@@ -83,11 +83,6 @@ func getSettingsForTenant(tenantID int) (SettingsResponse, error) {
 // UpdateSettings updates active tenant configurations
 func UpdateSettings(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
-
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can modify settings")
-	}
 
 	var req SettingsResponse
 	if err := c.BodyParser(&req); err != nil {

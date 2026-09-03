@@ -97,8 +97,39 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		subArgs = append(subArgs, sessionID)
 	}
 
+	// hasilScope constrains which hasil_tes row may supply skor/status/waktu_selesai.
+	//
+	// hasil_tes holds one row per submitted exam, so joining it on peserta_id alone both
+	// multiplied a participant into one output row per exam they had ever sat (breaking the
+	// one-row-per-student contract above) and let the score shown for the requested session
+	// come from a different exam entirely — while every cek_login subquery in the same
+	// statement was already session-scoped (codebase-bug-sweep clause 2.7).
+	//
+	// Historical rows are handled explicitly: migration 031 added exam_session_id via ALTER
+	// TABLE ADD COLUMN, so pre-031 rows carry NULL. A NULL-attributed row belongs to no known
+	// session, so `h.exam_session_id = ?` correctly excludes it from a session-scoped request —
+	// admitting it would reinstate the very leak this scope closes. An unscoped request
+	// (sessionID == 0, the legacy mapel-based dashboard) still considers those rows.
+	hasilScope := ""
+	var hasilArgs []any
+	if sessionID > 0 {
+		hasilScope = " AND h.exam_session_id = ?"
+		hasilArgs = append(hasilArgs, sessionID)
+	}
+
+	// The join stays a LEFT JOIN on a single-row selector, so a participant with no matching
+	// hasil_tes still appears exactly once with empty result columns (clause 3.8). Ties are
+	// broken toward the most recent result, which is what a live monitor should show.
+	hasilJoin := `
+		LEFT JOIN hasil_tes ht ON ht.id = (
+			SELECT h.id FROM hasil_tes h
+			WHERE h.peserta_id = p.id AND h.tenant_id = p.tenant_id` + hasilScope + `
+			ORDER BY h.waktu_selesai DESC, h.id DESC
+			LIMIT 1
+		)`
+
 	query := `
-		SELECT p.id, p.no_id, p.nama_peserta, p.kelas_id, COALESCE(k.nama_kelas, '—'),
+		SELECT p.id, p.no_id, p.nama_peserta, COALESCE(p.kelas_id, 0), COALESCE(k.nama_kelas, '—'),
 		       EXISTS(SELECT 1 FROM cek_login cl WHERE ` + sub + `) AS is_logged_in,
 		       (SELECT cl.login_time FROM cek_login cl WHERE ` + sub + `) AS login_time,
 		       (SELECT cl.mapel_id FROM cek_login cl WHERE ` + sub + `) AS mapel_id,
@@ -110,15 +141,17 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		       COALESCE((SELECT cl.answered_count FROM cek_login cl WHERE ` + sub + `), 0) AS answered_count,
 		       COALESCE((SELECT cl.total_questions FROM cek_login cl WHERE ` + sub + `), 0) AS total_questions
 		FROM peserta p
-		LEFT JOIN kelas k ON p.kelas_id = k.id
-		LEFT JOIN hasil_tes ht ON p.id = ht.peserta_id AND ht.tenant_id = p.tenant_id
+		LEFT JOIN kelas k ON p.kelas_id = k.id` + hasilJoin + `
 		WHERE p.ruang_id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
 	`
-	// 9 cek_login subqueries, each bound with subArgs, then the trailing ruang/tenant.
-	args := make([]any, 0, 9*len(subArgs)+2)
+	// Bind order follows the order the placeholders appear in the statement: 9 cek_login
+	// subqueries in the SELECT list, then the hasil_tes join scope, then the trailing
+	// ruang/tenant of the WHERE clause.
+	args := make([]any, 0, 9*len(subArgs)+len(hasilArgs)+2)
 	for i := 0; i < 9; i++ {
 		args = append(args, subArgs...)
 	}
+	args = append(args, hasilArgs...)
 	args = append(args, ruangID, tenantID)
 
 	rows, err := db.DB.Query(query, args...)

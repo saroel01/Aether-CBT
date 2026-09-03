@@ -280,9 +280,9 @@ func (q *SQLiteQueue) GetStats(ctx context.Context) (QueueStats, error) {
 	var stats QueueStats
 	err := q.db.QueryRowContext(ctx, `
 		SELECT
-			SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
-			SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END),
-			SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)
 		FROM submission_queue
 	`).Scan(&stats.PendingCount, &stats.ProcessingCount, &stats.FailedCount)
 	if err != nil {

@@ -234,9 +234,9 @@ func TestISpringWebhookSuccess(t *testing.T) {
 		t.Fatal("Expected a job in the queue, got nil")
 	}
 
-	processErr := processor.ProcessBatch(context.Background(), []*submission.SubmissionJob{job})
+	processErr := processor.Process(context.Background(), job)
 	if processErr != nil {
-		t.Fatalf("ProcessBatch failed: %v", processErr)
+		t.Fatalf("Process failed: %v", processErr)
 	}
 
 	// Mark job completed

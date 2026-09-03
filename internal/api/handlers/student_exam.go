@@ -51,36 +51,43 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 	var err error
 
 	if pesertaID > 0 {
-		// Resolve student's class ID
+		// Resolve student's class ID. kelas_id became nullable with clause 2.2, so COALESCE
+		// keeps an unassigned student on exactly the pre-fix path: the class-scoped query
+		// below matches no kelas_mapel row and the student sees no subjects, rather than
+		// falling through to the "all subjects in tenant" branch (clause 2.17, 3.14).
 		var kelasID int
 		err = db.DB.QueryRow(`
-			SELECT kelas_id
+			SELECT COALESCE(kelas_id, 0)
 			FROM peserta
 			WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 		`, pesertaID, tenantID).Scan(&kelasID)
-
-		if err == nil {
-			// Query only subjects mapped to this class
-			rows, err = db.DB.Query(`
-				SELECT m.id, m.nama_mapel, m.kode_mapel
-				FROM mapel m
-				JOIN kelas_mapel km ON m.id = km.mapel_id
-				WHERE km.kelas_id = ? AND km.is_active = TRUE AND m.tenant_id = ? AND m.deleted_at IS NULL
-			`, kelasID, tenantID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return utils.ErrorResponse(c, fiber.StatusNotFound, "Student not found")
+			}
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to resolve student class")
 		}
-	}
 
-	// Fallback to all subjects if no peserta_id or class resolve failed
-	if rows == nil {
+		// Query only subjects mapped to this class. Do not fall through on 0 rows or query error.
+		rows, err = db.DB.Query(`
+			SELECT m.id, m.nama_mapel, m.kode_mapel
+			FROM mapel m
+			JOIN kelas_mapel km ON m.id = km.mapel_id
+			WHERE km.kelas_id = ? AND km.is_active = TRUE AND m.tenant_id = ? AND m.deleted_at IS NULL
+		`, kelasID, tenantID)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to fetch mapped subjects")
+		}
+	} else {
+		// No peserta_id specified: return all tenant subjects
 		rows, err = db.DB.Query(`
 			SELECT id, nama_mapel, kode_mapel
 			FROM mapel
 			WHERE tenant_id = ? AND deleted_at IS NULL
 		`, tenantID)
-	}
-
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to fetch mapels")
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to fetch mapels")
+		}
 	}
 	defer rows.Close()
 
@@ -93,8 +100,13 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 	var list []MapelItem
 	for rows.Next() {
 		var m MapelItem
-		rows.Scan(&m.ID, &m.NamaMapel, &m.KodeMapel)
+		if err := rows.Scan(&m.ID, &m.NamaMapel, &m.KodeMapel); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read subject")
+		}
 		list = append(list, m)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate subjects")
 	}
 
 	return utils.SuccessResponse(c, list, "Subjects list retrieved successfully")
@@ -243,6 +255,13 @@ func GetRemainingTime(c *fiber.Ctx) error {
 			"remaining_seconds": remaining,
 			"is_active":         remaining > 0 && !cek.Locked,
 			"locked":            cek.Locked,
+			// P2: when the server-authoritative clock hits 0, signal the shim to force-submit the
+			// quiz (player.submitQuiz) so answers are captured even if the student never clicked
+			// Submit in iSpring. The shim treats this as idempotent (guards with a flag) so a manual
+			// submit followed by time-up does not double-submit. Polled by the shim every few seconds,
+			// which is more reliable than a single push (a dropped WS/SSE at the moment of expiry
+			// would otherwise lose the signal).
+			"force_submit": remaining <= 0,
 		}, "Remaining time calculated successfully")
 	}
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -21,11 +22,6 @@ import (
 // ImportStudentsCSV parses a multipart CSV upload and imports students into the database
 func ImportStudentsCSV(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
-
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can import students")
-	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -81,33 +77,51 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 
 		noID := strings.TrimSpace(record[0])
 		namaPeserta := strings.TrimSpace(record[1])
-		kelasID, kErr := strconv.Atoi(strings.TrimSpace(record[2]))
-		ruangID, rErr := strconv.Atoi(strings.TrimSpace(record[3]))
+		kelasCell := strings.TrimSpace(record[2])
+		ruangCell := strings.TrimSpace(record[3])
 		jenisKelamin := strings.TrimSpace(record[4])
 		password := "siswa123" // default password if not provided
 		if len(record) > 5 && record[5] != "" {
 			password = record[5]
 		}
 
-		if noID == "" || namaPeserta == "" || kErr != nil || rErr != nil || kelasID <= 0 || ruangID <= 0 {
+		if noID == "" || namaPeserta == "" {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
 		}
 
-		// Tenant-ref validation (mirrors CreateStudent, Task 23).
-		var refOK int
-		_ = tx.QueryRowContext(c.Context(),
-			`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
-			kelasID, tenantID,
-		).Scan(&refOK)
-		if refOK == 0 {
-			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: kelas_id %d not found in tenant", rowIdx, kelasID))
+		// A blank cell, or the legacy sentinel 0, means "not assigned" and is normalized to
+		// SQL NULL — the same rule CreateStudent applies (clause 2.2). Anything else must be a
+		// parseable, positive id, so a typo is still rejected instead of silently dropping the
+		// student's class or room assignment.
+		kelasRef, err := parseOptionalCSVRef(kelasCell)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
 		}
-		_ = tx.QueryRowContext(c.Context(),
-			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
-			ruangID, tenantID,
-		).Scan(&refOK)
-		if refOK == 0 {
-			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: ruang_id %d not found in tenant", rowIdx, ruangID))
+		ruangRef, err := parseOptionalCSVRef(ruangCell)
+		if err != nil {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
+		}
+
+		// Tenant-ref validation (mirrors CreateStudent, Task 23). Only a supplied reference is
+		// validated; a normalized NULL has no parent row to check.
+		var refOK int
+		if kelasRef.Valid {
+			_ = tx.QueryRowContext(c.Context(),
+				`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+				kelasRef.Int64, tenantID,
+			).Scan(&refOK)
+			if refOK == 0 {
+				return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: kelas_id %d not found in tenant", rowIdx, kelasRef.Int64))
+			}
+		}
+		if ruangRef.Valid {
+			_ = tx.QueryRowContext(c.Context(),
+				`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
+				ruangRef.Int64, tenantID,
+			).Scan(&refOK)
+			if refOK == 0 {
+				return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: ruang_id %d not found in tenant", rowIdx, ruangRef.Int64))
+			}
 		}
 
 		passwordHash, err := utils.HashPassword(password)
@@ -124,7 +138,7 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 				ruang_id = excluded.ruang_id,
 				jenis_kelamin = excluded.jenis_kelamin,
 				password = excluded.password
-		`, tenantID, noID, passwordHash, namaPeserta, kelasID, ruangID, jenisKelamin)
+		`, tenantID, noID, passwordHash, namaPeserta, kelasRef, ruangRef, jenisKelamin)
 		if err != nil {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: failed to insert (%v)", rowIdx, err))
 		}
@@ -137,6 +151,21 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.Map{
 		"imported": rowIdx - 1,
 	}, "Import succeeded")
+}
+
+// parseOptionalCSVRef converts a kelas_id / ruang_id cell into a value safe to write into a
+// FOREIGN KEY column. An empty cell or an explicit 0 normalizes to SQL NULL ("not assigned",
+// clause 2.2); a positive integer is passed through unchanged; anything else is an error so a
+// malformed cell is still reported to the admin rather than silently discarded.
+func parseOptionalCSVRef(cell string) (sql.NullInt64, error) {
+	if cell == "" {
+		return sql.NullInt64{}, nil
+	}
+	id, err := strconv.ParseInt(cell, 10, 64)
+	if err != nil || id < 0 {
+		return sql.NullInt64{}, fmt.Errorf("invalid reference %q", cell)
+	}
+	return db.NullableFK(id), nil
 }
 
 // ExportResultsCSV queries results and streams them back as a downloadable CSV sheet
@@ -173,7 +202,7 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 
 	for rows.Next() {
 		var noID, namaPeserta, namaKelas, namaMapel, status, createdAt string
-		var skor, skorMaks float64
+		var skor, skorMaks sql.NullFloat64
 
 		err = rows.Scan(&noID, &namaPeserta, &namaKelas, &namaMapel, &skor, &skorMaks, &status, &createdAt)
 		if err != nil {
@@ -181,13 +210,22 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 			continue
 		}
 
+		skorStr := "—"
+		if skor.Valid {
+			skorStr = strconv.FormatFloat(skor.Float64, 'f', 2, 64)
+		}
+		skorMaksStr := "—"
+		if skorMaks.Valid {
+			skorMaksStr = strconv.FormatFloat(skorMaks.Float64, 'f', 2, 64)
+		}
+
 		writer.Write([]string{
 			noID,
 			namaPeserta,
 			namaKelas,
 			namaMapel,
-			strconv.FormatFloat(skor, 'f', 2, 64),
-			strconv.FormatFloat(skorMaks, 'f', 2, 64),
+			skorStr,
+			skorMaksStr,
 			status,
 			createdAt,
 		})
@@ -249,7 +287,10 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		for rows.Next() {
 			var noID, name, className, mapelName, qID, qText, userAns string
 			var score, maxScore float64
-			rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore)
+			if err := rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore); err != nil {
+				log.Printf("[export-essay-csv] scan error: %v", err)
+				continue
+			}
 
 			writer.Write([]string{
 				noID,
@@ -262,6 +303,9 @@ func ExportEssayResults(c *fiber.Ctx) error {
 				strconv.FormatFloat(score, 'f', 2, 64),
 				strconv.FormatFloat(maxScore, 'f', 2, 64),
 			})
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[export-essay-csv] iteration error: %v", err)
 		}
 		writer.Flush()
 
@@ -295,7 +339,10 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		for rows.Next() {
 			var noID, name, className, mapelName, qID, qText, userAns string
 			var score, maxScore float64
-			rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore)
+			if err := rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore); err != nil {
+				log.Printf("[export-essay-xlsx] scan error: %v", err)
+				continue
+			}
 
 			f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowIdx), noID)
 			f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowIdx), name)
@@ -308,6 +355,9 @@ func ExportEssayResults(c *fiber.Ctx) error {
 			f.SetCellValue(sheetName, fmt.Sprintf("I%d", rowIdx), maxScore)
 
 			rowIdx++
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[export-essay-xlsx] iteration error: %v", err)
 		}
 
 		// Apply grid borders and auto wrap on long columns
@@ -383,10 +433,13 @@ func ExportEssayResults(c *fiber.Ctx) error {
 		var hasData bool
 
 		for rows.Next() {
-			hasData = true
 			var noID, name, className, mapelName, qID, qText, userAns string
 			var score, maxScore float64
-			rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore)
+			if err := rows.Scan(&noID, &name, &className, &mapelName, &qID, &qText, &userAns, &score, &maxScore); err != nil {
+				log.Printf("[export-essay-pdf] scan error: %v", err)
+				continue
+			}
+			hasData = true
 
 			// 1. Bar Identitas Siswa (Steel Blue fill, Bold text)
 			pdf.SetFont("Arial", "B", 9)
@@ -430,6 +483,9 @@ func ExportEssayResults(c *fiber.Ctx) error {
 
 			// Spacing between cards
 			pdf.Ln(6)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[export-essay-pdf] iteration error: %v", err)
 		}
 
 		if !hasData {

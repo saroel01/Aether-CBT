@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -346,5 +347,87 @@ func TestExamSessionRepository_ConcurrentCreateSameTokenRejectsOne(t *testing.T)
 	}
 	if conflictCount+busyCount != 1 {
 		t.Fatalf("concurrent same-token creates: %d rejected (conflict=%d busy=%d), want exactly 1", conflictCount+busyCount, conflictCount, busyCount)
+	}
+}
+
+// TestExamSessionRepository_AttachRejectsSessionFromOtherTenant covers codebase-bug-sweep
+// clause 1.5/2.5 (C5): AttachClasses/AttachRooms validated the kelas/ruang ids against the
+// caller's tenant but never validated the sessionID itself, so an admin in tenant A could
+// attach their OWN classes and rooms to a session owned by tenant B — a cross-tenant write.
+//
+// On F the INSERT succeeds and rows land in exam_session_kelas / exam_session_ruang.
+// On F' the call returns ErrNotFound and no row is written.
+//
+// Validates: Requirements 2.5, 3.7
+func TestExamSessionRepository_AttachRejectsSessionFromOtherTenant(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedTenant(t, database, 2, "other", "Other School")
+	seedMapel(t, database, 2, 2, "Biologi", "BIO")
+	seedExam(t, database, 2, 2, 2, nil)
+	// Session 99 belongs to tenant 2.
+	seedExamSession(t, database, 99, 2, 2, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK-B", "draft")
+	// Tenant 1's own kelas/ruang — the attacker attaches resources they legitimately own.
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+
+	repo := NewExamSessionRepository(database)
+
+	if err := repo.AttachClasses(1, 99, []int{1}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AttachClasses on another tenant's session = %v, want ErrNotFound", err)
+	}
+	if err := repo.AttachRooms(1, 99, []int{1}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AttachRooms on another tenant's session = %v, want ErrNotFound", err)
+	}
+
+	// The rejection must be a no-op: not a single row may have been written.
+	assertNoRows(t, database, `SELECT COUNT(*) FROM exam_session_kelas WHERE session_id = 99`)
+	assertNoRows(t, database, `SELECT COUNT(*) FROM exam_session_ruang WHERE session_id = 99`)
+}
+
+// TestExamSessionRepository_AttachRejectsUnknownSession pins the same guard for a session id
+// that exists in no tenant at all, and for a soft-deleted session of the caller's own tenant.
+//
+// Validates: Requirements 2.5
+func TestExamSessionRepository_AttachRejectsUnknownSession(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+
+	repo := NewExamSessionRepository(database)
+	if err := repo.AttachClasses(1, 4242, []int{1}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AttachClasses on unknown session = %v, want ErrNotFound", err)
+	}
+	if err := repo.AttachRooms(1, 4242, []int{1}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AttachRooms on unknown session = %v, want ErrNotFound", err)
+	}
+
+	s, err := repo.Create(1, SessionInput{ExamID: 1, WaktuMulai: atTime(1, 8), WaktuSelesai: atTime(1, 10), Token: "TOK"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.Delete(1, s.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if err := repo.AttachClasses(1, s.ID, []int{1}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("AttachClasses on soft-deleted session = %v, want ErrNotFound", err)
+	}
+	assertNoRows(t, database, `SELECT COUNT(*) FROM exam_session_kelas`)
+}
+
+// assertNoRows fails the test when the COUNT(*) query returns anything other than zero.
+func assertNoRows(t *testing.T, database *sql.DB, query string) {
+	t.Helper()
+	var n int
+	if err := database.QueryRow(query).Scan(&n); err != nil {
+		t.Fatalf("count query %q: %v", query, err)
+	}
+	if n != 0 {
+		t.Errorf("cross-tenant write leaked %d row(s): %s", n, query)
 	}
 }

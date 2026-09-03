@@ -1,0 +1,330 @@
+{
+  "pbtResults": {
+    "4.2 Property test jadwal backoff (C3) di `internal/submission/fsqueue_backoff_property_test.go`": {
+      "status": "passed",
+      "failingExample": "[rapid] failed after 4 tests: job \"1788159222842754300-1-student-bo-9-2-dbc6feb6\" dequeued at 2026-01-01T08:02:02Z but is not due until 2026-01-01T08:02:03Z (retry_count=1, 1s early): backoff schedule is not enforced. Reproduce with -rapid.seed=10736613124686790808. Draw trace: enqueue x3 -> dequeue_fail (MarkFailed sets EnqueuedAt = now+1s) -> advance 1s is NOT the gate; the retried file keeps its original unix_nano prefix, is the oldest name in pending/, and is re-dequeued immediately.",
+      "lastRunTimestamp": 1788159235803
+    },
+    "4.3 Property test isolasi kegagalan batch (C4) di `internal/submission/processor_isolation_property_test.go`": {
+      "status": "passed",
+      "failingExample": "[rapid] failed after 0 tests: done/ = [], want exactly the valid jobs [OK-001] (failure was not isolated: valid submissions in the same batch were rolled back). Draws: batch_size=2, failing_mask=[false,false], forced_failure_idx=0 -> batch {GHOST-000 (invalid), OK-001 (valid)}. Reproduce with -rapid.seed=4449576752654789330. Server log confirms the mechanism: one \"batch process error: peserta not found (no_id=GHOST-000)\" per job, and BOTH files land in pending/ for retry; the valid OK-001 result is rolled back and never reaches done/ or hasil_tes.",
+      "lastRunTimestamp": 1788159303642
+    },
+    "4.9 Preservation jalur normal queue": {
+      "status": "passed",
+      "lastRunTimestamp": 1788160059814
+    }
+  },
+  "executionHistory": {
+    "1.3 Rekam baseline suite dan vet": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692615
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082737454
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084225750
+      }
+    ],
+    "2.3 Normalisasi `CreateStudent` di `internal/api/handlers/student.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692659
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084236634
+      }
+    ],
+    "2.4 Normalisasi tiga jalur tulis `peserta` lainnya": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692708
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084242529
+      }
+    ],
+    "2.5 Migrasi pembersih data `internal/db/migrations/032_peserta_null_fk_repair.sql`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692746
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084248588
+      }
+    ],
+    "2.6 Diagnostik `PRAGMA foreign_key_check` pasca-migrasi di `internal/db/migrate.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692783
+      },
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084254018
+      }
+    ],
+    "2.8 Checkpoint Gate 0": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692816
+      }
+    ],
+    "3.2 Ganti bentuk DSN di `internal/db/sqlite.go` `Connect`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692848
+      }
+    ],
+    "3.3 Verifikasi pasca-koneksi di dalam `Connect` (bukan di pemanggil)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692887
+      }
+    ],
+    "3.5 Checkpoint Gate 1": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692932
+      }
+    ],
+    "4.4 Sandikan waktu jatuh tempo ke nama file di `internal/submission/fsqueue.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692964
+      }
+    ],
+    "4.6 Kontrak outcome per-job + SAVEPOINT di `internal/submission/processor.go` `ProcessBatch`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082692992
+      }
+    ],
+    "4.7 Konsumsi kontrak per-job di `internal/submission/worker.go` `processBatchSafe`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693023
+      }
+    ],
+    "4.8 Perbarui `docs/runbooks/queue-and-litestream.md` untuk korelasi via prefix": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693056
+      }
+    ],
+    "4.11 Checkpoint Gate 2": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693085
+      }
+    ],
+    "5.4 Guard tenancy sesi di `internal/repository/exam_session_repo.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693117
+      }
+    ],
+    "5.5 Filter tenant pada `UnlinkClassSubject` di `internal/api/handlers/mapping_handler.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693151
+      }
+    ],
+    "5.6 Kardinalitas dan scoping `fetchRoomStatus` di `internal/api/handlers/supervisor.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693181
+      }
+    ],
+    "5.8 Checkpoint Gate 3": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693213
+      }
+    ],
+    "6.2 `Stop` idempotent di `internal/submission/worker.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693245
+      }
+    ],
+    "6.3 `Close`/`Shutdown` untuk `FilesystemQueue` di `internal/submission/fsqueue.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693277
+      }
+    ],
+    "6.4 Dead letter konsisten di `MarkFailed` (`internal/submission/fsqueue.go`)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693308
+      }
+    ],
+    "6.5 `COALESCE` pada agregat `GetStats` di `internal/submission/queue.go`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693340
+      }
+    ],
+    "6.6 Baca melalui `tx` di `internal/submission/processor.go` `processOneInTx`": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693375
+      }
+    ],
+    "6.8 Guard token login (klausa 2.12)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693405
+      }
+    ],
+    "6.9 Guard token webhook (klausa 2.13)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693437
+      }
+    ],
+    "6.11 Tri-state `ContentCookieSecure` (klausa 2.14)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693467
+      }
+    ],
+    "6.13 Periksa `rows.Scan` dan `rows.Err()` di sembilan lokasi (klausa 2.15)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693500
+      }
+    ],
+    "6.14 Scan nullable pada ekspor (klausa 2.16)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693533
+      }
+    ],
+    "6.15 Pisahkan \"kueri gagal\" dari \"tidak ada mapping\" (klausa 2.17)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693564
+      }
+    ],
+    "6.17 Delete yang benar (klausa 2.18)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693599
+      }
+    ],
+    "6.18 Satu sumber kebenaran otorisasi (klausa 2.19)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693631
+      }
+    ],
+    "6.20 TrimSuffix case-insensitive (klausa 2.20)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693665
+      }
+    ],
+    "6.22 `CreateRoom` yang ketat (klausa 2.21)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693696
+      }
+    ],
+    "6.24 Increment atomic (klausa 2.22)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693728
+      }
+    ],
+    "6.26 Graceful shutdown di `cmd/server/main.go` (klausa 2.23)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693760
+      }
+    ],
+    "6.28 Konvensi interval seragam (klausa 2.24)": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693819
+      }
+    ],
+    "6.30 Checkpoint Gate 4 — final": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788082693849
+      }
+    ],
+    "1.1 Rekam golden file payload seluruh endpoint list": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084209908
+      }
+    ],
+    "1.2 Rekam golden file keluaran export CSV, XLSX, dan PDF": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084219784
+      }
+    ],
+    "1. Rekam baseline pra-fix dari kode belum diperbaiki": [
+      {
+        "executionId": "de1c31e1-6e9e-4928-8d16-c0b8ec9e127f",
+        "chatSessionId": "sess_15a2646e-b04b-4ed4-9fae-d9ee7591ce9d",
+        "timestamp": 1788084225783
+      }
+    ]
+  }
+}

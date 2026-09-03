@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -247,6 +248,25 @@ func TestGlobalTimer(t *testing.T) {
 	}
 }
 
+// manualClock is a hand-advanced clock injected into the submission queue so retry-backoff
+// tests do not have to sleep through the real exponential wait.
+type manualClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *manualClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *manualClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
 // 3. Test iSpring Submission Grace Period Check
 // With the new async design, the handler enqueues the job (HTTP 200) and the
 // processor rejects it with "grace period exceeded". After Max_Retries calls to
@@ -265,9 +285,14 @@ func TestISpringGracePeriod(t *testing.T) {
 		t.Fatalf("Failed to update login_time: %v", err)
 	}
 
-	// Create a FilesystemQueue in a temp directory for this test.
+	// Create a FilesystemQueue in a temp directory for this test. A failed job is now gated
+	// by the exponential backoff due time encoded in its file name, so the retry loop below
+	// drives an injected clock instead of sleeping through 1s+2s+4s+8s of real backoff.
 	queueDir := t.TempDir()
-	fsQueue, err := submission.NewFilesystemQueue(queueDir)
+	queueClock := &manualClock{now: time.Now().UTC()}
+	fsQueue, err := submission.NewFilesystemQueueWithConfig(queueDir, submission.FilesystemQueueConfig{
+		Now: queueClock.Now,
+	})
 	if err != nil {
 		t.Fatalf("Failed to create FilesystemQueue: %v", err)
 	}
@@ -313,7 +338,7 @@ func TestISpringGracePeriod(t *testing.T) {
 		t.Fatal("Expected a job in the queue after POST, got nil")
 	}
 
-	processErr := processor.ProcessBatch(ctx, []*submission.SubmissionJob{job})
+	processErr := processor.Process(ctx, job)
 	if processErr == nil {
 		t.Errorf("Expected processor to return an error for grace period exceeded, got nil")
 	} else if !strings.Contains(processErr.Error(), "grace period exceeded") {
@@ -332,8 +357,10 @@ func TestISpringGracePeriod(t *testing.T) {
 		t.Fatalf("MarkFailed (attempt 1) failed: %v", mErr)
 	}
 
-	// Remaining retries: dequeue → MarkFailed until maxRetries
+	// Remaining retries: advance past the backoff, dequeue → MarkFailed until maxRetries
 	for i := 2; i <= maxRetries; i++ {
+		// Backoff for retry_count n is min(2^(n-1), 30) seconds; jump well past it.
+		queueClock.Advance(31 * time.Second)
 		nextJob, dErr := fsQueue.Dequeue(ctx)
 		if dErr != nil {
 			t.Fatalf("Dequeue (attempt %d) failed: %v", i, dErr)

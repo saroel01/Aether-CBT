@@ -1,0 +1,30 @@
+# 2026/08/31 14:26:06.080020 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw num_participants: 2
+# 2026/08/31 14:26:06.080020 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw requested_session: 2
+# 2026/08/31 14:26:08.780066 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_count_p1: 0
+# 2026/08/31 14:26:11.405026 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_count_p2: 2
+# 2026/08/31 14:26:11.405026 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_session_p2_0: 3
+# 2026/08/31 14:26:11.405026 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_status_p2_0: "in_progress"
+# 2026/08/31 14:26:11.409890 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_session_p2_1: 1
+# 2026/08/31 14:26:11.409890 [TestRoomStatusCardinalityAndSessionScoping] [rapid] draw hasil_status_p2_1: "in_progress"
+# 2026/08/31 14:26:11.410447 [TestRoomStatusCardinalityAndSessionScoping] fetchRoomStatus returned 3 rows for 2 participants (session=2); hasil_tes rows per participant: p1=0 p2=2 
+# 
+v0.4.8#170024607602294871
+0x63495c0d4fc79
+0xaa2274f481ad4
+0x1
+0x1069cbc19a39e6
+0x2
+0x8f11d9a8d3067
+0x1a9d5fb891136
+0x0
+0x2a1be44f1262e
+0xc85facd5b2589
+0x2
+0x1f9b506b70defb
+0xffffffffffffffff
+0xe7ed160e6ea77
+0x0
+0x22592eca75dd6
+0x1
+0x1d620ec5cfcb61
+0x0

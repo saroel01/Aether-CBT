@@ -6,9 +6,14 @@
   import Input from '$lib/components/ui/Input.svelte';
   import { toast } from '$lib/stores/toast';
 
-  let noId = '';
-  let password = '';
-  let token = '';
+  // Dev-only credential prefill (Requirement: convenience for local development only).
+  // `import.meta.env.DEV` is a compile-time constant that Vite statically replaces with `false`
+  // in a production build, so these literals become dead code and are tree-shaken out — the
+  // default credentials never ship in a production bundle. The QR-code auto-fill in onMount
+  // still wins when the URL carries no_id/password/token query params.
+  let noId = import.meta.env.DEV ? '2024001' : '';
+  let password = import.meta.env.DEV ? 'siswa123' : '';
+  let token = import.meta.env.DEV ? 'ujian2026' : '';
   let error = '';
   let loading = false;
 
@@ -174,6 +179,12 @@
         Gunakan Nomor ID, kata sandi, dan token resmi yang dibagikan proktor.
       </div>
     </Card>
+
+    {#if import.meta.env.DEV}
+      <p class="text-xs text-center text-slate-500 mt-6 leading-relaxed">
+        Dev only: kolom kredensial sudah terisi otomatis — langsung klik Masuk.
+      </p>
+    {/if}
 
     <div class="mt-8 text-center text-xs text-slate-600 font-mono">
       Aether CBT v1.0 • Dikembangkan dengan Arsitektur Multi-Tenant SQLite-WAL

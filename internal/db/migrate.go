@@ -23,6 +23,14 @@ import (
 // RunMigrations reports success (Requirement 14.6, design AD-8). Files must still be
 // written idempotently ("CREATE TABLE IF NOT EXISTS", "INSERT OR IGNORE").
 func RunMigrations(database *sql.DB, migrationsDir string) error {
+	// Gate 0 prerequisite (codebase-bug-sweep clause 2.2): an existing database may still
+	// declare peserta.kelas_id / peserta.ruang_id NOT NULL, which is what forced every write
+	// path to express "not assigned" as the sentinel 0 — a FOREIGN KEY violation. Relaxing
+	// that is a table rebuild and must happen before migration 032 nulls the sentinels.
+	if err := repairPesertaNullableFK(database); err != nil {
+		return err
+	}
+
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		return err
@@ -52,7 +60,53 @@ func RunMigrations(database *sql.DB, migrationsDir string) error {
 	}
 
 	log.Println("All migrations applied successfully")
+
+	// Data-integrity diagnostic (clause 2.2 / 3.1). Deliberately non-fatal: refusing to start
+	// over a referential violation would stop a school from running its exam, which is worse
+	// than running with a warning. The fail-fast check that belongs with the DSN targets
+	// CONFIGURATION, which is deterministic and always fixable in code; this one targets DATA,
+	// which is installation-dependent. Staying silent is not an option — that is exactly what
+	// let the disabled-pragma defect hide for so long.
+	logForeignKeyViolations(database)
+
 	return nil
+}
+
+// logForeignKeyViolations runs PRAGMA foreign_key_check and logs one warning line per
+// offending table/rowid. It never returns an error and never aborts startup.
+func logForeignKeyViolations(database *sql.DB) {
+	rows, err := database.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		log.Printf("WARNING: foreign key diagnostic could not run: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	const maxReported = 50
+	var total int
+	for rows.Next() {
+		var table, parent sql.NullString
+		var rowid, fkid sql.NullInt64
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			log.Printf("WARNING: foreign key diagnostic could not read a row: %v", err)
+			return
+		}
+		total++
+		if total <= maxReported {
+			log.Printf("WARNING: foreign key violation: table %q rowid %d references missing row in %q (fk index %d)",
+				table.String, rowid.Int64, parent.String, fkid.Int64)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("WARNING: foreign key diagnostic ended early: %v", err)
+		return
+	}
+	if total > maxReported {
+		log.Printf("WARNING: %d further foreign key violations were not listed", total-maxReported)
+	}
+	if total > 0 {
+		log.Printf("WARNING: %d foreign key violation(s) present after migrations; the application will keep running, but these rows must be repaired", total)
+	}
 }
 
 // execMigrationStatement executes a single migration statement. Idempotency errors

@@ -60,6 +60,12 @@ func ServeIndexWithShim(w io.Writer, packageDir, entryPath string, ctx ShimConte
 	if err != nil {
 		return err
 	}
+	// Strip iSpring's mobile-launcher redirect BEFORE injecting the shim. Published packages
+	// redirect to ismplayer.html on iOS/Android, which would break the inline exam iframe. Doing
+	// it here (server-side) is layer 1 of the defense-in-depth; the shim's client-side
+	// location.replace/assign override is layer 3 and catches any future redirect variant the
+	// regex might miss (Requirement: P1).
+	data = StripMobileLauncherRedirect(data)
 	_, err = w.Write(injectShim(data, ctx))
 	return err
 }

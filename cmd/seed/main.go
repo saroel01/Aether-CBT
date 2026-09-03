@@ -56,19 +56,21 @@ func main() {
 			tenantID, r.nama, r.user, hash)
 	}
 
-	// Get IDs for relations
-	var kelas1, kelas2, ruangA, ruangB int
-	db.DB.QueryRow(`SELECT id FROM kelas WHERE tenant_id = 1 AND nama_kelas = 'XII IPA 1'`).Scan(&kelas1)
-	db.DB.QueryRow(`SELECT id FROM kelas WHERE tenant_id = 1 AND nama_kelas = 'XII IPA 2'`).Scan(&kelas2)
-	db.DB.QueryRow(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang A'`).Scan(&ruangA)
-	db.DB.QueryRow(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang B'`).Scan(&ruangB)
+	// Get IDs for relations. A failed lookup used to leave these at 0 and that 0 was written
+	// straight into peserta.kelas_id / peserta.ruang_id, which are FOREIGN KEY columns with no
+	// parent row at id 0 (clause 2.2). Fail loudly instead: the seed inserted these rows a few
+	// lines above, so a missing id means something is genuinely wrong.
+	kelas1 := mustLookupID(`SELECT id FROM kelas WHERE tenant_id = 1 AND nama_kelas = 'XII IPA 1'`)
+	kelas2 := mustLookupID(`SELECT id FROM kelas WHERE tenant_id = 1 AND nama_kelas = 'XII IPA 2'`)
+	ruangA := mustLookupID(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang A'`)
+	ruangB := mustLookupID(`SELECT id FROM ruang WHERE tenant_id = 1 AND nama_ruang = 'Ruang B'`)
 
 	// Sample Students. Password is bcrypt-hashed (Task 6 removed the plaintext fallback, so a
 	// plaintext seed would never authenticate). The default password is "siswa123" for all
 	// sample students; change per-student before production use.
 	students := []struct {
 		no_id, nama  string
-		kelas, ruang int
+		kelas, ruang int64
 	}{
 		{"2024001", "Ahmad Fauzi", kelas1, ruangA},
 		{"2024002", "Siti Nurhaliza", kelas1, ruangA},
@@ -84,10 +86,14 @@ func main() {
 		log.Fatalf("hash seed student password: %v", err)
 	}
 	for _, st := range students {
-		_, _ = db.DB.Exec(`
+		// db.NullableFK maps a non-positive id to SQL NULL so the seed can never write the
+		// sentinel 0 into a FOREIGN KEY column (clause 2.2).
+		if _, err := db.DB.Exec(`
 			INSERT OR IGNORE INTO peserta (tenant_id, no_id, password, nama_peserta, kelas_id, ruang_id)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`, tenantID, st.no_id, studentPWHash, st.nama, st.kelas, st.ruang)
+		`, tenantID, st.no_id, studentPWHash, st.nama, db.NullableFK(st.kelas), db.NullableFK(st.ruang)); err != nil {
+			log.Fatalf("seed peserta %s: %v", st.no_id, err)
+		}
 	}
 
 	// Ensure settings token exists. A random per-tenant token is generated so the seed is
@@ -110,4 +116,17 @@ func main() {
 	fmt.Println("   - 2 Rooms (supervisor login: ruang_a / ruang123)")
 	fmt.Println("   - 8 Students (student login: no_id + password 'siswa123')")
 	fmt.Printf("   - Settings with random exam token '%s'\n", actualToken)
+}
+
+// mustLookupID reads a single id, aborting the seed when the row is missing. Swallowing the
+// lookup error is what let the sentinel 0 reach a FOREIGN KEY column (clause 2.2).
+func mustLookupID(query string) int64 {
+	var id int64
+	if err := db.DB.QueryRow(query).Scan(&id); err != nil {
+		log.Fatalf("seed lookup failed (%s): %v", query, err)
+	}
+	if id <= 0 {
+		log.Fatalf("seed lookup returned a non-positive id (%s)", query)
+	}
+	return id
 }

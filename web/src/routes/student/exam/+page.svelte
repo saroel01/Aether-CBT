@@ -23,12 +23,64 @@
 
   // Anti-cheat + lock state (Requirement 10). The authoritative lock is server-side; we mirror
   // it client-side only to show an immediate overlay.
+  //
+  // Detection uses `document.visibilitychange` (not `window.blur`): `blur` fires on any focus
+  // loss, including legitimate interactions with the iSpring iframe (clicking buttons,
+  // opening dialogs, requesting fullscreen), which caused false-positive infractions. Only a
+  // real tab/window switch flips `document.visibilityState` to 'hidden'. A debounce coalesces
+  // the blur+visibilitychange double-fire of a single switch (review, Task 46), and a long-away
+  // guard (>30s) treats a prolonged departure as serious regardless of debounce.
   let tabSwitchCount = 0;
   let showCheatModal = false;
   let locked = false;
   let submitted = false;
   let showConfirmExit = false;
   let showResultModal = false;
+  let lastInfractionAt = 0;
+  let lastHiddenAt: number | null = null;
+  const INFRACTION_DEBOUNCE_MS = 1500;
+  const SERIOUS_AWAY_MS = 30_000;
+
+  // Time-warning thresholds (P3). The server is authoritative for remaining time (wall-clock,
+  // resynced every 60s); these are pure UI signals so the student is alerted at the 10/5/1 minute
+  // marks. Each threshold fires exactly once per session via a "warned" flag (same pattern as the
+  // infraction debounce) so resyncs / countdown ticks never double-fire a warning.
+  let warned10 = false;
+  let warned5 = false;
+  let warned1 = false;
+
+  // P2: force-submit idempotency guard. Set the first time we tell the shim to force-submit
+  // (either from a server resync returning force_submit, or from the local countdown expiring),
+  // so we never drive player.submitQuiz() twice (which would double-submit or error after a
+  // manual submit that already captured the result).
+  let forceSubmitSent = false;
+
+  // iSpring QuizMaker desktop player renders at a fixed canvas size (the "984 676" marker in
+  // the package's index.html). The player itself is not responsive, so to make it fill the
+  // available area (desktop fullscreen, and especially small/rotated mobile screens) we render
+  // the iframe at the native size inside a scaler div and apply a CSS transform: scale() so the
+  // whole player fits the container while preserving its aspect ratio. The container size is
+  // bound reactively, so a browser resize or device rotation recomputes the scale immediately.
+  const ISPRING_NATIVE_W = 984;
+  const ISPRING_NATIVE_H = 676;
+  let contentW = 0;
+  let contentH = 0;
+  // Reactive scale + centering (Svelte `$:` statements). Computed from the bound container
+  // size so a browser resize or device rotation immediately refits the iSpring player. Because
+  // we preserve aspect ratio (scale = min), one axis fills the container and the other leaves a
+  // remainder; we center the scaled canvas by translating it half that remainder on each side,
+  // so the leftover space splits evenly instead of bunching on the right/bottom (letterbox).
+  let ispringScale = 1;
+  let ispringOffsetX = 0;
+  let ispringOffsetY = 0;
+  $: {
+    const sx = contentW > 0 ? contentW / ISPRING_NATIVE_W : 1;
+    const sy = contentH > 0 ? contentH / ISPRING_NATIVE_H : 1;
+    const s = Math.min(sx, sy);
+    ispringScale = s;
+    ispringOffsetX = (contentW - ISPRING_NATIVE_W * s) / 2;
+    ispringOffsetY = (contentH - ISPRING_NATIVE_H * s) / 2;
+  }
 
   // Iframe load state (Task 21): detect a failed/blank content load and offer retry.
   // Same-origin content lets us sanity-check the loaded document; cross-origin falls back
@@ -120,8 +172,8 @@
     window.addEventListener('message', onIframeMessage);
 
     // Anti-cheat tab/blur monitoring.
+    // `visibilitychange` only — see note above (blur false-positives on iframe interaction).
     if (typeof window !== 'undefined') {
-      window.addEventListener('blur', recordTabSwitch);
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
@@ -134,7 +186,6 @@
 
   onDestroy(() => {
     window.removeEventListener('message', onIframeMessage);
-    window.removeEventListener('blur', recordTabSwitch);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     if (progressTimer) clearInterval(progressTimer);
     if (tickHandle) clearInterval(tickHandle);
@@ -152,14 +203,38 @@
         remainingSeconds = res.data.remaining_seconds;
         if (!duration) duration = remainingSeconds;
       }
+      // P2: server-authoritative force-submit signal. When the clock hits 0 the server sets
+      // force_submit=true; the parent page forwards this to the iSpring shim (inside the iframe)
+      // via postMessage so the shim can call player.submitQuiz() and capture answers even though
+      // the student never clicked Submit. Sent once (forceSubmitSent guard) to avoid re-driving
+      // the player API after a manual submit that already succeeded.
+      if (res?.data?.force_submit && !submitted && !forceSubmitSent) {
+        forceSubmitSent = true;
+        sendForceSubmitToShim();
+      }
     } catch { /* server is authoritative; timer keeps ticking locally */ }
   }
 
+  // Ask the iSpring shim (inside the exam iframe) to force-submit. Same-origin (dev proxy /
+  // single-port production), so postMessage reaches it; the shim guards with its own flag and
+  // falls back to form.submit() if the player API is unavailable.
+  function sendForceSubmitToShim() {
+    try {
+      const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
+      const target = f?.contentWindow;
+      if (target) {
+        target.postMessage({ type: 'aether_force_submit', aether: true }, '*');
+      }
+    } catch { /* best-effort */ }
+  }
+
   function onIframeMessage(e: MessageEvent) {
-    // Only accept same-origin messages (the content iframe is same-origin).
-    if (!e.origin || e.origin !== window.location.origin) return;
+    // Trust messages stamped with our 'aether' marker (the shim sets it). A same-origin origin
+    // check is brittle here because the iSpring content can legitimately originate from a host
+    // other than the page (e.g. served by the backend on a different port); the marker is the
+    // authority and the payload is constrained to known types, so no untrusted data is acted on.
     const d = e.data;
-    if (!d || typeof d !== 'object') return;
+    if (!d || typeof d !== 'object' || d.aether !== true) return;
     // The shim posts { type: 'aether_progress', answered, total } and { type: 'aether_result' }.
     if (d.type === 'aether_progress' && typeof d.answered === 'number' && typeof d.total === 'number') {
       pendingAnswered = d.answered;
@@ -188,8 +263,13 @@
     } catch { /* best-effort; server absorbs write load */ }
   }
 
-  async function recordTabSwitch() {
+  async function recordInfraction(force = false) {
     if (submitted || locked || showConfirmExit) return;
+    const now = Date.now();
+    // Debounce: a single tab switch can fire visibilitychange multiple times in quick
+    // succession; coalesce them into one infraction unless `force` (a long absence).
+    if (!force && now - lastInfractionAt < INFRACTION_DEBOUNCE_MS) return;
+    lastInfractionAt = now;
     tabSwitchCount++;
     showCheatModal = true;
     toast.error(`⚠️ Dilarang meninggalkan halaman ujian! (${tabSwitchCount}x)`);
@@ -210,10 +290,21 @@
 
   function handleVisibilityChange() {
     if (document.hidden) {
-      recordTabSwitch();
+      // Tab/window hidden: record the moment and flag an infraction (debounced).
+      if (!submitted && !locked && !showConfirmExit) {
+        lastHiddenAt = Date.now();
+        recordInfraction(false);
+      }
     } else {
-      // Tab refocused: recompute from the wall clock immediately + pull the server value so
-      // a long-backgrounded tab jumps to the correct remaining time (Task 20).
+      // Tab refocused: a long absence (>30s) is treated as serious — record immediately,
+      // bypassing the debounce. Short refocuses only resync the timer.
+      if (lastHiddenAt && !submitted && !locked && !showConfirmExit) {
+        const awayMs = Date.now() - lastHiddenAt;
+        if (awayMs > SERIOUS_AWAY_MS) {
+          recordInfraction(true);
+        }
+      }
+      lastHiddenAt = null;
       remainingSeconds = countdown ? countdown.remaining() : 0;
       resyncFromServer();
     }
@@ -248,8 +339,34 @@
     anchorDeadlineFromServer();
   }
 
+  // P3: time-warning thresholds. Reactive on remainingSeconds (updated each tick). Each warning
+  // fires once per session; the guard bands prevent a warning from re-triggering if the countdown
+  // briefly crosses back over the boundary due to a server resync. Warnings are suppressed once
+  // the exam is submitted/locked.
+  $: if (!submitted && !locked && countdown) {
+    if (!warned10 && remainingSeconds <= 600 && remainingSeconds > 300) {
+      warned10 = true;
+      toast.warning('⏳ Sisa waktu ujian 10 menit.');
+    }
+    if (!warned5 && remainingSeconds <= 300 && remainingSeconds > 60) {
+      warned5 = true;
+      toast.warning('⏳ Sisa waktu ujian tinggal 5 menit!');
+    }
+    if (!warned1 && remainingSeconds <= 60 && remainingSeconds > 0) {
+      warned1 = true;
+      toast.error('🚨 Waktu ujian hampir habis — segera kirim jawaban!');
+    }
+  }
+
   function handleTimeExpired() {
     toast.warning('Waktu ujian telah habis. Silakan tunggu hasil dari server.');
+    // P2: tell the iSpring shim to force-submit now (capture answers). The local countdown
+    // detects expiry within 1s, much faster than waiting for the 60s server resync to report
+    // force_submit. forceSubmitSent guards against a double drive if both paths fire.
+    if (!forceSubmitSent) {
+      forceSubmitSent = true;
+      sendForceSubmitToShim();
+    }
     submitted = true;
   }
 
@@ -304,8 +421,12 @@
   <!-- Real iSpring content (Task 14). Same-origin iframe: the content-session cookie (set by
        POST /student/start) is sent automatically, and the server injects the shim on the
        served index.html which redirects result POSTs to /api/ispring/webhook with the
-       attempt_token/tenant_id/sid. No hardcoded URL/token here (Req 12.5). -->
-  <div class="flex-1 relative z-10">
+       attempt_token/tenant_id/sid. No hardcoded URL/token here (Req 12.5).
+
+       The iSpring desktop player renders at a fixed 984x676 canvas, so the iframe is wrapped
+       in a scaler div: the iframe keeps its native size while a CSS transform: scale() fit to
+       the container makes the whole player responsive (desktop fullscreen, small mobile). -->
+  <div class="flex-1 relative z-10 bg-slate-950 overflow-hidden" bind:clientWidth={contentW} bind:clientHeight={contentH}>
     {#if iframeError}
       <div class="absolute inset-0 bg-red-950/40 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-30">
         <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md shadow-2xl">
@@ -325,16 +446,20 @@
         </div>
       </div>
     {/if}
-    <iframe
-      id="exam-iframe"
-      title="Lembar Ujian iSpring"
-      src={apiUrl('/exam/content/index.html')}
-      class="w-full h-full border-0"
-      style="min-height: calc(100vh - 73px);"
-      allow="fullscreen; autoplay; clipboard-write"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-      on:load={onIframeLoad}
-    ></iframe>
+    <div
+      class="absolute top-0 left-0"
+      style="width:{ISPRING_NATIVE_W}px; height:{ISPRING_NATIVE_H}px; transform: translate({ispringOffsetX}px, {ispringOffsetY}px) scale({ispringScale}); transform-origin: top left;"
+    >
+      <iframe
+        id="exam-iframe"
+        title="Lembar Ujian iSpring"
+        src={apiUrl('/exam/content/index.html')}
+        allow="fullscreen; autoplay; clipboard-write"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        style="width:{ISPRING_NATIVE_W}px; height:{ISPRING_NATIVE_H}px; border:0; display:block;"
+        on:load={onIframeLoad}
+      ></iframe>
+    </div>
   </div>
 
   <!-- Confirm exit modal -->

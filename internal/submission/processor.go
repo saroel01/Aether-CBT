@@ -19,21 +19,69 @@ func NewProcessor(db *sql.DB) *Processor {
 	return &Processor{db: db}
 }
 
-// ProcessBatch writes results for the entire batch in one transaction.
+// ProcessBatch writes results for the whole batch in ONE transaction and reports the outcome
+// PER JOB.
+//
+// Return contract (klausa 2.4):
+//   - jobErrs is parallel to jobs: jobErrs[i] == nil means job i was written and committed;
+//     non-nil means only that job failed. It is always len(jobs) long.
+//   - txErr is a transaction-level failure (BeginTx, Commit, or a savepoint operation that
+//     could not be applied). It covers the ENTIRE batch: no job was committed, so the caller
+//     must fail all of them.
+//
+// Each job runs inside its own SAVEPOINT, so one bad submission is rolled back on its own
+// instead of taking the rest of the batch down with it. An all-valid batch is still a single
+// BeginTx/Commit — one transaction, one WAL fsync — which is what keeps clause 3.5 intact.
+//
 // Memenuhi Requirement 5.1, 5.2, 5.3, 5.4, 5.5, 14.1, 14.3, 17.3, 17.4.
-func (p *Processor) ProcessBatch(ctx context.Context, jobs []*SubmissionJob) error {
+func (p *Processor) ProcessBatch(ctx context.Context, jobs []*SubmissionJob) (jobErrs []error, txErr error) {
+	jobErrs = make([]error, len(jobs))
+	if len(jobs) == 0 {
+		return jobErrs, nil
+	}
+
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return jobErrs, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
 
-	for _, job := range jobs {
-		if err := p.processOneInTx(ctx, tx, job); err != nil {
-			return err // rollback via defer
+	for i, job := range jobs {
+		sp := fmt.Sprintf("sp_job_%d", i)
+		if _, err := tx.ExecContext(ctx, "SAVEPOINT "+sp); err != nil {
+			return jobErrs, fmt.Errorf("savepoint %s: %w", sp, err)
+		}
+
+		if procErr := p.processOneInTx(ctx, tx, job); procErr != nil {
+			// Undo just this job, keep everything already written in the batch.
+			if _, rbErr := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+sp); rbErr != nil {
+				// The transaction is no longer in a state we can reason about (e.g. the
+				// connection died): escalate to a batch-level failure.
+				return jobErrs, fmt.Errorf("rollback to savepoint %s after job error %v: %w", sp, procErr, rbErr)
+			}
+			if _, relErr := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+sp); relErr != nil {
+				return jobErrs, fmt.Errorf("release savepoint %s after rollback: %w", sp, relErr)
+			}
+			jobErrs[i] = procErr
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+sp); err != nil {
+			return jobErrs, fmt.Errorf("release savepoint %s: %w", sp, err)
 		}
 	}
-	return tx.Commit()
+
+	if err := tx.Commit(); err != nil {
+		// Transaction-level failure: nothing was persisted, so per-job outcomes are void.
+		return make([]error, len(jobs)), fmt.Errorf("commit batch: %w", err)
+	}
+	committed = true
+	return jobErrs, nil
 }
 
 // processOneInTx does NOT validate cek_login token (already done in handler).
@@ -54,7 +102,7 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	// Step 2: lookup mapel_id and login_time from the SPECIFIC session that owns the
 	// attempt_token, so a peserta with multiple active sessions resolves the right one
 	// (Requirement 11.3, Task 10.3). Anti-cheat token validation is done in the handler.
-	var mapelID int
+	var mapelID sql.NullInt64
 	var loginTime time.Time
 	var sessionID sql.NullInt64
 	requiresGraceCheck := true
@@ -80,14 +128,26 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 				return fmt.Errorf("active session not found for peserta %d (tenant %d): %w", pesertaID, job.TenantID, err)
 			}
 		} else {
-			// Diagnostic: count remaining sessions for this peserta and tenant.
+			// Diagnostic: count remaining sessions for this peserta and tenant (Clause 2.25: read via tx).
 			var sameTenant int
 			var samePesertaAnyMapel int
-			_ = p.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE tenant_id = ?", job.TenantID).Scan(&sameTenant)
-			_ = p.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, job.TenantID).Scan(&samePesertaAnyMapel)
+			_ = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE tenant_id = ?", job.TenantID).Scan(&sameTenant)
+			_ = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, job.TenantID).Scan(&samePesertaAnyMapel)
 			log.Printf("[PROCESSOR] cek_login miss: peserta=%d tenant=%d sessions_for_peserta=%d total_sessions_in_tenant=%d sql_err=%v",
 				pesertaID, job.TenantID, samePesertaAnyMapel, sameTenant, err)
 			return fmt.Errorf("active session not found for peserta %d (tenant %d): %w", pesertaID, job.TenantID, err)
+		}
+	}
+
+	if !mapelID.Valid && sessionID.Valid {
+		var fallbackMapelID int
+		if fErr := tx.QueryRowContext(ctx, `
+			SELECT e.mapel_id
+			FROM exam_session es
+			JOIN exam e ON es.exam_id = e.id
+			WHERE es.id = ? AND es.tenant_id = ?
+		`, sessionID.Int64, job.TenantID).Scan(&fallbackMapelID); fErr == nil {
+			mapelID = sql.NullInt64{Int64: int64(fallbackMapelID), Valid: true}
 		}
 	}
 
@@ -108,7 +168,7 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
 	actualDuration := time.Now().UTC().Sub(loginTime.UTC())
 	if requiresGraceCheck && actualDuration > maxAllowedDuration {
-		return fmt.Errorf("grace period exceeded for peserta %d (mapel %d)", pesertaID, mapelID)
+		return fmt.Errorf("grace period exceeded for peserta %d (mapel %d)", pesertaID, mapelID.Int64)
 	}
 
 	// Step 4: parse detail_xml if non-empty.
@@ -146,7 +206,11 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	// Fallback: construct it if not set (backward compat).
 	validasi := job.Validasi
 	if validasi == "" {
-		validasi = fmt.Sprintf("%d_%s_%d", job.TenantID, job.NoID, mapelID)
+		if sessionID.Valid {
+			validasi = fmt.Sprintf("%d_%s_%d", job.TenantID, job.NoID, sessionID.Int64)
+		} else {
+			validasi = fmt.Sprintf("%d_%s_%d", job.TenantID, job.NoID, mapelID.Int64)
+		}
 	}
 
 	// Step 6: UPSERT hasil_tes using ON CONFLICT(tenant_id, validasi) DO UPDATE.
@@ -222,8 +286,15 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	return nil
 }
 
-// Process is a backward-compatibility wrapper around ProcessBatch for single-job callers.
-// Deprecated: use ProcessBatch directly.
+// Process is a convenience wrapper around ProcessBatch for single-job callers: with a batch of
+// one, the per-job error and the transaction-level error collapse into a single error.
 func (p *Processor) Process(ctx context.Context, job *SubmissionJob) error {
-	return p.ProcessBatch(ctx, []*SubmissionJob{job})
+	jobErrs, txErr := p.ProcessBatch(ctx, []*SubmissionJob{job})
+	if txErr != nil {
+		return txErr
+	}
+	if len(jobErrs) > 0 {
+		return jobErrs[0]
+	}
+	return nil
 }

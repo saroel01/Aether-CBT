@@ -72,11 +72,11 @@ func TestProcessorProcessBatchInsertsDetailRows(t *testing.T) {
 	db := setupProcessorDB(t)
 	defer db.Close()
 
-	err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{
+	err := NewProcessor(db).Process(context.Background(),
 		processorJob("10", detailXMLWithQuestions()), // client score matches XML-derived 10 (Task 2)
-	})
+	)
 	if err != nil {
-		t.Fatalf("ProcessBatch: %v", err)
+		t.Fatalf("Process: %v", err)
 	}
 
 	var detailCount int
@@ -93,15 +93,13 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 	defer db.Close()
 
 	processor := NewProcessor(db)
-	if err := processor.ProcessBatch(context.Background(), []*SubmissionJob{
+	if err := processor.Process(context.Background(),
 		processorJob("10", detailXMLWithQuestions()), // client score matches XML-derived 10 (Task 2)
-	}); err != nil {
-		t.Fatalf("first ProcessBatch: %v", err)
+	); err != nil {
+		t.Fatalf("first Process: %v", err)
 	}
-	if err := processor.ProcessBatch(context.Background(), []*SubmissionJob{
-		processorJob("90", ""),
-	}); err != nil {
-		t.Fatalf("duplicate ProcessBatch: %v", err)
+	if err := processor.Process(context.Background(), processorJob("90", "")); err != nil {
+		t.Fatalf("duplicate Process: %v", err)
 	}
 
 	var resultCount int
@@ -140,8 +138,8 @@ func TestProcessorCleanupTargetsOnlyTheSubmittedSession(t *testing.T) {
 	}
 
 	job := processorJob("80", "") // AttemptToken = "tok" -> targets only the first session
-	if err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{job}); err != nil {
-		t.Fatalf("ProcessBatch: %v", err)
+	if err := NewProcessor(db).Process(context.Background(), job); err != nil {
+		t.Fatalf("Process: %v", err)
 	}
 
 	var remaining int
@@ -170,7 +168,7 @@ func TestProcessorRejectsInflatedClientScore(t *testing.T) {
 		`</questions></quizReport>`
 
 	job := processorJob("8", xml) // client claims 8 — TAMPERED (derived is 2)
-	err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{job})
+	err := NewProcessor(db).Process(context.Background(), job)
 	if err == nil {
 		t.Fatal("expected error for inflated client score, got nil")
 	}
@@ -179,25 +177,46 @@ func TestProcessorRejectsInflatedClientScore(t *testing.T) {
 	}
 }
 
-func TestProcessorProcessBatchRollsBackWholeBatch(t *testing.T) {
+// TestProcessorProcessBatchIsolatesFailingJob replaces the former
+// TestProcessorProcessBatchRollsBackWholeBatch, which asserted the defect described by clause
+// 1.4: one bad job rolled back the entire transaction, and the worker then dead-lettered every
+// valid submission in the same batch. Per clause 2.4 a failure is now confined to the job that
+// caused it — the valid job in the same batch commits and only the invalid one reports an error.
+func TestProcessorProcessBatchIsolatesFailingJob(t *testing.T) {
 	db := setupProcessorDB(t)
 	defer db.Close()
 
 	valid := processorJob("80", "")
 	invalid := processorJob("90", "")
-	invalid.NoID = "missing"
+	invalid.NoID = "missing" // no such peserta -> per-job failure
 	invalid.Validasi = "1_missing_7"
 
-	err := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{valid, invalid})
-	if err == nil {
-		t.Fatal("ProcessBatch returned nil, want error")
+	jobErrs, txErr := NewProcessor(db).ProcessBatch(context.Background(), []*SubmissionJob{valid, invalid})
+	if txErr != nil {
+		t.Fatalf("txErr = %v, want nil (a single bad job is not a transaction-level failure)", txErr)
+	}
+	if len(jobErrs) != 2 {
+		t.Fatalf("len(jobErrs) = %d, want 2 (parallel to jobs)", len(jobErrs))
+	}
+	if jobErrs[0] != nil {
+		t.Fatalf("jobErrs[0] = %v, want nil (the valid job must succeed)", jobErrs[0])
+	}
+	if jobErrs[1] == nil {
+		t.Fatal("jobErrs[1] = nil, want an error for the job whose peserta does not exist")
 	}
 
 	var resultCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM hasil_tes`).Scan(&resultCount); err != nil {
 		t.Fatalf("count hasil_tes: %v", err)
 	}
-	if resultCount != 0 {
-		t.Fatalf("hasil_tes rows after rollback = %d, want 0", resultCount)
+	if resultCount != 1 {
+		t.Fatalf("hasil_tes rows = %d, want 1 (only the valid job is persisted)", resultCount)
+	}
+	var validasi string
+	if err := db.QueryRow(`SELECT validasi FROM hasil_tes`).Scan(&validasi); err != nil {
+		t.Fatalf("select validasi: %v", err)
+	}
+	if validasi != "1_S-001_7" {
+		t.Fatalf("persisted validasi = %q, want the valid job's 1_S-001_7", validasi)
 	}
 }

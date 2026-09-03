@@ -31,8 +31,13 @@ func GetMapel(c *fiber.Ctx) error {
 	var mapels []Mapel
 	for rows.Next() {
 		var m Mapel
-		rows.Scan(&m.ID, &m.NamaMapel, &m.KodeMapel, &m.CreatedAt)
+		if err := rows.Scan(&m.ID, &m.NamaMapel, &m.KodeMapel, &m.CreatedAt); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read subject")
+		}
 		mapels = append(mapels, m)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate subjects")
 	}
 
 	return utils.SuccessResponse(c, mapels, "Subjects retrieved")
@@ -64,21 +69,29 @@ func CreateMapel(c *fiber.Ctx) error {
 // DeleteMapel soft-deletes a subject
 func DeleteMapel(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
 
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can delete subjects")
+	// Clause 2.18, 2.19: validate ID int, require deleted_at IS NULL, check RowsAffected
+	id, err := c.ParamsInt("id")
+	if err != nil || id <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid subject ID")
 	}
 
-	id := c.Params("id")
-	_, err := db.DB.Exec(`
+	res, err := db.DB.Exec(`
 		UPDATE mapel 
 		SET deleted_at = CURRENT_TIMESTAMP 
-		WHERE id = ? AND tenant_id = ?
+		WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 	`, id, tenantID)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to delete subject")
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check subject deletion")
+	}
+	if affected == 0 {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "Subject not found")
 	}
 
 	return utils.SuccessResponse(c, nil, "Subject deleted successfully")

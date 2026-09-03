@@ -16,11 +16,6 @@ type LinkRequest struct {
 
 // LinkClassSubject creates a curriculum relationship between Class and Subject
 func LinkClassSubject(c *fiber.Ctx) error {
-	role := c.Locals("role").(string)
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can map curriculum")
-	}
-
 	var req LinkRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
@@ -61,23 +56,39 @@ func LinkClassSubject(c *fiber.Ctx) error {
 
 // UnlinkClassSubject disables or unlinks curriculum mapping
 func UnlinkClassSubject(c *fiber.Ctx) error {
-	role := c.Locals("role").(string)
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can edit mappings")
-	}
-
 	var req LinkRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	_, err := db.DB.Exec(`
-		DELETE FROM kelas_mapel 
-		WHERE kelas_id = ? AND mapel_id = ?
-	`, req.KelasID, req.MapelID)
+	// Same input contract as LinkClassSubject: both ids are required positive integers. A
+	// missing id used to parse as 0, match nothing, and still answer 200 "unlinked".
+	if req.KelasID <= 0 || req.MapelID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Class ID and Subject ID are required")
+	}
+
+	// Tenant scope: without tenant_id in the WHERE clause an admin in tenant A could delete
+	// tenant B's mapping by id, mirroring the hardening already applied to LinkClassSubject
+	// (codebase-bug-sweep clause 2.6).
+	tenantID := c.Locals("tenant_id").(int)
+	res, err := db.DB.Exec(`
+		DELETE FROM kelas_mapel
+		WHERE kelas_id = ? AND mapel_id = ? AND tenant_id = ?
+	`, req.KelasID, req.MapelID, tenantID)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to unlink subject from class")
+	}
+
+	// Zero rows affected means no such mapping in this tenant — the requireAffected/ErrNotFound
+	// pattern from the repository layer, surfaced as 404 (never 403: the caller must not learn
+	// that the mapping exists in another tenant).
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to unlink subject from class")
+	}
+	if affected == 0 {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "Mapping not found")
 	}
 
 	return utils.SuccessResponse(c, nil, "Subject successfully unlinked from class")
@@ -114,8 +125,13 @@ func GetClassSubjects(c *fiber.Ctx) error {
 	var list []SubjectItem
 	for rows.Next() {
 		var s SubjectItem
-		rows.Scan(&s.ID, &s.NamaMapel, &s.KodeMapel)
+		if err := rows.Scan(&s.ID, &s.NamaMapel, &s.KodeMapel); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read mapped subject")
+		}
 		list = append(list, s)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate mapped subjects")
 	}
 
 	return utils.SuccessResponse(c, list, "Class subjects retrieved")

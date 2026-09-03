@@ -4,8 +4,10 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,8 +50,8 @@ func main() {
 
 	// Configure soal-package upload caps from config (Requirement 3.2, 10.6).
 	handlers.SetSoalUploadLimits(cfg.SoalUploadMaxBytes, cfg.SoalPackageMaxFiles)
-	// Force the content-session cookie Secure in production behind a TLS proxy (AD-2).
-	handlers.SetContentCookieSecure(cfg.ContentCookieSecure == "true")
+	// Content-session cookie Secure policy: auto / true / false (AD-2, Clause 2.14).
+	handlers.SetContentCookieSecureMode(cfg.ContentCookieSecure)
 	// Anti-cheat lock threshold from config (Requirement 10.6).
 	handlers.SetAntiCheatLockThreshold(cfg.AntiCheatLockThreshold)
 
@@ -94,6 +96,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize filesystem queue at %s: %v", queueDir, err)
 	}
+	defer subQueue.Close()
 	// Recover in-flight jobs on startup. forceAll defaults to false (safer): only jobs
 	// stuck longer than QUEUE_STUCK_THRESHOLD_MIN are promoted, so a quick restart does
 	// not re-enqueue jobs a live worker may still be processing. Set QUEUE_RECOVER_FORCE_ALL
@@ -302,8 +305,32 @@ func main() {
 		return c.SendFile("./web/build/index.html")
 	})
 
-	log.Printf("Aether CBT starting on port %s", cfg.Port)
-	log.Fatal(app.Listen(":" + cfg.Port))
+	// Graceful shutdown listener (Clause 2.23)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Aether CBT starting on port %s", cfg.Port)
+		if err := app.Listen(":" + cfg.Port); err != nil {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
+		log.Printf("Server failed to start or listen error: %v", err)
+	case sig := <-sigChan:
+		log.Printf("Received signal %s, initiating graceful shutdown...", sig)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+			log.Printf("Fiber shutdown error: %v", err)
+		}
+	}
+
+	log.Println("Aether CBT shutdown complete")
 }
 
 func getEnvString(key, fallback string) string {

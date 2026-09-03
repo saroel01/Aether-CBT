@@ -129,3 +129,26 @@ func TestDeleteSoalPackage_LinkedConflict(t *testing.T) {
 		t.Fatalf("status = %d, want 409 (linked)", resp.StatusCode)
 	}
 }
+
+// TestUploadSoalPackage_CaseInsensitiveZip tests Clause 2.20.
+func TestUploadSoalPackage_CaseInsensitiveZip(t *testing.T) {
+	SetSoalStorageDir(t.TempDir())
+	app, adminOnly, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/admin/soal-packages/upload", adminOnly, UploadSoalPackage)
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+
+	zipBytes := buildZipBytes(t, map[string]string{"index.html": "<html></html>", "data/player.js": "x"})
+	resp := newMultipartUpload(t, app, "/api/admin/soal-packages/upload", "FISIKA_DASAR.ZIP", zipBytes)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload status = %d, want 200", resp.StatusCode)
+	}
+
+	var nama string
+	if err := database.QueryRow(`SELECT nama FROM soal_package WHERE tenant_id = 1`).Scan(&nama); err != nil {
+		t.Fatalf("query package name: %v", err)
+	}
+	if nama != "FISIKA_DASAR" {
+		t.Errorf("expected package nama 'FISIKA_DASAR', got %q", nama)
+	}
+}

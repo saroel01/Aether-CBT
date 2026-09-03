@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/saroel01/aether-cbt/internal/models"
@@ -116,6 +117,11 @@ func (m *LegacyMigrator) legacyTenants(database *sql.DB) ([]legacyTenant, error)
 // migrateTenant creates the placeholder mapel (if absent), the legacy exam (if absent),
 // and the legacy session for one tenant.
 func (m *LegacyMigrator) migrateTenant(database *sql.DB, t legacyTenant) error {
+	// Clause 2.12: do not create enterable legacy sessions with empty tokens
+	if strings.TrimSpace(t.token) == "" {
+		return nil
+	}
+
 	mapelID, err := m.ensurePlaceholderMapel(database, t.id)
 	if err != nil {
 		return err

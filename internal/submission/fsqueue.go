@@ -26,6 +26,57 @@ func sanitize(s string) string {
 	return sanitizeRegexp.ReplaceAllString(s, "_")
 }
 
+// dueSegmentPrefix introduces the retry due-time segment appended to a job file name by
+// MarkFailed: <unix_nano>-<tenant_id>-<no_id>-<8hex>-due<due_unix_nano>.json
+//
+// The segment is appended AFTER the random suffix so the leading unix_nano keeps its sort
+// position: os.ReadDir order stays FIFO, and the <unix_nano>-<tenant_id>-<no_id> prefix
+// stays intact so admins can still correlate a job across directories by prefix match
+// (see docs/runbooks/queue-and-litestream.md).
+const dueSegmentPrefix = "-due"
+
+// splitDueTime separates a job file name into its stable base name (the name Enqueue wrote)
+// and the retry due time encoded by MarkFailed.
+//
+// It accepts BOTH shapes on purpose: a name WITHOUT a due segment — as written by Enqueue,
+// or left in pending/ by a previous version of this binary — is reported as having no due
+// time, which callers treat as "already due".
+func splitDueTime(fileName string) (base string, due time.Time, hasDue bool) {
+	if !strings.HasSuffix(fileName, ".json") {
+		return fileName, time.Time{}, false
+	}
+	stem := strings.TrimSuffix(fileName, ".json")
+	idx := strings.LastIndex(stem, dueSegmentPrefix)
+	if idx < 0 {
+		return fileName, time.Time{}, false
+	}
+	nano, err := strconv.ParseInt(stem[idx+len(dueSegmentPrefix):], 10, 64)
+	if err != nil || nano < 0 {
+		// Not a due segment (e.g. a no_id that happens to contain "-due"): treat as base.
+		return fileName, time.Time{}, false
+	}
+	return stem[:idx] + ".json", time.Unix(0, nano).UTC(), true
+}
+
+// withDueTime returns fileName carrying due as its retry due-time segment, replacing any
+// segment already present so repeated retries never stack segments.
+func withDueTime(fileName string, due time.Time) string {
+	base, _, _ := splitDueTime(fileName)
+	return fmt.Sprintf("%s%s%d.json",
+		strings.TrimSuffix(base, ".json"),
+		dueSegmentPrefix,
+		due.UnixNano(),
+	)
+}
+
+// now returns the queue's current time in UTC, honouring an injected test clock.
+func (q *FilesystemQueue) now() time.Time {
+	if q.nowFn == nil {
+		return time.Now().UTC()
+	}
+	return q.nowFn().UTC()
+}
+
 // randomHex returns n hex-encoded bytes from crypto/rand (n bytes → 2n hex chars).
 func randomHex(n int) (string, error) {
 	b := make([]byte, n)
@@ -58,12 +109,24 @@ type FilesystemQueue struct {
 	mu       sync.Mutex
 
 	enqueueCh chan enqueueRequest
+	closeOnce sync.Once
+	closed    bool
+
+	// nowFn is the clock used for retry scheduling decisions (backoff due time in
+	// MarkFailed, due-time check in Dequeue). Injectable so tests can advance time
+	// without sleeping through a 30-second backoff. Defaults to time.Now.
+	nowFn func() time.Time
 }
+
+// ErrQueueClosed is returned when attempting to Enqueue on a closed queue (Clause 2.9).
+var ErrQueueClosed = errors.New("queue is closed")
 
 type FilesystemQueueConfig struct {
 	MaxRetries     int
 	StuckThreshold time.Duration
 	DoneRetention  time.Duration
+	// Now overrides the clock used for retry scheduling. Leave nil in production.
+	Now func() time.Time
 }
 
 type enqueueRequest struct {
@@ -105,6 +168,7 @@ func NewFilesystemQueueWithConfig(root string, cfg FilesystemQueueConfig) (*File
 		doneRetention:  doneRetention,
 		inFlight:       make(map[int64]string),
 		enqueueCh:      make(chan enqueueRequest, 2048),
+		nowFn:          cfg.Now,
 	}
 
 	dirs := []string{
@@ -127,6 +191,13 @@ func NewFilesystemQueueWithConfig(root string, cfg FilesystemQueueConfig) (*File
 }
 
 func (q *FilesystemQueue) Enqueue(ctx context.Context, job *SubmissionJob) error {
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return ErrQueueClosed
+	}
+	q.mu.Unlock()
+
 	if q.enqueueCh == nil {
 		return q.enqueueDirect(ctx, job)
 	}
@@ -146,6 +217,25 @@ func (q *FilesystemQueue) Enqueue(ctx context.Context, job *SubmissionJob) error
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Close menghentikan runEnqueueWriter dan melepaskan goroutine-nya.
+// Idempotent via sync.Once (Requirement 2.9).
+func (q *FilesystemQueue) Close() error {
+	q.closeOnce.Do(func() {
+		q.mu.Lock()
+		q.closed = true
+		q.mu.Unlock()
+		if q.enqueueCh != nil {
+			close(q.enqueueCh)
+		}
+	})
+	return nil
+}
+
+// Shutdown calls Close to release resources.
+func (q *FilesystemQueue) Shutdown(ctx context.Context) error {
+	return q.Close()
 }
 
 func (q *FilesystemQueue) runEnqueueWriter() {
@@ -216,8 +306,17 @@ func (q *FilesystemQueue) Dequeue(ctx context.Context) (*SubmissionJob, error) {
 		return nil, fmt.Errorf("dequeue: read pending dir: %w", err)
 	}
 
+	now := q.now()
 	for _, entry := range entries {
 		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		// Retry scheduling (Requirement 2.3): a failed job carries its due time in the file
+		// name. Not yet due -> SKIP and keep scanning, so an un-due retry never blocks a
+		// freshly enqueued submission. Names without a due segment are always due, which
+		// covers both first attempts and files written by a previous version.
+		if _, due, hasDue := splitDueTime(entry.Name()); hasDue && now.Before(due) {
 			continue
 		}
 
@@ -331,8 +430,11 @@ func (q *FilesystemQueue) MarkCompleted(ctx context.Context, jobID int64) error 
 //   - jika retry_count < maxRetries: rewrite file via tmp/, rename ke pending/.
 //   - jika retry_count >= maxRetries: rewrite + rename ke failed/.
 //
-// Backoff exponential: EnqueuedAt = now + min(2^(retryCount-1), 30) detik.
-// Filename tetap sama agar admin dapat mengkorelasi file antar direktori.
+// Backoff exponential: due = now + min(2^(retryCount-1), 30) detik. Jadwal itu ditulis ke
+// NAMA FILE tujuan (segmen `-due<unix_nano>`) karena hanya nama file yang dibaca Dequeue saat
+// memilih kandidat; `EnqueuedAt` tetap diisi agar payload JSON tetap informatif (klausa 2.3).
+// Prefix <unix_nano>-<tenant_id>-<no_id> tidak berubah sehingga korelasi admin antar
+// direktori tetap mungkin lewat pencocokan prefix.
 // Implementasi memenuhi Requirement 3.1, 3.2, 3.3, 3.4, 3.5.
 func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processErr error) error {
 	q.mu.Lock()
@@ -365,7 +467,8 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	if backoffSec > 30 {
 		backoffSec = 30
 	}
-	job.EnqueuedAt = time.Now().UTC().Add(time.Duration(backoffSec) * time.Second)
+	dueAt := q.now().Add(time.Duration(backoffSec) * time.Second)
+	job.EnqueuedAt = dueAt
 
 	// Step 7-9: marshal and write to tmp/
 	newData, err := MarshalJob(job)
@@ -381,18 +484,18 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 		return fmt.Errorf("markFailed: write tmp: %w", err)
 	}
 
-	// Step 10-13: determine destination and rename. A SINGLE rename atomically replaces
-	// the destination (same filename) — even if a crash left a stale pending copy from a
-	// previous half-completed attempt, the rename overwrites it, so there is never more
-	// than one copy of the job on disk.
-	var dstDir string
+	// Step 10-13: determine destination and rename. A retry lands in pending/ under a name
+	// carrying its due time; a dead letter lands in failed/ under the plain base name, where
+	// scheduling has no meaning.
+	baseName, _, _ := splitDueTime(fileName)
+	var dstDir, dstName string
 	if job.RetryCount >= q.maxRetries {
-		dstDir = q.failedDir
+		dstDir, dstName = q.failedDir, baseName
 	} else {
-		dstDir = q.pendingDir
+		dstDir, dstName = q.pendingDir, withDueTime(baseName, dueAt)
 	}
 
-	dstPath := filepath.Join(dstDir, fileName)
+	dstPath := filepath.Join(dstDir, dstName)
 	if err := os.Rename(tmpPath, dstPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("markFailed: rename to %s: %w", dstDir, err)
@@ -401,14 +504,44 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	// reject directory fsync, e.g. Windows).
 	_ = syncDir(dstPath)
 
+	// Clause 2.10: write companion .error.txt when moving to failed/
+	if job.RetryCount >= q.maxRetries {
+		errTxtPath := filepath.Join(q.failedDir, strings.TrimSuffix(dstName, ".json")+".error.txt")
+		_ = os.WriteFile(errTxtPath, []byte(job.LastError), 0644)
+	}
+
 	// Step 14-15: remove old processing file and clean up inFlight
 	_ = os.Remove(processingPath)
+
+	// Because the due-time segment makes the destination name differ from the source name,
+	// a single rename can no longer overwrite a stale pending copy left by a crashed
+	// half-completed attempt. Drop any other pending file sharing this job's base name so
+	// the invariant "at most one copy of a job on disk" still holds (review Critical #5).
+	q.dropStalePendingCopies(baseName, dstName)
 
 	q.mu.Lock()
 	delete(q.inFlight, jobID)
 	q.mu.Unlock()
 
 	return nil
+}
+
+// dropStalePendingCopies removes every pending file whose base name is baseName except keep.
+// The base name includes the 8-hex random suffix, so it identifies exactly one job.
+func (q *FilesystemQueue) dropStalePendingCopies(baseName, keep string) {
+	entries, err := os.ReadDir(q.pendingDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == keep || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		if base, _, _ := splitDueTime(name); base == baseName {
+			_ = os.Remove(filepath.Join(q.pendingDir, name))
+		}
+	}
 }
 
 // countJSONFiles counts the number of *.json files in the given directory.
@@ -462,6 +595,12 @@ func (q *FilesystemQueue) GetStats(ctx context.Context) (QueueStats, error) {
 // RecoverStartup cleans leftover tmp files, promotes stuck processing jobs back to
 // pending, and applies done/ retention cleanup before the HTTP server starts.
 // If forceAll is true, every processing job is promoted regardless of mtime.
+//
+// Both file name shapes are handled: with a `-due<unix_nano>` segment (a job that has failed
+// at least once) and without one (a first attempt, or a file written by a previous version of
+// this binary). A name without the segment is treated as already due, so upgrading the binary
+// never strands work in pending/. Promotion keeps the name unchanged; a job can only reach
+// processing/ once its due time has passed, so any segment it carries is already in the past.
 func (q *FilesystemQueue) RecoverStartup(ctx context.Context, forceAll bool) error {
 	tmpEntries, err := os.ReadDir(q.tmpDir)
 	if err != nil {

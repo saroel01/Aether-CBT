@@ -86,6 +86,21 @@ func (r *ExamSessionRepository) tenantHasRow(table string, tenantID, id int) (bo
 	return count > 0, err
 }
 
+// tenantOwnsSession reports whether the session belongs to the tenant and is still live.
+// Same shape as tenantHasRow, but for the session itself rather than a master-table row it
+// references. Callers turn a false into ErrNotFound rather than ErrInvalidReference: the
+// session id is the addressed resource, not a reference inside a payload, and reporting
+// "not found" is what keeps the existence of another tenant's session unobservable
+// (codebase-bug-sweep clause 2.5).
+func (r *ExamSessionRepository) tenantOwnsSession(tenantID, sessionID int) (bool, error) {
+	var count int
+	err := r.db.QueryRow(
+		`SELECT COUNT(*) FROM exam_session WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		sessionID, tenantID,
+	).Scan(&count)
+	return count > 0, err
+}
+
 // Create inserts a new exam session (Requirement 4.1), defaulting status to "draft".
 // Create inserts a new session. The token-overlap check and the INSERT run inside a
 // single BEGIN IMMEDIATE transaction so concurrent creates of the same token with
@@ -227,10 +242,18 @@ func (r *ExamSessionRepository) Delete(tenantID, id int) error {
 	return err
 }
 
-// AttachClasses links the given classes to the session. Every class must belong to the
-// tenant or the whole operation is rejected with ErrInvalidReference (Requirement 4.7).
+// AttachClasses links the given classes to the session. The session must belong to the
+// tenant (ErrNotFound) and every class must belong to the tenant (ErrInvalidReference), both
+// checked before any write, or the whole operation is rejected (Requirement 4.7).
 // Already-linked classes are a no-op (INSERT OR IGNORE).
 func (r *ExamSessionRepository) AttachClasses(tenantID, sessionID int, kelasIDs []int) error {
+	ownsSession, err := r.tenantOwnsSession(tenantID, sessionID)
+	if err != nil {
+		return err
+	}
+	if !ownsSession {
+		return ErrNotFound
+	}
 	for _, kelasID := range kelasIDs {
 		ok, err := r.tenantHasRow("kelas", tenantID, kelasID)
 		if err != nil {
@@ -248,9 +271,17 @@ func (r *ExamSessionRepository) AttachClasses(tenantID, sessionID int, kelasIDs 
 	return nil
 }
 
-// AttachRooms links the given rooms to the session; every room must belong to the tenant
-// (Requirement 4.7). Already-linked rooms are a no-op.
+// AttachRooms links the given rooms to the session; the session must belong to the tenant
+// (ErrNotFound) and every room must belong to the tenant (ErrInvalidReference), both checked
+// before any write (Requirement 4.7). Already-linked rooms are a no-op.
 func (r *ExamSessionRepository) AttachRooms(tenantID, sessionID int, ruangIDs []int) error {
+	ownsSession, err := r.tenantOwnsSession(tenantID, sessionID)
+	if err != nil {
+		return err
+	}
+	if !ownsSession {
+		return ErrNotFound
+	}
 	for _, ruangID := range ruangIDs {
 		ok, err := r.tenantHasRow("ruang", tenantID, ruangID)
 		if err != nil {

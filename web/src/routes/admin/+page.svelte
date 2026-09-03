@@ -185,7 +185,7 @@
 
           {#if import.meta.env.DEV}
             <p class="text-xs text-center text-slate-400 mt-6 leading-relaxed">
-              Dev only: <span class="font-mono text-indigo-600 font-bold">admin</span> / <span class="font-mono text-indigo-600 font-bold">admin123</span>
+              Dev only: kolom kredensial sudah terisi otomatis — langsung klik Sign In.
             </p>
           {/if}
         </Card>

@@ -1,0 +1,4 @@
+# These files are compared byte for byte (preservation clause 3.13 of the codebase-bug-sweep
+# spec). core.autocrlf is enabled in this repo, so without -text git would rewrite LF to CRLF on
+# checkout and every golden comparison would fail on a Windows working copy.
+* -text

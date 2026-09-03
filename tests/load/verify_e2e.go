@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"math/rand"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -28,6 +27,14 @@ var (
 	e2eMaxDrainSec = flag.Int("e2e-max-drain-sec", 600, "Max seconds to wait for queue drain per scale")
 	e2eOutput      = flag.String("e2e-output", "tests/load/E2E_RESULTS.md", "Output markdown path")
 	e2eQueueDir    = flag.String("queue-dir", "data/queue", "Filesystem queue root used by the server")
+)
+
+// Score posted by the E2E burst. It MUST match the score derived from buildISpringXML
+// (q1: awarded 5 / max 5, q2: awarded 0 / max 5) because the processor validates the
+// client-supplied score against the XML-derived one.
+const (
+	e2eClientScore    = "5.00"
+	e2eClientMaxScore = "10"
 )
 
 type e2eScaleResult struct {
@@ -148,11 +155,14 @@ func runE2EScale(client *LoadClient, dp *DataPrep, n int) e2eScaleResult {
 		go func(idx int) {
 			defer wg.Done()
 			s := students[idx]
-			score := fmt.Sprintf("%.2f", 50+rand.Float64()*50)
 			xmlData := []byte(buildISpringXML(s.NoID, fmt.Sprintf("E2E Student %d", s.PesertaID)))
 
 			start := time.Now()
-			code, herr := client.SubmitWebhook(s.NoID, score, "100", xmlData, s.AttemptToken)
+			// The processor derives the authoritative score from the detail XML and rejects
+			// any client score that diverges beyond a 0.05 tolerance. buildISpringXML always
+			// yields awarded=5 / max=10, so the burst must post exactly that; a random client
+			// score would dead-letter every job before the queue path is ever exercised.
+			code, herr := client.SubmitWebhook(s.NoID, e2eClientScore, e2eClientMaxScore, xmlData, s.AttemptToken)
 			lat := time.Since(start)
 			errMsg := ""
 			if herr != nil {

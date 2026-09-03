@@ -130,7 +130,13 @@ func attachSession(c *fiber.Ctx, kind string) error {
 		aErr = repo.AttachRooms(tenantID, id, req.IDs)
 	}
 	if aErr != nil {
-		if errors.Is(aErr, repository.ErrInvalidReference) {
+		switch {
+		case errors.Is(aErr, repository.ErrNotFound):
+			// The session does not belong to this tenant (or does not exist). 404 rather than
+			// 403 is deliberate: confirming that another tenant's session exists is itself a
+			// cross-tenant information leak (codebase-bug-sweep clause 2.5).
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "Exam session not found")
+		case errors.Is(aErr, repository.ErrInvalidReference):
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, "One or more "+kind+" do not belong to the tenant")
 		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to link "+kind)

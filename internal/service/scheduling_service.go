@@ -43,12 +43,12 @@ func NewSchedulingService(sessions *repository.ExamSessionRepository, exams *rep
 
 // enterable reports whether a session with the given status and window can be entered at
 // the given time: status must be terjadwal/aktif and the time must be within
-// [mulai, selesai] inclusive (Requirement 4.5, 6.1, Property 5).
+// [mulai, selesai) half-open interval (Clause 2.24).
 func enterable(status string, mulai, selesai, now time.Time) bool {
 	if status != models.SessionStatusTerjadwal && status != models.SessionStatusAktif {
 		return false
 	}
-	return !now.Before(mulai) && !now.After(selesai)
+	return !now.Before(mulai) && now.Before(selesai)
 }
 
 // remainingSeconds computes the remaining exam seconds as min(duration, sessionEnd - now),
@@ -88,7 +88,7 @@ func (s *SchedulingService) NotEnterableReason(sess *models.ExamSession) string 
 	if now.Before(sess.WaktuMulai) {
 		return "session has not started yet"
 	}
-	if now.After(sess.WaktuSelesai) {
+	if !now.Before(sess.WaktuSelesai) {
 		return "session has ended"
 	}
 	return ""

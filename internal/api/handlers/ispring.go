@@ -39,12 +39,17 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		attemptToken = c.FormValue("AETHER_ATTEMPT_TOKEN")
 	}
 
+	// Clause 2.13: explicit guard for empty attempt token before query execution
+	if strings.TrimSpace(attemptToken) == "" {
+		return c.Status(fiber.StatusForbidden).SendString("invalid attempt token")
+	}
+
 	// Resolve tenant + session from the attempt_token alone. The webhook is public and
 	// the client-controlled X-Tenant-ID (held in c.Locals("tenant_id")) is NOT trusted
 	// (review finding H6 / iSpring F3): the attempt_token is crypto-random and globally
 	// unique, so it is the authoritative key for both tenant and session.
 	var resolvedTenantID int
-	var mapelID int
+	var mapelID sql.NullInt64
 	var sessionID sql.NullInt64
 	var locked bool
 	err := db.DB.QueryRowContext(c.Context(), `
@@ -65,10 +70,19 @@ func ISpringWebhook(c *fiber.Ctx) error {
 	}
 	tenantID = resolvedTenantID // override the header-derived tenant with the authoritative value
 
+	if !mapelID.Valid && sessionID.Valid {
+		_ = db.DB.QueryRowContext(c.Context(), `
+			SELECT e.mapel_id
+			FROM exam_session es
+			JOIN exam e ON es.exam_id = e.id
+			WHERE es.id = ? AND es.tenant_id = ?
+		`, sessionID.Int64, tenantID).Scan(&mapelID)
+	}
+
 	// validasi: session-based key (tenant_noID_sessionID) for new sessions; the legacy
 	// mapel-based key for sessions without a session_id so old results stay reachable
 	// (Requirement 14.2, AD-1). The unique index hasil_tes(tenant_id, validasi) is unchanged.
-	validasi := fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID)
+	validasi := fmt.Sprintf("%d_%s_%d", tenantID, noID, mapelID.Int64)
 	if sessionID.Valid {
 		validasi = fmt.Sprintf("%d_%s_%d", tenantID, noID, int(sessionID.Int64))
 	}
@@ -124,8 +138,13 @@ func GetEducationalAnalysis(c *fiber.Ctx) error {
 	var list []QuestionMetric
 	for rows.Next() {
 		var q QuestionMetric
-		rows.Scan(&q.QuestionID, &q.QuestionText, &q.QuestionType, &q.CorrectCount, &q.TotalCount)
+		if err := rows.Scan(&q.QuestionID, &q.QuestionText, &q.QuestionType, &q.CorrectCount, &q.TotalCount); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read question analytics")
+		}
 		list = append(list, q)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate question analytics")
 	}
 
 	return utils.SuccessResponse(c, list, "Educational analysis retrieved")

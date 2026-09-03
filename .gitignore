@@ -45,9 +45,14 @@ web/.svelte-kit/
 web/build/
 bin/
 dist/
+release/
+aether-cbt-release.zip
+contoh_soal/*.zip
 
 # Go
 vendor/
+# air (live-reload) build output
+tmp/
 
 # Coverage & Test output
 *.out
@@ -58,11 +63,13 @@ coverage.html
 # Spec baseline outputs
 .kiro/specs/*/baseline-test-output.txt
 
-# opencode local config
+# Machine-local configs & tooling
 opencode.json
 .opencode/
 .agents/
 skills-lock.json
 docs/superpowers/
 Rujukan
+mcps/
+
 

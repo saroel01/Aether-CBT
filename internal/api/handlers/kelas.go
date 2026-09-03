@@ -65,21 +65,29 @@ func CreateClass(c *fiber.Ctx) error {
 // DeleteClass soft-deletes a class record
 func DeleteClass(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
 
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators can delete classes")
+	// Clause 2.18, 2.19: validate ID int, require deleted_at IS NULL, check RowsAffected
+	id, err := c.ParamsInt("id")
+	if err != nil || id <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid class ID")
 	}
 
-	id := c.Params("id")
-	_, err := db.DB.Exec(`
+	res, err := db.DB.Exec(`
 		UPDATE kelas 
 		SET deleted_at = CURRENT_TIMESTAMP 
-		WHERE id = ? AND tenant_id = ?
+		WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 	`, id, tenantID)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to delete class")
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check class deletion")
+	}
+	if affected == 0 {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "Class not found")
 	}
 
 	return utils.SuccessResponse(c, nil, "Class deleted successfully")

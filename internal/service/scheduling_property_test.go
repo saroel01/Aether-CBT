@@ -37,7 +37,7 @@ func TestProperty_EnterableMatchesSpec(t *testing.T) {
 
 		got := enterable(status, mulai, selesai, now)
 		active := status == models.SessionStatusTerjadwal || status == models.SessionStatusAktif
-		inWindow := !now.Before(mulai) && !now.After(selesai)
+		inWindow := !now.Before(mulai) && now.Before(selesai)
 		if got != (active && inWindow) {
 			rt.Fatalf("enterable(%s, now=%v, window=[%v,%v]) = %v, want %v",
 				status, now, mulai, selesai, got, active && inWindow)

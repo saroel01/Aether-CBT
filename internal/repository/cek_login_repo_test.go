@@ -2,9 +2,11 @@ package repository
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/saroel01/aether-cbt/internal/testutil"
+	"pgregory.net/rapid"
 )
 
 func TestCekLoginRepository_StartIsIdempotentBySession(t *testing.T) {
@@ -217,4 +219,62 @@ func TestCekLoginRepository_StartRejectsSecondActiveSession(t *testing.T) {
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("second Start: err = %v, want ErrConflict", err)
 	}
+}
+
+
+
+// TestProperty_AtomicInfractionIncrement tests Clause 2.22 / C22: atomic increment with RETURNING.
+func TestProperty_AtomicInfractionIncrement(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	seedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+	seedExamSession(t, database, 1, 1, 1, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK1", "aktif")
+
+	repo := NewCekLoginRepository(database)
+	if err := repo.Start(1, 1, 1, "attempt-1"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rapid.Check(t, func(rt *rapid.T) {
+		numIncrements := rapid.IntRange(1, 10).Draw(rt, "numIncrements")
+		var wg sync.WaitGroup
+		results := make(chan int, numIncrements)
+
+		for i := 0; i < numIncrements; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				c, err := repo.IncrementInfraction(1, 1, 1)
+				if err == nil {
+					results <- c
+				}
+			}()
+		}
+		wg.Wait()
+		close(results)
+
+		seen := make(map[int]bool)
+		for val := range results {
+			if seen[val] {
+				rt.Fatalf("duplicate count returned under concurrent increments: %d", val)
+			}
+			seen[val] = true
+		}
+
+		var finalCount int
+		if err := database.QueryRow(`SELECT tab_switch_count FROM cek_login WHERE tenant_id=1 AND peserta_id=1 AND session_id=1`).Scan(&finalCount); err != nil {
+			rt.Fatalf("query final count: %v", err)
+		}
+		if len(seen) != numIncrements {
+			rt.Fatalf("expected %d unique increments, got %d", numIncrements, len(seen))
+		}
+		if finalCount < numIncrements {
+			rt.Fatalf("final count in db = %d, want at least %d", finalCount, numIncrements)
+		}
+	})
 }

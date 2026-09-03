@@ -4,6 +4,7 @@ package submission
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,11 +15,22 @@ import (
 	"pgregory.net/rapid"
 )
 
-// filenamePattern matches the expected Job_File naming convention:
+// filenamePattern matches the expected Job_File naming convention as written by Enqueue:
 // <unix_nano(19 digits)>-<tenant_id>-<sanitized_no_id>-<8hex>.json
 //
-// Validates: Requirements 1.1, 1.2
+// A job that has FAILED at least once carries an extra retry due-time segment appended by
+// MarkFailed (`-due<unix_nano>` before the extension, see retryFilenamePattern). Enqueue
+// itself never adds that segment, which is how clause 3.4 is preserved structurally: a job
+// that never failed is never delayed.
+//
+// Validates: Requirements 1.1, 1.2, 2.3
 var filenamePattern = regexp.MustCompile(`^\d{19}-\d+-[A-Za-z0-9_-]+-[0-9a-f]{8}\.json$`)
+
+// retryFilenamePattern matches the name a job carries while it waits out its backoff in
+// pending/: the Enqueue base name plus the due-time segment.
+//
+// Validates: Requirements 2.3
+var retryFilenamePattern = regexp.MustCompile(`^\d{19}-\d+-[A-Za-z0-9_-]+-[0-9a-f]{8}-due\d+\.json$`)
 
 // genValidJobAt generates a valid SubmissionJob suitable for Enqueue.
 // All required fields (TenantID, NoID, Validasi) are non-zero/non-empty.
@@ -112,6 +124,102 @@ func TestPropertyEnqueueAtomicityAndUniqueness(t *testing.T) {
 			if !filenamePattern.MatchString(name) {
 				rt.Fatalf("filename %q does not match expected pattern %s", name, filenamePattern.String())
 			}
+		}
+	})
+}
+
+// TestPropertyMarkFailedEncodesDueTimeInFilename replaces the former EnqueuedAt-based backoff
+// assertion. The schedule is now authoritative in the FILE NAME, because the name is the only
+// thing Dequeue reads when picking a candidate; EnqueuedAt is kept purely as payload
+// information. For a random number of consecutive failures the test asserts:
+//
+// (a) the pending file matches the retry name shape;
+// (b) its base name (the Enqueue-written prefix, including tenant_id and no_id) is unchanged,
+//     so admins can still correlate the job across directories by prefix;
+// (c) the encoded due time equals now + min(2^(retry_count-1), 30) seconds.
+//
+// Validates: Requirements 2.3, 3.4
+func TestPropertyMarkFailedEncodesDueTimeInFilename(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		failures := rapid.IntRange(1, 7).Draw(rt, "failures")
+
+		root := t.TempDir()
+		clock := newTestClock()
+		q, err := NewFilesystemQueueWithConfig(root, FilesystemQueueConfig{
+			MaxRetries: 8, // > failures so every attempt returns to pending/
+			Now:        clock.Now,
+		})
+		if err != nil {
+			rt.Fatalf("NewFilesystemQueueWithConfig: %v", err)
+		}
+		ctx := context.Background()
+
+		if err := q.Enqueue(ctx, testJob("due-seg")); err != nil {
+			rt.Fatalf("Enqueue: %v", err)
+		}
+		names, err := os.ReadDir(filepath.Join(root, "pending"))
+		if err != nil || len(names) != 1 {
+			rt.Fatalf("ReadDir pending after enqueue: %v (entries=%d)", err, len(names))
+		}
+		enqueuedName := names[0].Name()
+		if !filenamePattern.MatchString(enqueuedName) {
+			rt.Fatalf("enqueued name %q does not match %s", enqueuedName, filenamePattern)
+		}
+
+		for attempt := 1; attempt <= failures; attempt++ {
+			job, err := q.Dequeue(ctx)
+			if err != nil {
+				rt.Fatalf("Dequeue attempt %d: %v", attempt, err)
+			}
+			if job == nil {
+				rt.Fatalf("Dequeue attempt %d returned nil; job should be due at %s",
+					attempt, clock.Now())
+			}
+			failedAt := clock.Now()
+			if err := q.MarkFailed(ctx, job.ID, errors.New("synthetic")); err != nil {
+				rt.Fatalf("MarkFailed attempt %d: %v", attempt, err)
+			}
+
+			pending, err := os.ReadDir(filepath.Join(root, "pending"))
+			if err != nil {
+				rt.Fatalf("ReadDir pending: %v", err)
+			}
+			var jsonNames []string
+			for _, e := range pending {
+				if strings.HasSuffix(e.Name(), ".json") {
+					jsonNames = append(jsonNames, e.Name())
+				}
+			}
+			if len(jsonNames) != 1 {
+				rt.Fatalf("pending after attempt %d = %v, want exactly one file", attempt, jsonNames)
+			}
+			retryName := jsonNames[0]
+
+			// (a) name shape
+			if !retryFilenamePattern.MatchString(retryName) {
+				rt.Fatalf("retry name %q does not match %s", retryName, retryFilenamePattern)
+			}
+			// (b) prefix preserved for admin correlation
+			base, due, hasDue := splitDueTime(retryName)
+			if !hasDue {
+				rt.Fatalf("retry name %q carries no due segment", retryName)
+			}
+			if base != enqueuedName {
+				rt.Fatalf("retry base = %q, want the Enqueue name %q (prefix correlation broken)",
+					base, enqueuedName)
+			}
+			// (c) schedule
+			wantDue := failedAt.Add(expectedBackoff(attempt))
+			if !due.Equal(wantDue) {
+				rt.Fatalf("attempt %d due = %s, want %s (backoff min(2^(n-1),30)s)",
+					attempt, due, wantDue)
+			}
+			// The un-due job must not be dequeuable yet, and must become dequeuable exactly
+			// when its due time arrives.
+			if job, err := q.Dequeue(ctx); err != nil || job != nil {
+				rt.Fatalf("dequeued before due time (err=%v, job=%v)", err, job)
+			}
+			clock.Advance(expectedBackoff(attempt))
 		}
 	})
 }

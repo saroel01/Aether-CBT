@@ -1,0 +1,54 @@
+# air — live restart untuk backend Go Aether CBT.
+#
+# Menonton file *.go di seluruh root, lalu recompile + restart server secara
+# otomatis. Frontend (web/) di-handle oleh Vite sendiri, jadi diabaikan di sini
+# agar mengubah kode Svelte tidak memicu restart backend.
+#
+# Jalankan: `npm run dev` (memakai concurrently) atau `npm run dev:backend-only`.
+
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  # Kompilasi ke binary (lebih cepat & andal untuk restart daripada `go run`).
+  cmd = "go build -o ./tmp/main.exe ./cmd/server"
+  # entrypoint = list; elemen pertama = path binary, sisanya = args runtime.
+  # (Menggantikan `bin` + `args_bin` yang deprecated di air v1.65.)
+  entrypoint = ["./tmp/main.exe"]
+  args_bin = []
+
+  # Hanya ekstensi Go yang memicu rebuild.
+  include_ext = ["go"]
+  # Abaikan direktori yang bukan backend (frontend punya Vite, data = DB/aset,
+  # tmp = output binary sendiri, sisanya docs/test/build artifacts).
+  exclude_dir = ["web", "data", "tmp", "bin", "docs", "tests", "scripts", "contoh_soal", "node_modules"]
+  include_dir = []
+  exclude_ext = []
+  # Jangan rebuild karena file test berubah.
+  exclude_regex = ["_test\\.go"]
+  exclude_unchanged = true
+  follow_symlink = false
+  # Debounce singkat agar penyimpanan berturut-turut tidak memicu restart berkali-kali.
+  delay = 300
+  stop_on_error = true
+  send_interrupt = true
+  # Beri jeda sebelum kill agar koneksi yang sedang aktif sempat selesai.
+  kill_delay = 500
+
+[log]
+  time = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Bersihkan tmp saat air berhenti.
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

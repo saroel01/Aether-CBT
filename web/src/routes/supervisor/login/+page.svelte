@@ -138,7 +138,7 @@
 
       {#if import.meta.env.DEV}
         <div class="mt-6 text-center text-xs text-slate-500">
-          Dev only: <span class="font-mono text-indigo-400 font-bold">ruang_a</span> / <span class="font-mono text-indigo-400 font-bold">ruang123</span>
+          Dev only: kolom kredensial sudah terisi otomatis — langsung klik Masuk.
         </div>
       {/if}
     </Card>

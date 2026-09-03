@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
@@ -9,13 +11,48 @@ import (
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
-// contentCookieForceSecure, when true, marks the content cookie Secure even on a plain
-// HTTP request (e.g. behind a TLS-terminating proxy). Defaults to following the request
-// scheme (Requirement 8, AD-2).
-var contentCookieForceSecure bool
+// contentCookieSecureMode controls the Secure attribute of the content cookie:
+// "auto" (default): inspects TLS scheme and X-Forwarded-Proto header
+// "true": always Secure
+// "false": never Secure (Requirement 2.14, 3.12)
+var contentCookieSecureMode = "auto"
 
-// SetContentCookieSecure forces the content-session cookie to be Secure.
-func SetContentCookieSecure(force bool) { contentCookieForceSecure = force }
+// SetContentCookieSecureMode configures the tri-state cookie secure mode.
+func SetContentCookieSecureMode(mode string) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "true" || mode == "false" {
+		contentCookieSecureMode = mode
+	} else {
+		contentCookieSecureMode = "auto"
+	}
+}
+
+// SetContentCookieSecure forces the content-session cookie to be Secure (backward compat).
+func SetContentCookieSecure(force bool) {
+	if force {
+		contentCookieSecureMode = "true"
+	} else {
+		contentCookieSecureMode = "false"
+	}
+}
+
+func isContentCookieSecure(c *fiber.Ctx) bool {
+	switch contentCookieSecureMode {
+	case "true":
+		return true
+	case "false":
+		return false
+	default: // "auto"
+		if c.Secure() {
+			return true
+		}
+		if strings.EqualFold(c.Protocol(), "https") {
+			return true
+		}
+		proto := c.Get("X-Forwarded-Proto")
+		return strings.EqualFold(proto, "https")
+	}
+}
 
 // setContentCookie writes the same-origin content-session cookie (AD-2).
 func setContentCookie(c *fiber.Ctx, contentToken string) {
@@ -25,7 +62,7 @@ func setContentCookie(c *fiber.Ctx, contentToken string) {
 		Path:     "/api/exam/content",
 		HTTPOnly: true,
 		SameSite: fiber.CookieSameSiteStrictMode,
-		Secure:   contentCookieForceSecure || c.Secure(),
+		Secure:   isContentCookieSecure(c),
 	})
 }
 
@@ -40,6 +77,10 @@ type resolvedSession struct {
 // but none is currently enterable, notEnterable explains why (Requirement 6.3). If no
 // session matches, legacy=true so the caller falls back to settings.token (Requirement 6.6).
 func resolveSessionForToken(tenantID int, token string) resolvedSession {
+	// Clause 2.12: whitespace/empty token must never match any exam_session
+	if strings.TrimSpace(token) == "" {
+		return resolvedSession{legacy: true}
+	}
 	svc := newSchedulingService()
 	sessions, err := repository.NewExamSessionRepository(db.DB).FindByToken(tenantID, token)
 	if err != nil || len(sessions) == 0 {

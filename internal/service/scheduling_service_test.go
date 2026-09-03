@@ -47,7 +47,7 @@ func TestSchedulingService_EffectiveEnterable(t *testing.T) {
 		{"before window", atTime(1, 7), false},
 		{"at start (inclusive)", mulai, true},
 		{"inside", atTime(1, 9), true},
-		{"at end (inclusive)", selesai, true},
+		{"at end (exclusive under [mulai, selesai))", selesai, false},
 		{"after window", atTime(1, 11), false},
 	}
 	for _, c := range cases {

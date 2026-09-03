@@ -28,7 +28,7 @@ func TestWorkerProcessBatchSafeRecoversPanicAndMarksJobsFailed(t *testing.T) {
 		t.Fatalf("batch length = %d, want 2", len(batch))
 	}
 
-	worker := NewWorker(q, func(context.Context, []*SubmissionJob) error {
+	worker := NewWorker(q, func(context.Context, []*SubmissionJob) ([]error, error) {
 		panic("processor exploded")
 	})
 	worker.processBatchSafe(ctx, batch)
@@ -54,4 +54,22 @@ func TestWorkerProcessBatchSafeRecoversPanicAndMarksJobsFailed(t *testing.T) {
 			t.Fatalf("last_error = %q, want worker panic message", job.LastError)
 		}
 	}
+}
+
+// TestWorkerStopIdempotent verifies clause 2.8: calling Stop multiple times does not panic.
+func TestWorkerStopIdempotent(t *testing.T) {
+	q, err := NewFilesystemQueue(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFilesystemQueue: %v", err)
+	}
+	defer q.Close()
+
+	w := NewWorker(q, func(ctx context.Context, jobs []*SubmissionJob) ([]error, error) {
+		return make([]error, len(jobs)), nil
+	})
+
+	// Calling Stop multiple times must not panic
+	w.Stop()
+	w.Stop()
+	w.Stop()
 }

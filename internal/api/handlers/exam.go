@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
@@ -20,6 +22,11 @@ func StudentLogin(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
+	}
+
+	// Clause 2.12: reject empty or whitespace-only token before session resolution
+	if strings.TrimSpace(req.Token) == "" {
+		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid exam token")
 	}
 
 	resolved := resolveSessionForToken(tenantID, req.Token)

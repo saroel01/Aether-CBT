@@ -71,13 +71,16 @@ func GetEssayAnswers(c *fiber.Ctx) error {
 	var list []EssayAnswerResponse
 	for rows.Next() {
 		var r EssayAnswerResponse
-		err = rows.Scan(
+		if err := rows.Scan(
 			&r.DetailID, &r.HasilTesID, &r.QuestionID, &r.QuestionText, &r.AwardedPoints, &r.MaxPoints, &r.UserAnswer, &r.CorrectAnswer,
 			&r.PesertaID, &r.NoID, &r.NamaPeserta, &r.NamaKelas, &r.NamaMapel,
-		)
-		if err == nil {
-			list = append(list, r)
+		); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read essay answer")
 		}
+		list = append(list, r)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate essay answers")
 	}
 
 	return utils.SuccessResponse(c, list, "Essay answers retrieved successfully")
@@ -91,11 +94,6 @@ type GradeEssayRequest struct {
 // GradeEssayAnswer updates an essay grade and recalculates the final parent score automatically
 func GradeEssayAnswer(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
-
-	if role != "admin" {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Only administrators are authorized to grade essays")
-	}
 
 	var req GradeEssayRequest
 	if err := c.BodyParser(&req); err != nil {

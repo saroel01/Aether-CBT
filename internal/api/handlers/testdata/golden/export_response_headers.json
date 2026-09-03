@@ -1,0 +1,26 @@
+[
+  {
+    "route": "/api/export/results",
+    "status": 200,
+    "content_type": "text/csv",
+    "content_disposition": "attachment; filename=rekap_hasil_ujian.csv"
+  },
+  {
+    "route": "/api/export/essay/csv",
+    "status": 200,
+    "content_type": "text/csv",
+    "content_disposition": "attachment; filename=rekap_essai_siswa.csv"
+  },
+  {
+    "route": "/api/export/essay/xlsx",
+    "status": 200,
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "content_disposition": "attachment; filename=rekap_essai_siswa.xlsx"
+  },
+  {
+    "route": "/api/export/essay/pdf",
+    "status": 200,
+    "content_type": "application/pdf",
+    "content_disposition": "attachment; filename=rekap_essai_siswa.pdf"
+  }
+]

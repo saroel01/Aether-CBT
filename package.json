@@ -5,10 +5,11 @@
   "description": "Aether CBT - Multi-Tenant Computer-Based Testing Platform",
   "scripts": {
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "dev:backend": "go run cmd/server/main.go",
+    "dev:backend": "air",
     "dev:frontend": "cd web && npm run dev",
-    "dev:backend-only": "go run cmd/server/main.go",
+    "dev:backend-only": "air",
     "dev:frontend-only": "cd web && npm run dev",
+    "dev:backend:noreload": "go run cmd/server/main.go",
     "seed": "go run cmd/seed/main.go",
     "build": "cd web && npm run build",
     "clean": "rm -rf web/.svelte-kit web/node_modules bin data/cbt_aether.db"

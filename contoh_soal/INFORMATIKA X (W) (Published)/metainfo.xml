@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<presentation availableOffline="1" guid="DC78B17D-4B92-4184-87DC-B9E1827E044B" version="0">
+	<info>
+		<title>INFORMATIKA X (W)</title>
+		<description/>
+	</info>
+	<files index="id27" thumbnail="id23" totalSize="4028906">
+		<file id="id0">data/apple-touch-icon.png</file>
+		<file id="id1">data/browsersupport.js</file>
+		<file id="id2">data/favicon.ico</file>
+		<file id="id3">data/fonts/fnt0.woff</file>
+		<file id="id4">data/fonts/fnt1.woff</file>
+		<file id="id5">data/fonts/fnt2.woff</file>
+		<file id="id6">data/fonts/fnt3.woff</file>
+		<file id="id7">data/fonts/fnt4.woff</file>
+		<file id="id8">data/fonts/fnt5.woff</file>
+		<file id="id9">data/fonts/fnt6.woff</file>
+		<file id="id10">data/fonts/fnt7.woff</file>
+		<file id="id11">data/fonts/fnt8.woff</file>
+		<file id="id12">data/fonts/fnt9.woff</file>
+		<file id="id13">data/html5-unsupported.html</file>
+		<file id="id14">data/images/img-21f8e84d20862ea24c1cbd8662af6f0238bcb716.jpg</file>
+		<file id="id15">data/images/img-7a075fb8a2339e24cc550c90ab7bd4dea2165653.jpg</file>
+		<file id="id16">data/images/img-7b683cea333f54ad507ef9f57ed561c58a4c42e3.jpg</file>
+		<file id="id17">data/images/img-7ec612fb32382d26b6513d94fdbefc293a2c4d3d.jpg</file>
+		<file id="id18">data/images/img-8077cc43d00bdc3a988ee6feae45ce4d51545ea8.jpg</file>
+		<file id="id19">data/images/img-ac5c096b6af0adc69392a32909226d57d0caeae7.jpg</file>
+		<file id="id20">data/images/img-d1bacee1eb0551e93000e6a0d933190604dbf7cf.jpg</file>
+		<file id="id21">data/ismplayer/app_store2x.png</file>
+		<file id="id22">data/ismplayer/play.svg</file>
+		<file id="id23">data/ismplayer/preview.png</file>
+		<file id="id24">data/ismplayer/style.css</file>
+		<file id="id25">data/ismplayer/style_mini.css</file>
+		<file id="id26">data/player.js</file>
+		<file id="id27">index.html</file>
+		<file id="id28">ismplayer.html</file>
+		<file id="id29">preview.png</file>
+	</files>
+</presentation>
+

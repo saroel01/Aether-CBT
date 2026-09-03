@@ -116,9 +116,12 @@ func TestFilesystemQueueMarkCompletedMovesFileToDone(t *testing.T) {
 
 func TestFilesystemQueueMarkFailedRetriesThenDeadLetters(t *testing.T) {
 	ctx := context.Background()
-	q, err := NewFilesystemQueue(t.TempDir())
+	// A retried job is now gated by the backoff due time encoded in its file name, so the
+	// test drives a manual clock instead of sleeping through the 1s/2s waits.
+	clock := newTestClock()
+	q, err := NewFilesystemQueueWithConfig(t.TempDir(), FilesystemQueueConfig{Now: clock.Now})
 	if err != nil {
-		t.Fatalf("NewFilesystemQueue: %v", err)
+		t.Fatalf("NewFilesystemQueueWithConfig: %v", err)
 	}
 	q.maxRetries = 2
 
@@ -140,9 +143,19 @@ func TestFilesystemQueueMarkFailedRetriesThenDeadLetters(t *testing.T) {
 	if stats.PendingCount != 1 || stats.FailedCount != 0 || stats.ProcessingCount != 0 {
 		t.Fatalf("after first failure stats = %+v, want pending=1 processing=0 failed=0", stats)
 	}
+
+	// Before the due time the retry must be invisible to Dequeue (clause 2.3).
+	if early, err := q.Dequeue(ctx); err != nil || early != nil {
+		t.Fatalf("Dequeue before due time = (%v, %v), want (nil, nil)", early, err)
+	}
+	clock.Advance(1 * time.Second) // min(2^0, 30) = 1s
+
 	retryJob, err := q.Dequeue(ctx)
 	if err != nil {
 		t.Fatalf("Dequeue retry: %v", err)
+	}
+	if retryJob == nil {
+		t.Fatal("Dequeue retry returned nil after the due time passed")
 	}
 	if retryJob.RetryCount != 1 || retryJob.LastError != "temporary database lock" {
 		t.Fatalf("retry metadata = count %d error %q", retryJob.RetryCount, retryJob.LastError)

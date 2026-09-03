@@ -45,9 +45,9 @@ func TestProperty10NoLostResultsUnderConcurrentEnqueue(t *testing.T) {
 	// default batch-of-5 + idle sleeps makes the drain time variable and would make this
 	// test flaky under load).
 	var processed int64
-	worker := NewWorkerWithConfig(q, func(_ context.Context, jobs []*SubmissionJob) error {
+	worker := NewWorkerWithConfig(q, func(_ context.Context, jobs []*SubmissionJob) ([]error, error) {
 		atomic.AddInt64(&processed, int64(len(jobs)))
-		return nil
+		return make([]error, len(jobs)), nil
 	}, 50, 50*time.Millisecond)
 	go worker.Run(ctx)
 

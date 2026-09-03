@@ -55,29 +55,32 @@ func GetItemAnalysis(c *fiber.Ctx) error {
 	var list []ItemDifficultyAnalysis
 	for rows.Next() {
 		var a ItemDifficultyAnalysis
-		err = rows.Scan(&a.QuestionID, &a.QuestionText, &a.QuestionType, &a.CorrectCount, &a.TotalAttempts)
-		if err == nil {
-			if a.TotalAttempts > 0 {
-				a.SuccessRate = (float64(a.CorrectCount) / float64(a.TotalAttempts)) * 100.0
-			} else {
-				a.SuccessRate = 0.0
-			}
-
-			// Pedagogical difficulty classification rules
-			if a.SuccessRate > 85.0 {
-				a.DifficultyClassification = "Sangat Mudah"
-			} else if a.SuccessRate >= 70.0 {
-				a.DifficultyClassification = "Mudah"
-			} else if a.SuccessRate >= 50.0 {
-				a.DifficultyClassification = "Sedang"
-			} else if a.SuccessRate >= 30.0 {
-				a.DifficultyClassification = "Sukar"
-			} else {
-				a.DifficultyClassification = "Sangat Sukar"
-			}
-
-			list = append(list, a)
+		if err := rows.Scan(&a.QuestionID, &a.QuestionText, &a.QuestionType, &a.CorrectCount, &a.TotalAttempts); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read question analytics")
 		}
+		if a.TotalAttempts > 0 {
+			a.SuccessRate = (float64(a.CorrectCount) / float64(a.TotalAttempts)) * 100.0
+		} else {
+			a.SuccessRate = 0.0
+		}
+
+		// Pedagogical difficulty classification rules
+		if a.SuccessRate > 85.0 {
+			a.DifficultyClassification = "Sangat Mudah"
+		} else if a.SuccessRate >= 70.0 {
+			a.DifficultyClassification = "Mudah"
+		} else if a.SuccessRate >= 50.0 {
+			a.DifficultyClassification = "Sedang"
+		} else if a.SuccessRate >= 30.0 {
+			a.DifficultyClassification = "Sukar"
+		} else {
+			a.DifficultyClassification = "Sangat Sukar"
+		}
+
+		list = append(list, a)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate question analytics")
 	}
 
 	return utils.SuccessResponse(c, list, "Item difficulty analysis retrieved successfully")

@@ -1,0 +1,105 @@
+{
+  "sheet_order": [
+    "Rekap Esai Siswa"
+  ],
+  "sheets": [
+    {
+      "name": "Rekap Esai Siswa",
+      "rows": [
+        [
+          "NIS",
+          "NAMA SISWA",
+          "KELAS",
+          "MATA PELAJARAN",
+          "ID SOAL",
+          "PERTANYAAN ESAI",
+          "JAWABAN ESAI SISWA",
+          "SKOR SEMENTARA",
+          "SKOR MAKSIMAL"
+        ],
+        [
+          "2026002",
+          "Budi Santoso",
+          "XI IPS 2",
+          "Kimia",
+          "Q03",
+          "Sebutkan tiga sifat asam.",
+          "Rasa asam, pH di bawah 7, korosif",
+          "8",
+          "8"
+        ],
+        [
+          "2026002",
+          "Budi Santoso",
+          "XI IPS 2",
+          "Kimia",
+          "Q01",
+          "Jelaskan hukum Ohm.",
+          "Belum sempat menjawab.",
+          "0",
+          "10"
+        ],
+        [
+          "2026001",
+          "Citra Dewi",
+          "XII IPA 1",
+          "Matematika",
+          "Q01",
+          "Jelaskan hukum Ohm.",
+          "Tegangan sebanding dengan arus",
+          "5",
+          "10"
+        ],
+        [
+          "2026003",
+          "Ahmad Zaki",
+          "XII IPA 1",
+          "Matematika",
+          "Q01",
+          "Jelaskan hukum Ohm.",
+          "V = I x R",
+          "10",
+          "10"
+        ]
+      ],
+      "col_widths": [
+        {
+          "column": "A",
+          "width": 15
+        },
+        {
+          "column": "B",
+          "width": 25
+        },
+        {
+          "column": "C",
+          "width": 12
+        },
+        {
+          "column": "D",
+          "width": 25
+        },
+        {
+          "column": "E",
+          "width": 12
+        },
+        {
+          "column": "F",
+          "width": 40
+        },
+        {
+          "column": "G",
+          "width": 60
+        },
+        {
+          "column": "H",
+          "width": 18
+        },
+        {
+          "column": "I",
+          "width": 18
+        }
+      ]
+    }
+  ]
+}
