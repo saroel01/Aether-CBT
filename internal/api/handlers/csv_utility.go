@@ -9,6 +9,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,6 +19,19 @@ import (
 	"github.com/saroel01/aether-cbt/internal/db"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
+
+var (
+	defaultStudentPasswordHashOnce sync.Once
+	defaultStudentPasswordHash     string
+	defaultStudentPasswordHashErr  error
+)
+
+func getDefaultStudentPasswordHash() (string, error) {
+	defaultStudentPasswordHashOnce.Do(func() {
+		defaultStudentPasswordHash, defaultStudentPasswordHashErr = utils.HashPassword("siswa123")
+	})
+	return defaultStudentPasswordHash, defaultStudentPasswordHashErr
+}
 
 // ImportStudentsCSV parses a multipart CSV upload and imports students into the database
 func ImportStudentsCSV(c *fiber.Ctx) error {
@@ -63,6 +77,11 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to begin import transaction")
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	passwordCache := make(map[string]string)
+	if defHash, err := getDefaultStudentPasswordHash(); err == nil {
+		passwordCache["siswa123"] = defHash
+	}
 
 	rowIdx := 1 // header is row 0
 	for {
@@ -116,7 +135,7 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 		}
 		if ruangRef.Valid {
 			_ = tx.QueryRowContext(c.Context(),
-				`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
+				`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 				ruangRef.Int64, tenantID,
 			).Scan(&refOK)
 			if refOK == 0 {
@@ -124,9 +143,14 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 			}
 		}
 
-		passwordHash, err := utils.HashPassword(password)
-		if err != nil {
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, fmt.Sprintf("Row %d: failed to hash password", rowIdx))
+		passwordHash, cached := passwordCache[password]
+		if !cached {
+			var hashErr error
+			passwordHash, hashErr = utils.HashPassword(password)
+			if hashErr != nil {
+				return utils.ErrorResponse(c, fiber.StatusInternalServerError, fmt.Sprintf("Row %d: failed to hash password", rowIdx))
+			}
+			passwordCache[password] = passwordHash
 		}
 
 		_, err = tx.ExecContext(c.Context(), `
@@ -195,6 +219,7 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	var buf bytes.Buffer
+	buf.WriteString("\xEF\xBB\xBF")
 	writer := csv.NewWriter(&buf)
 
 	// Write CSV headers

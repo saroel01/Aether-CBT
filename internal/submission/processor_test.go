@@ -220,3 +220,46 @@ func TestProcessorProcessBatchIsolatesFailingJob(t *testing.T) {
 		t.Fatalf("persisted validasi = %q, want the valid job's 1_S-001_7", validasi)
 	}
 }
+
+func TestProcessor_GracePeriodUsesEnqueuedAt(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	// Student logged in 100 minutes ago for 90m exam (allowed grace: 95m)
+	loginTime := time.Now().UTC().Add(-100 * time.Minute)
+	if _, err := db.Exec(`UPDATE cek_login SET login_time = ? WHERE tenant_id = 1 AND peserta_id = 42`, loginTime); err != nil {
+		t.Fatalf("update login_time: %v", err)
+	}
+
+	// Job was enqueued at 80 minutes after login (well within the 95m grace period)
+	enqueuedAt := loginTime.Add(80 * time.Minute)
+
+	job := processorJob("10", detailXMLWithQuestions())
+	job.EnqueuedAt = enqueuedAt
+
+	p := NewProcessor(db)
+	jobErrs, txErr := p.ProcessBatch(context.Background(), []*SubmissionJob{job})
+	if txErr != nil {
+		t.Fatalf("txErr = %v", txErr)
+	}
+	if jobErrs[0] != nil {
+		t.Fatalf("jobErrs[0] = %v, want nil because job was enqueued within grace period", jobErrs[0])
+	}
+
+	// Student 43: Job enqueued at 96 minutes (> 95m grace period) must be rejected
+	if _, err := db.Exec(`INSERT INTO peserta (id, tenant_id, no_id) VALUES (43, 1, 'S-002')`); err != nil {
+		t.Fatalf("seed peserta 43: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time) VALUES (1, 43, 7, 'tok-late', ?)`, loginTime); err != nil {
+		t.Fatalf("seed cek_login 43: %v", err)
+	}
+	lateJob := processorJob("10", detailXMLWithQuestions())
+	lateJob.NoID = "S-002"
+	lateJob.AttemptToken = "tok-late"
+	lateJob.Validasi = "1_S-002_7"
+	lateJob.EnqueuedAt = loginTime.Add(96 * time.Minute)
+	lateErrs, _ := p.ProcessBatch(context.Background(), []*SubmissionJob{lateJob})
+	if lateErrs[0] == nil || !strings.Contains(lateErrs[0].Error(), "grace period exceeded") {
+		t.Fatalf("expected grace period exceeded error, got: %v", lateErrs[0])
+	}
+}

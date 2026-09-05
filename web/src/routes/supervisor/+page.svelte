@@ -79,9 +79,25 @@
   function calculateStats() {
     totalCount = students.length;
     activeCount = students.filter(s => s.is_logged_in).length;
-    finishedCount = students.filter(s => s.hasil_status === 'submitted').length;
+    finishedCount = students.filter(s => s.status === 'submitted' || s.hasil_status === 'submitted').length;
     idleCount = totalCount - activeCount - finishedCount;
     if (idleCount < 0) idleCount = 0;
+  }
+
+  async function unlockStudent(pesertaId: number, sessionId: number | undefined, studentName: string) {
+    try {
+      const res = await api('/supervisor/unlock', {
+        method: 'POST',
+        body: JSON.stringify({ peserta_id: pesertaId, session_id: sessionId || 0 })
+      });
+
+      if (res.success) {
+        toast.success(`Kunci ujian siswa "${studentName}" berhasil dibuka!`);
+        await refreshRoomStatus();
+      }
+    } catch (e: any) {
+      toast.error('Gagal membuka kunci: ' + e.message);
+    }
   }
 
   async function resetStudent(pesertaId: number, studentName: string) {
@@ -227,7 +243,8 @@
             </thead>
             <tbody>
               {#each students as s}
-                {@const isSubmitted = s.hasil_status === 'submitted'}
+                {@const isSubmitted = s.hasil_status === 'submitted' || s.status === 'submitted'}
+                {@const isLocked = !!(s.locked || s.status === 'locked')}
                 {@const isWorking = s.is_logged_in}
                 
                 <tr class="hover:bg-slate-50/50 transition-colors">
@@ -235,7 +252,7 @@
                   <td class="font-semibold text-slate-800">
                     <div class="flex items-center gap-2">
                       <span>{s.nama_peserta}</span>
-                      {#if s.tab_switches > 0 && s.tab_switches < 3}
+                      {#if s.tab_switches > 0}
                       <Badge variant="danger" theme="light" class="animate-pulse font-bold" title="Siswa keluar dari layar ujian">
                         ⚠️ {s.tab_switches}x Tab
                       </Badge>
@@ -246,7 +263,7 @@
                   <td>
                     <div class="flex flex-col gap-1.5">
                       <div class="flex items-center gap-1.5">
-                        {#if s.tab_switches >= 3}
+                        {#if isLocked}
                           <Badge variant="danger" theme="light" class="animate-pulse font-extrabold">
                             ⚠️ TERKUNCI
                           </Badge>
@@ -282,9 +299,16 @@
                   </td>
                   <td class="text-center">
                     {#if isWorking}
-                      <Button variant="danger" size="sm" theme="light" class="px-3 py-1 font-semibold" on:click={() => resetStudent(s.id, s.nama_peserta)}>
-                        Reset Sesi
-                      </Button>
+                      <div class="flex items-center justify-center gap-1.5">
+                        {#if isLocked}
+                          <Button variant="warning" size="sm" theme="light" class="px-2.5 py-1 font-semibold" on:click={() => unlockStudent(s.id, s.session_id, s.nama_peserta)}>
+                            Buka Kunci
+                          </Button>
+                        {/if}
+                        <Button variant="danger" size="sm" theme="light" class="px-2.5 py-1 font-semibold" on:click={() => resetStudent(s.id, s.nama_peserta)}>
+                          Reset Sesi
+                        </Button>
+                      </div>
                     {:else}
                       <span class="text-slate-350 font-mono text-xs">—</span>
                     {/if}

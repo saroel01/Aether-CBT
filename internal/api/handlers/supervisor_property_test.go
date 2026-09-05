@@ -60,10 +60,14 @@ func seedRoomStatusSkeleton(t *testing.T, database *sql.DB) {
 	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
 	testutil.SeedExam(t, database, 1, 1, 1, nil)
 	for sid := 1; sid <= 3; sid++ {
+		status := "draft"
+		if sid == 1 {
+			status = "aktif"
+		}
 		testutil.SeedExamSession(t, database, sid, 1, 1,
 			fmt.Sprintf("2026-06-0%d 08:00:00", sid),
 			fmt.Sprintf("2026-06-0%d 10:00:00", sid),
-			fmt.Sprintf("TOK-%d", sid), "draft")
+			fmt.Sprintf("TOK-%d", sid), status)
 	}
 }
 
@@ -175,14 +179,16 @@ func TestRoomStatusCardinalityAndSessionScoping(t *testing.T) {
 
 // scopedCandidates returns the hasil_tes rows that may legitimately supply the result columns
 // for a request. A session-scoped request admits only rows attributed to that session;
-// historical NULL-attributed rows are admitted only by an unscoped request.
+// an unscoped request (sessionID == 0) admits only rows from the room's active session (session 1).
+// Historical rows (NULL-attributed) and inactive session rows are not candidates.
 func scopedCandidates(rows []hasilRow, requestedSession int) []hasilRow {
+	targetSession := requestedSession
 	if requestedSession == 0 {
-		return rows
+		targetSession = 1 // active session of Ruang A
 	}
 	var out []hasilRow
 	for _, r := range rows {
-		if r.sessionID == requestedSession {
+		if r.sessionID == targetSession {
 			out = append(out, r)
 		}
 	}

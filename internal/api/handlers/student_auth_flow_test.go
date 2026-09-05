@@ -58,7 +58,8 @@ func setupStudentAuthFlowDB(t *testing.T) {
 			tenant_id INTEGER NOT NULL,
 			nama_ruang TEXT NOT NULL,
 			username TEXT,
-			password_hash TEXT
+			password_hash TEXT,
+			deleted_at DATETIME
 		);`,
 		`CREATE TABLE cek_login (
 			id INTEGER PRIMARY KEY,

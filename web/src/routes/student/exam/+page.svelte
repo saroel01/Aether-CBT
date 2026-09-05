@@ -184,12 +184,27 @@
     armLoadTimeout();
   });
 
+  let lockPollHandle: ReturnType<typeof setInterval> | null = null;
+  $: {
+    if (locked && !submitted) {
+      if (!lockPollHandle) {
+        lockPollHandle = setInterval(refreshRemainingTime, 3000);
+      }
+    } else {
+      if (lockPollHandle) {
+        clearInterval(lockPollHandle);
+        lockPollHandle = null;
+      }
+    }
+  }
+
   onDestroy(() => {
     window.removeEventListener('message', onIframeMessage);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     if (progressTimer) clearInterval(progressTimer);
     if (tickHandle) clearInterval(tickHandle);
     if (resyncHandle) clearInterval(resyncHandle);
+    if (lockPollHandle) clearInterval(lockPollHandle);
     if (iframeLoadTimer) clearTimeout(iframeLoadTimer);
   });
 
@@ -202,6 +217,9 @@
       if (res?.data?.remaining_seconds !== undefined) {
         remainingSeconds = res.data.remaining_seconds;
         if (!duration) duration = remainingSeconds;
+      }
+      if (res?.data?.locked !== undefined) {
+        locked = Boolean(res.data.locked);
       }
       // P2: server-authoritative force-submit signal. When the clock hits 0 the server sets
       // force_submit=true; the parent page forwards this to the iSpring shim (inside the iframe)
@@ -375,9 +393,12 @@
   }
 
   function endExamEarly() {
-    // The student ends early; the iframe result (if already submitted via shim) stands. We
-    // simply navigate away. We do NOT synthesize a result — only the iSpring player may.
+    // The student ends early; tell the iSpring shim to force-submit now to capture answers.
     showConfirmExit = false;
+    if (!forceSubmitSent) {
+      forceSubmitSent = true;
+      sendForceSubmitToShim();
+    }
     submitted = true;
     showResultModal = true;
   }

@@ -52,6 +52,42 @@ func TestCekLoginRepository_StartIsIdempotentBySession(t *testing.T) {
 	}
 }
 
+func TestCekLoginRepository_StartPreservesLoginTimeOnReconnect(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	seedTenant(t, database, 1, "default", "Default School")
+	seedKelas(t, database, 1, 1, "XII IPA 1")
+	seedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	seedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	seedMapel(t, database, 1, 1, "Kimia", "KIM")
+	seedExam(t, database, 1, 1, 1, nil)
+	seedExamSession(t, database, 1, 1, 1, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK", "aktif")
+
+	repo := NewCekLoginRepository(database)
+	if err := repo.Start(1, 1, 1, "attempt-1"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Manually set login_time to a fixed past time
+	pastLogin := "2026-06-01 08:00:00"
+	if _, err := database.Exec(`UPDATE cek_login SET login_time = ? WHERE tenant_id = 1 AND peserta_id = 1 AND session_id = 1`, pastLogin); err != nil {
+		t.Fatalf("update login_time: %v", err)
+	}
+
+	// Reconnect / re-entry
+	if err := repo.Start(1, 1, 1, "attempt-2"); err != nil {
+		t.Fatalf("Start (reconnect): %v", err)
+	}
+
+	got, err := repo.GetBySession(1, 1, 1)
+	if err != nil {
+		t.Fatalf("GetBySession: %v", err)
+	}
+	if got.LoginTime.Format("2006-01-02 15:04:05") != pastLogin {
+		t.Errorf("login_time was reset on reconnect: got %v, want %s", got.LoginTime, pastLogin)
+	}
+}
+
 func TestCekLoginRepository_LockAndUnlock(t *testing.T) {
 	database, cleanup := testutil.NewMigratedDB(t)
 	defer cleanup()

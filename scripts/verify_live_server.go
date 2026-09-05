@@ -164,7 +164,18 @@ func main() {
 
 	// 4. Aset statis frontend (_app/...)
 	testCase("GET /_app/... aset statis frontend termuat 200 OK", func() error {
-		resp, err := client.Get(baseURL + "/_app/immutable/entry/start.Cni94PhX.js")
+		webBuildDir := filepath.Join(releaseDir, "web", "build")
+		if _, err := os.Stat(webBuildDir); err != nil {
+			webBuildDir = filepath.Join("web", "build")
+		}
+		assetPath := ""
+		if matches, err := filepath.Glob(filepath.Join(webBuildDir, "_app", "immutable", "entry", "start.*.js")); err == nil && len(matches) > 0 {
+			assetPath = "/_app/immutable/entry/" + filepath.Base(matches[0])
+		}
+		if assetPath == "" {
+			return fmt.Errorf("tidak ada chunk entry start.*.js ditemukan di %s", webBuildDir)
+		}
+		resp, err := client.Get(baseURL + assetPath)
 		if err != nil {
 			return err
 		}

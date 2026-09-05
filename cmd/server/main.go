@@ -201,6 +201,7 @@ func main() {
 	protected.Get("/supervisor/room-status/live", supervisorOnly, handlers.GetRoomStatusSSE)
 	protected.Get("/supervisor/settings", supervisorOnly, handlers.GetSupervisorSettings)
 	protected.Post("/supervisor/reset", supervisorOnly, handlers.ResetStudentSession)
+	protected.Post("/supervisor/unlock", supervisorOnly, handlers.UnlockStudentSession)
 
 	// Debug routes — admin-only so internal queue diagnostics never leak to room supervisors
 	// (review F13, Task 28).
@@ -213,7 +214,7 @@ func main() {
 	protected.Get("/student/mapels", authenticatedExamUsers, handlers.GetAvailableMapels)
 	protected.Post("/student/start", studentOnly, handlers.StartExamSession)
 	protected.Get("/student/my-sessions", studentOnly, handlers.MySessions)
-	protected.Post("/student/infraction", studentOnly, handlers.RecordInfraction)
+	protected.Post("/student/infraction", authenticatedExamUsers, handlers.RecordInfraction)
 	protected.Post("/student/progress", studentOnly, handlers.UpdateStudentProgress)
 	protected.Get("/student/remaining-time", authenticatedExamUsers, handlers.GetRemainingTime)
 
@@ -338,6 +339,8 @@ func main() {
 		if err := app.ShutdownWithContext(shutdownCtx); err != nil {
 			log.Printf("Fiber shutdown error: %v", err)
 		}
+		log.Println("Waiting for submission worker to finish in-flight jobs...")
+		worker.Stop()
 	}
 
 	log.Println("Aether CBT shutdown complete")

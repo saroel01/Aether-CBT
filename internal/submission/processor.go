@@ -40,7 +40,7 @@ func (p *Processor) ProcessBatch(ctx context.Context, jobs []*SubmissionJob) (jo
 		return jobErrs, nil
 	}
 
-	tx, err := p.db.BeginTx(ctx, nil)
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return jobErrs, fmt.Errorf("begin tx: %w", err)
 	}
@@ -166,7 +166,11 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	`, pesertaID, job.TenantID, job.AttemptToken).Scan(&durasiMenit)
 
 	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
-	actualDuration := time.Now().UTC().Sub(loginTime.UTC())
+	submissionTime := job.EnqueuedAt
+	if submissionTime.IsZero() {
+		submissionTime = time.Now()
+	}
+	actualDuration := submissionTime.UTC().Sub(loginTime.UTC())
 	if requiresGraceCheck && actualDuration > maxAllowedDuration {
 		return fmt.Errorf("grace period exceeded for peserta %d (mapel %d)", pesertaID, mapelID.Int64)
 	}

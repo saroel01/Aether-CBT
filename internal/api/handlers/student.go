@@ -99,7 +99,7 @@ func CreateStudent(c *fiber.Ctx) error {
 	if ruangRef.Valid {
 		var r int
 		_ = db.DB.QueryRowContext(c.Context(),
-			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ?`,
+			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 			ruangRef.Int64, tenantID,
 		).Scan(&r)
 		if r == 0 {

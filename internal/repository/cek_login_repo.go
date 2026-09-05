@@ -65,7 +65,6 @@ func (r *CekLoginRepository) Start(tenantID, pesertaID, sessionID int, attemptTo
 		ON CONFLICT(tenant_id, peserta_id, session_id) DO UPDATE SET
 			mapel_id = COALESCE(excluded.mapel_id, cek_login.mapel_id),
 			attempt_token = excluded.attempt_token,
-			login_time = CURRENT_TIMESTAMP,
 			last_activity = CURRENT_TIMESTAMP
 	`, tenantID, pesertaID, mapelID, sessionID, attemptToken)
 	if err != nil {

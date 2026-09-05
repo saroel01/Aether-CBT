@@ -188,7 +188,15 @@ func TestEndToEndRoutingAndExemptions(t *testing.T) {
 
 	// 4. Static frontend asset loading
 	t.Run("GET static frontend assets", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/_app/immutable/entry/start.Cni94PhX.js", nil)
+		webBuildDir := filepath.Join("..", "..", "web", "build")
+		if _, err := os.Stat(filepath.Join(webBuildDir, "index.html")); err != nil {
+			webBuildDir = "./web/build"
+		}
+		assetPath := "/_app/immutable/entry/start.Gg_XYRc0.js"
+		if matches, err := filepath.Glob(filepath.Join(webBuildDir, "_app", "immutable", "entry", "start.*.js")); err == nil && len(matches) > 0 {
+			assetPath = "/_app/immutable/entry/" + filepath.Base(matches[0])
+		}
+		req := httptest.NewRequest("GET", assetPath, nil)
 		resp, err := app.Test(req)
 		if err != nil {
 			t.Fatalf("GET static asset failed: %v", err)

@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/repository"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
@@ -115,6 +117,16 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 	if sessionID > 0 {
 		hasilScope = " AND h.exam_session_id = ?"
 		hasilArgs = append(hasilArgs, sessionID)
+	} else {
+		hasilScope = ` AND h.exam_session_id IN (
+			SELECT es.id FROM exam_session es
+			WHERE es.tenant_id = ? AND es.status IN ('aktif', 'terjadwal') AND es.deleted_at IS NULL
+			  AND (
+				NOT EXISTS (SELECT 1 FROM exam_session_ruang esr WHERE esr.session_id = es.id)
+				OR EXISTS (SELECT 1 FROM exam_session_ruang esr WHERE esr.session_id = es.id AND esr.ruang_id = ?)
+			  )
+		)`
+		hasilArgs = append(hasilArgs, tenantID, ruangID)
 	}
 
 	// The join stays a LEFT JOIN on a single-row selector, so a participant with no matching
@@ -213,13 +225,13 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 }
 
 // computeStudentStatus derives the effective state: submitted beats locked beats in-progress;
-// a student with no active session is not_logged_in (Requirement 11.1).
+// a student with no active session and no submitted result is not_logged_in (Requirement 11.1).
 func computeStudentStatus(isLoggedIn, locked bool, hasilStatus *string) string {
-	if !isLoggedIn {
-		return "not_logged_in"
-	}
 	if hasilStatus != nil && *hasilStatus == "submitted" {
 		return "submitted"
+	}
+	if !isLoggedIn {
+		return "not_logged_in"
 	}
 	if locked {
 		return "locked"
@@ -299,4 +311,65 @@ func ResetStudentSession(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to reset student session")
 	}
 	return utils.SuccessResponse(c, nil, message)
+}
+
+// UnlockStudentSession clears a student's server-enforced lock without deleting their session.
+func UnlockStudentSession(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(int)
+	role := c.Locals("role").(string)
+
+	if role != "supervisor" && role != "admin" {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Unauthorized access")
+	}
+
+	var req struct {
+		PesertaID int `json:"peserta_id"`
+		SessionID int `json:"session_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+	if req.PesertaID <= 0 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
+	}
+
+	if role == "supervisor" {
+		ruangID := c.Locals("user_id").(int)
+		var belongs int
+		_ = db.DB.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM peserta WHERE id = ? AND tenant_id = ? AND ruang_id = ? AND deleted_at IS NULL`,
+			req.PesertaID, tenantID, ruangID,
+		).Scan(&belongs)
+		if belongs == 0 {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Supervisor can only unlock students in their own room")
+		}
+	}
+
+	cekRepo := repository.NewCekLoginRepository(db.DB)
+	var err error
+	if req.SessionID > 0 {
+		err = cekRepo.Unlock(tenantID, req.PesertaID, req.SessionID)
+	} else {
+		res, execErr := db.DB.ExecContext(c.Context(),
+			`UPDATE cek_login SET locked = 0 WHERE tenant_id = ? AND peserta_id = ?`,
+			tenantID, req.PesertaID,
+		)
+		if execErr != nil {
+			err = execErr
+		} else {
+			rowsAffected, _ := res.RowsAffected()
+			if rowsAffected == 0 {
+				err = repository.ErrNotFound
+			}
+		}
+	}
+
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "No active locked session found")
+		}
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to unlock student session")
+	}
+
+	return utils.SuccessResponse(c, nil, "Student session unlocked successfully")
 }

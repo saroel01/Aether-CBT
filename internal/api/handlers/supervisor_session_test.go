@@ -139,6 +139,28 @@ func TestRecordInfraction_SupervisorScopedToOwnRoom(t *testing.T) {
 	}
 }
 
+// TestRecordInfraction_SupervisorAllowedInOwnRoom: a supervisor CAN record infractions for peserta in their own room.
+func TestRecordInfraction_SupervisorAllowedInOwnRoom(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "supervisor")
+	defer cleanup()
+	app.Post("/api/student/infraction", RecordInfraction)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a") // supervisor's room (user_id=1)
+	testutil.SeedPeserta(t, database, 1, 1, 1, 1, "2026001", "Room 1 Siswa")
+	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
+	cekRepo := repository.NewCekLoginRepository(database)
+	if err := cekRepo.Start(1, 1, 1, "tok-own-room"); err != nil {
+		t.Fatalf("seed cek_login: %v", err)
+	}
+
+	resp := doJSON(t, app, "POST", "/api/student/infraction", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("supervisor infraction on own room: status = %d, want 200", resp.StatusCode)
+	}
+}
+
 // TestResetStudentSession_StudentRoleForbidden (Requirement 11.4).
 func TestResetStudentSession_StudentRoleForbidden(t *testing.T) {
 	app, _, _, cleanup := newAdminTestApp(t, "student")

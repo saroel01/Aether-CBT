@@ -94,6 +94,35 @@ func TestSchedulingService_RemainingSeconds(t *testing.T) {
 	}
 }
 
+func TestSchedulingService_RemainingSeconds_WithLoginTime(t *testing.T) {
+	database, cleanup := testutil.NewMigratedDB(t)
+	defer cleanup()
+	sess := &models.ExamSession{WaktuSelesai: atTime(1, 10)} // ends at 10:00
+	exam := &models.Exam{DurasiMenit: 60}                   // 60 minutes exam
+
+	loginTime := atTime(1, 8) // student started at 08:00
+
+	// At 08:30: 30 minutes elapsed, 30 minutes left out of 60m (session has 90m left) -> want 30*60
+	svc1 := NewSchedulingService(repository.NewExamSessionRepository(database), repository.NewExamRepository(database), WithClock(clockAt(atTime(1, 8).Add(30*time.Minute))))
+	if got := svc1.RemainingSeconds(sess, exam, loginTime); got != 30*60 {
+		t.Errorf("remaining at 08:30 = %d, want %d", got, 30*60)
+	}
+
+	// At 09:10: 70 minutes elapsed (> 60m limit) -> want 0
+	svc2 := NewSchedulingService(repository.NewExamSessionRepository(database), repository.NewExamRepository(database), WithClock(clockAt(atTime(1, 9).Add(10*time.Minute))))
+	if got := svc2.RemainingSeconds(sess, exam, loginTime); got != 0 {
+		t.Errorf("remaining at 09:10 = %d, want 0", got)
+	}
+
+	// Session window limit: student started late at 09:30 with 60m exam, but session ends at 10:00 (only 30m left)
+	lateLogin := atTime(1, 9).Add(30 * time.Minute)
+	// At 09:40: elapsed is 10m (duration left is 50m), but session ends in 20m -> want 20*60
+	svc3 := NewSchedulingService(repository.NewExamSessionRepository(database), repository.NewExamRepository(database), WithClock(clockAt(atTime(1, 9).Add(40*time.Minute))))
+	if got := svc3.RemainingSeconds(sess, exam, lateLogin); got != 20*60 {
+		t.Errorf("remaining at 09:40 = %d, want %d", got, 20*60)
+	}
+}
+
 func TestSchedulingService_ValidateCreateTokenOverlap(t *testing.T) {
 	database, cleanup := testutil.NewMigratedDB(t)
 	defer cleanup()

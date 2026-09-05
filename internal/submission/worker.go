@@ -24,6 +24,7 @@ type Worker struct {
 	processFunc ProcessBatchFunc
 	stopChan    chan struct{}
 	stopOnce    sync.Once
+	wg          sync.WaitGroup
 
 	batchSize    int           // default 5
 	batchTimeout time.Duration // default 100ms
@@ -69,6 +70,8 @@ func NewWorkerSingle(q Queue, single func(ctx context.Context, job *SubmissionJo
 
 // Run menjalankan loop worker sampai ctx dibatalkan atau Stop dipanggil.
 func (w *Worker) Run(ctx context.Context) {
+	w.wg.Add(1)
+	defer w.wg.Done()
 	log.Println("[WORKER] Started")
 	for {
 		select {
@@ -84,11 +87,27 @@ func (w *Worker) Run(ctx context.Context) {
 		batch, err := w.collectBatch(ctx)
 		if err != nil {
 			log.Printf("[WORKER] dequeue error: %v", err)
-			time.Sleep(1 * time.Second)
+			select {
+			case <-w.stopChan:
+				log.Println("[WORKER] Stopped")
+				return
+			case <-ctx.Done():
+				log.Println("[WORKER] Context cancelled, stopping")
+				return
+			case <-time.After(1 * time.Second):
+			}
 			continue
 		}
 		if len(batch) == 0 {
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-w.stopChan:
+				log.Println("[WORKER] Stopped")
+				return
+			case <-ctx.Done():
+				log.Println("[WORKER] Context cancelled, stopping")
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
 			continue
 		}
 		w.processBatchSafe(ctx, batch)
@@ -178,4 +197,5 @@ func (w *Worker) Stop() {
 	w.stopOnce.Do(func() {
 		close(w.stopChan)
 	})
+	w.wg.Wait()
 }

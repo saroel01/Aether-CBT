@@ -250,7 +250,7 @@ func GetRemainingTime(c *fiber.Ctx) error {
 		if err != nil {
 			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load exam")
 		}
-		remaining := newSchedulingService().RemainingSeconds(session, exam)
+		remaining := newSchedulingService().RemainingSeconds(session, exam, cek.LoginTime)
 		return utils.SuccessResponse(c, fiber.Map{
 			"remaining_seconds": remaining,
 			"is_active":         remaining > 0 && !cek.Locked,
@@ -271,14 +271,20 @@ func GetRemainingTime(c *fiber.Ctx) error {
 	}
 
 	var loginTime time.Time
+	var lockedInt int
 	err := db.DB.QueryRow(`
-		SELECT login_time
+		SELECT login_time, COALESCE(locked, 0)
 		FROM cek_login
 		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?
-	`, tenantID, pesertaID, mapelID).Scan(&loginTime)
+	`, tenantID, pesertaID, mapelID).Scan(&loginTime, &lockedInt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return utils.SuccessResponse(c, fiber.Map{"remaining_seconds": 0, "is_active": false}, "No active session found, remaining time is 0")
+			return utils.SuccessResponse(c, fiber.Map{
+				"remaining_seconds": 0,
+				"is_active":         false,
+				"locked":            false,
+				"force_submit":      false,
+			}, "No active session found, remaining time is 0")
 		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to check session active time")
 	}
@@ -295,10 +301,13 @@ func GetRemainingTime(c *fiber.Ctx) error {
 		remainingSeconds = 0
 	}
 
+	isLocked := lockedInt == 1
 	return utils.SuccessResponse(c, fiber.Map{
 		"remaining_seconds": remainingSeconds,
 		"login_time":        loginTime,
 		"duration_minutes":  durasiMenit,
-		"is_active":         remainingSeconds > 0,
+		"is_active":         remainingSeconds > 0 && !isLocked,
+		"locked":            isLocked,
+		"force_submit":      remainingSeconds <= 0,
 	}, "Remaining time calculated successfully")
 }

@@ -51,12 +51,27 @@ func enterable(status string, mulai, selesai, now time.Time) bool {
 	return !now.Before(mulai) && now.Before(selesai)
 }
 
-// remainingSeconds computes the remaining exam seconds as min(duration, sessionEnd - now),
+// remainingSeconds computes the remaining exam seconds as min(duration - elapsedFromLogin, sessionEnd - now),
 // clamped to 0 so it is never negative (Requirement 7.5, Property 6).
-func remainingSeconds(durasiMenit int, selesai, now time.Time) int {
+func remainingSeconds(durasiMenit int, selesai, now time.Time, loginTimes ...time.Time) int {
 	remaining := selesai.Sub(now)
-	if d := time.Duration(durasiMenit) * time.Minute; d < remaining {
-		remaining = d
+	if durasiMenit > 0 {
+		duration := time.Duration(durasiMenit) * time.Minute
+		if len(loginTimes) > 0 && !loginTimes[0].IsZero() {
+			loginTime := loginTimes[0]
+			elapsed := now.Sub(loginTime)
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			durationRemaining := duration - elapsed
+			if durationRemaining < remaining {
+				remaining = durationRemaining
+			}
+		} else {
+			if duration < remaining {
+				remaining = duration
+			}
+		}
 	}
 	if remaining < 0 {
 		remaining = 0
@@ -95,9 +110,9 @@ func (s *SchedulingService) NotEnterableReason(sess *models.ExamSession) string 
 }
 
 // RemainingSeconds returns the remaining exam seconds for an active session given its exam
-// duration and the session end (Requirement 7.5).
-func (s *SchedulingService) RemainingSeconds(sess *models.ExamSession, exam *models.Exam) int {
-	return remainingSeconds(exam.DurasiMenit, sess.WaktuSelesai, s.now())
+// duration, the session end, and optionally the student's login time (Requirement 7.5).
+func (s *SchedulingService) RemainingSeconds(sess *models.ExamSession, exam *models.Exam, loginTimes ...time.Time) int {
+	return remainingSeconds(exam.DurasiMenit, sess.WaktuSelesai, s.now(), loginTimes...)
 }
 
 // ValidateWindow rejects a window whose end is not strictly after its start (Requirement 4.2).
