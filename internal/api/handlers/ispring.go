@@ -21,7 +21,10 @@ func SetSubmissionQueue(q submission.Queue) {
 }
 
 func ISpringWebhook(c *fiber.Ctx) error {
-	tenantID := c.Locals("tenant_id").(int)
+	var tenantID int
+	if tid, ok := c.Locals("tenant_id").(int); ok {
+		tenantID = tid
+	}
 
 	noID := strings.TrimSpace(c.FormValue("sid"))
 	if noID == "" {
@@ -69,6 +72,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).SendString("session is locked")
 	}
 	tenantID = resolvedTenantID // override the header-derived tenant with the authoritative value
+	c.Locals("tenant_id", resolvedTenantID)
 
 	if !mapelID.Valid && sessionID.Valid {
 		_ = db.DB.QueryRowContext(c.Context(), `

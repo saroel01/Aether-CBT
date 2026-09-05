@@ -588,6 +588,47 @@ func TestWebhookRejectsLockedSession(t *testing.T) {
 	}
 }
 
+// TestWebhookWithoutTenantContextInLocals verifies that ISpringWebhook succeeds without
+// panic even when c.Locals("tenant_id") is nil (which happens when TenantMiddleware
+// exempts /api/ispring/webhook).
+func TestWebhookWithoutTenantContextInLocals(t *testing.T) {
+	_, fsQueue, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	// Register on a fresh app with NO tenant middleware at all
+	noTenantApp := fiber.New()
+	noTenantApp.Post("/api/ispring/webhook", ISpringWebhook)
+
+	form := url.Values{}
+	form.Add("sid", "2026001")
+	form.Add("sp", "10")
+	form.Add("tp", "30")
+	form.Add("dr", "")
+	form.Add("attempt_token", "attempt-secret")
+
+	req := httptest.NewRequest("POST", "/api/ispring/webhook", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := noTenantApp.Test(req)
+	if err != nil {
+		t.Fatalf("noTenantApp.Test: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("webhook without tenant in locals: status=%d, want 200", resp.StatusCode)
+	}
+
+	job, err := fsQueue.Dequeue(context.Background())
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected a job, got nil")
+	}
+	if job.TenantID != 1 {
+		t.Fatalf("job.TenantID = %d, want 1 (resolved from attempt_token)", job.TenantID)
+	}
+}
+
 // TestMain allows manual testing run via go command
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())

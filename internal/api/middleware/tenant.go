@@ -10,6 +10,13 @@ import (
 	"github.com/saroel01/aether-cbt/internal/db"
 )
 
+// isAPIRoute returns true if the request path targets the API namespace ("/api" or "/api/...").
+// Case-insensitive comparison aligns with Fiber's default routing behavior.
+func isAPIRoute(path string) bool {
+	p := strings.ToLower(path)
+	return p == "/api" || strings.HasPrefix(p, "/api/")
+}
+
 // TenantMiddleware extracts tenant from header, query param, form value, or subdomain.
 // Supports:
 //   - X-Tenant-ID: 2
@@ -19,16 +26,25 @@ import (
 // In production: requires explicit tenant identifier (returns 400 if missing).
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Content serving is authorized by the self-contained content-session cookie (AD-2):
-		// the iSpring player loads sub-assets via plain HTML tags that carry no tenant
-		// header. The tenant is resolved from the cookie token inside the handler, not here,
-		// so exempt the content path from the tenant-identifier requirement (which would
-		// otherwise 400 in production). Isolation is structural: the whole token -> session
-		// -> exam -> package chain is scoped to the token's tenant.
-		// Exact path or prefix-with-slash so a future /api/exam/content* route is not
-		// silently exempted (which would leave tenant_id unset and panic handlers that
-		// assert it).
-		if p := c.Path(); p == "/api/exam/content" || strings.HasPrefix(p, "/api/exam/content/") {
+		rawPath := c.Path()
+
+		// Defensive guard: if path does not target "/api" namespace, pass through immediately.
+		// Non-API routes (frontend SPA, static assets, /api-docs, etc.) should never be blocked.
+		if !isAPIRoute(rawPath) {
+			return c.Next()
+		}
+
+		p := strings.ToLower(rawPath)
+
+		// Public API exemptions:
+		// 1. GET /api/health (health check service)
+		// 2. GET /api/qrcode (public QR code image generator)
+		// 3. POST /api/ispring/webhook (iSpring result webhook, authenticates tenant from attempt_token)
+		// 4. GET /api/exam/content/* (iSpring quiz assets, authorized by content-session cookie)
+		if p == "/api/health" || p == "/api/health/" ||
+			p == "/api/qrcode" || p == "/api/qrcode/" ||
+			p == "/api/ispring/webhook" || p == "/api/ispring/webhook/" ||
+			p == "/api/exam/content" || strings.HasPrefix(p, "/api/exam/content/") {
 			return c.Next()
 		}
 
@@ -55,7 +71,7 @@ func TenantMiddleware() fiber.Handler {
 		if slug == "" {
 			slug = c.FormValue("tenant_slug")
 		}
-		if slug != "" {
+		if slug != "" && db.DB != nil {
 			var id int
 			err := db.DB.QueryRow("SELECT id FROM tenants WHERE slug = ? AND deleted_at IS NULL", slug).Scan(&id)
 			if err == nil && id > 0 {
@@ -67,7 +83,7 @@ func TenantMiddleware() fiber.Handler {
 		// Priority 3: Subdomain detection from hostname (for Cloud VPS deployment)
 		host := c.Hostname()
 		parts := strings.Split(host, ".")
-		if len(parts) >= 3 {
+		if len(parts) >= 3 && db.DB != nil {
 			// e.g. "sman1kluet.aethercbt.id" -> first part is "sman1kluet"
 			subdomain := parts[0]
 			if subdomain != "www" && subdomain != "api" {
@@ -81,8 +97,9 @@ func TenantMiddleware() fiber.Handler {
 		}
 
 		// Default only allowed in development for convenience
-		env := os.Getenv("ENV")
-		if env == "development" || env == "dev" {
+		// Consistent with config.go: fallback to tenant 1 if ENV is unset or "development"/"dev"
+		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+		if env == "" || env == "development" || env == "dev" {
 			c.Locals("tenant_id", 1)
 			return c.Next()
 		}

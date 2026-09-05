@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -149,19 +150,10 @@ func main() {
 	// Baseline browser-security headers (review security finding #14, Task 41).
 	app.Use(middleware.SecurityHeaders())
 
-	// Apply tenant middleware globally
-	app.Use(middleware.TenantMiddleware())
-
-	// Health check
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"message": "Aether CBT - Multi-Tenant Exam Platform",
-			"status":  "running",
-		})
-	})
-
-	// API routes
+	// API routes (TenantMiddleware scoped to API routes, exempting public endpoints)
 	api := app.Group("/api")
+	api.Use(middleware.TenantMiddleware())
+
 	api.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
@@ -290,19 +282,37 @@ func main() {
 	protected.Post("/admin/exam-sessions/:id/classes", adminOnly, handlers.LinkSessionClasses)
 	protected.Post("/admin/exam-sessions/:id/rooms", adminOnly, handlers.LinkSessionRooms)
 
+	// Determine web build directory (cwd or relative to binary)
+	webBuildDir := "./web/build"
+	if _, err := os.Stat(filepath.Join(webBuildDir, "index.html")); os.IsNotExist(err) {
+		if exePath, err := os.Executable(); err == nil {
+			candidate := filepath.Join(filepath.Dir(exePath), "web", "build")
+			if _, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil {
+				webBuildDir = candidate
+			}
+		}
+	}
+	if abs, err := filepath.Abs(webBuildDir); err == nil {
+		webBuildDir = abs
+	}
+
 	// Serve static frontend from built assets in production
-	app.Static("/", "./web/build")
+	app.Static("/", webBuildDir)
 
 	// SPA Routing support: serve index.html for unmatched client-side routes
 	app.Get("/*", func(c *fiber.Ctx) error {
-		path := c.Path()
-		// Do not handle backend api routes
-		if strings.HasPrefix(path, "/api") {
+		path := strings.ToLower(c.Path())
+		// Do not handle backend api routes (/api or /api/...)
+		if path == "/api" || strings.HasPrefix(path, "/api/") {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "API route not found",
 			})
 		}
-		return c.SendFile("./web/build/index.html")
+		indexPath := filepath.Join(webBuildDir, "index.html")
+		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+			return c.Status(fiber.StatusNotFound).SendString("Frontend build not found")
+		}
+		return c.SendFile(indexPath)
 	})
 
 	// Graceful shutdown listener (Clause 2.23)
