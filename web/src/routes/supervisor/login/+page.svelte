@@ -22,7 +22,8 @@
     try {
       const res = await api('/auth/supervisor-login', {
         method: 'POST',
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
+        raw401: true
       });
 
       if (res.success && res.data?.token) {

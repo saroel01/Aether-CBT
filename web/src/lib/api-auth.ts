@@ -41,11 +41,13 @@ export async function apiFetch<T = any>(path: string, options: ApiOptions = {}):
       // user re-authenticates instead of seeing endless failed retries.
       authStore.logout();
       if (typeof window !== 'undefined') {
-        const p = window.location.pathname;
-        const login = p.startsWith('/student') ? '/student/login'
+        const p = window.location.pathname.replace(/\/+$/, '').toLowerCase() || '/';
+        const login = (p.startsWith('/student') ? '/student/login'
           : p.startsWith('/supervisor') ? '/supervisor/login'
-          : '/admin';
-        window.location.href = login;
+          : '/admin').toLowerCase();
+        if (p !== login) {
+          window.location.href = login;
+        }
       }
       throw new Error('Sesi berakhir, silakan login kembali');
     }

@@ -47,7 +47,8 @@
     try {
       const res = await api('/auth/student-login', {
         method: 'POST',
-        body: JSON.stringify({ no_id: noId, password, token })
+        body: JSON.stringify({ no_id: noId, password, token }),
+        raw401: true
       });
 
       if (res.success) {
@@ -65,6 +66,9 @@
         setTimeout(() => {
           window.location.href = '/student/select-subject';
         }, 800);
+      } else {
+        error = res.error || 'Login gagal. Cek No. Peserta, password, dan token Anda.';
+        toast.error(error);
       }
     } catch (e: any) {
       error = e.message || 'Login gagal. Cek No. Peserta, password, dan token Anda.';
