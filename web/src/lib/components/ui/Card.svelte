@@ -1,33 +1,41 @@
 <script lang="ts">
   export let elevated = false;
   export let padding: 'none' | 'sm' | 'md' | 'lg' = 'md';
+  export let padded: boolean | undefined = undefined;
   export let theme: 'light' | 'dark' = 'light';
 
-  let paddingClasses = {
+  const paddingClasses = {
     none: 'p-0',
     sm: 'p-4',
     md: 'p-6',
     lg: 'p-8'
   };
 
-  $: hasBg = ($$props.class || '').split(' ').some(c => c.startsWith('bg-'));
-  $: hasBorder = ($$props.class || '').split(' ').some(c => c.startsWith('border-'));
-  $: hasText = ($$props.class || '').split(' ').some(c => c.startsWith('text-'));
+  $: effectivePadding = padded === false ? 'none' : (padded === true && padding === 'none' ? 'md' : padding);
 
-  $: bgClass = hasBg ? '' : (theme === 'dark' ? 'bg-[oklch(0.16_0.014_250)]' : 'bg-white');
-  $: borderClass = hasBorder ? '' : (theme === 'dark' ? 'border-[oklch(0.22_0.016_250)]' : 'border-slate-100');
-  $: textClass = hasText ? '' : (theme === 'dark' ? 'text-slate-100' : 'text-slate-800');
+  $: hasBg = ($$props.class || '').split(' ').some((c: string) => c.startsWith('bg-'));
+  $: hasBorder = ($$props.class || '').split(' ').some((c: string) => c.startsWith('border-'));
+  $: hasText = ($$props.class || '').split(' ').some((c: string) => c.startsWith('text-'));
+  $: hasRounded = ($$props.class || '').split(' ').some((c: string) => c.startsWith('rounded-'));
+
+  $: bgClass = hasBg ? '' : (theme === 'dark' ? 'bg-slate-900/90' : 'bg-white');
+  $: borderClass = hasBorder ? '' : (theme === 'dark' ? 'border-slate-800' : 'border-slate-200');
+  $: textClass = hasText ? '' : (theme === 'dark' ? 'text-slate-100' : 'text-slate-900');
+  $: roundedClass = hasRounded ? '' : 'rounded-2xl';
 </script>
 
-<div class="rounded-2xl border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] 
-  {elevated ? (theme === 'dark' ? 'shadow-[0_10px_30px_-5px_rgba(0,0,0,0.3)] border-[oklch(0.24_0.016_250)]' : 'shadow-[0_10px_30px_-5px_rgba(0,0,0,0.05)] border-slate-200/60') : (theme === 'dark' ? 'shadow-[0_4px_20px_-4px_rgba(0,0,0,0.2)]' : 'shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]')} 
-  {paddingClasses[padding]} 
+<div
+  class="border transition-colors duration-150 {roundedClass} 
+  {elevated ? 'shadow-md' : 'shadow-sm'} 
+  {paddingClasses[effectivePadding] || paddingClasses.md} 
   {bgClass} 
   {borderClass} 
   {textClass} 
-  {$$props.class || ''}">
+  {$$props.class || ''}"
+  {...$$restProps}
+>
   {#if $$slots.header}
-    <div class="border-b pb-4 mb-4 {theme === 'dark' ? 'border-[oklch(0.22_0.016_250)]' : 'border-slate-100'}">
+    <div class="border-b pb-4 mb-4 {effectivePadding === 'none' ? 'px-6 pt-5' : ''} {theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}">
       <slot name="header" />
     </div>
   {/if}
@@ -35,9 +43,8 @@
   <slot />
 
   {#if $$slots.footer}
-    <div class="border-t pt-4 mt-4 {theme === 'dark' ? 'border-[oklch(0.22_0.016_250)]' : 'border-slate-100'}">
+    <div class="border-t pt-4 mt-4 {effectivePadding === 'none' ? 'px-6 pb-5' : ''} {theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}">
       <slot name="footer" />
     </div>
   {/if}
 </div>
-

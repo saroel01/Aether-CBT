@@ -95,7 +95,7 @@
     </div>
   {:else}
     <!-- Printable Sheet -->
-    <div class="max-w-3xl mx-auto p-8 border border-slate-300 rounded shadow-sm bg-white select-none printable-container leading-relaxed text-sm">
+    <div class="max-w-3xl mx-auto p-8 border border-slate-300 rounded shadow-sm bg-white printable-container leading-relaxed text-sm">
       
       <!-- Document Header -->
       <div class="text-center border-b-2 border-double pb-4 mb-6">

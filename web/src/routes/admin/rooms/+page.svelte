@@ -6,14 +6,32 @@
   import Input from '$lib/components/ui/Input.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { toast } from '$lib/stores/toast';
 
   let items: any[] = [];
+  let searchQuery = '';
+
+  $: filteredItems = items.filter(r => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const nameMatch = (r.nama_ruang || '').toLowerCase().includes(q);
+    const userMatch = (r.username || '').toLowerCase().includes(q);
+    const idMatch = String(r.id || '').includes(q);
+    return nameMatch || userMatch || idMatch;
+  });
+
   let newName = '';
   let newUsername = '';
   let newPassword = '';
   let loading = true;
   let createLoading = false;
+
+  // Delete confirmation state
+  let showDeleteModal = false;
+  let roomToDelete: { id: number; name: string } | null = null;
+  let deleteLoading = false;
 
   let visiblePasswords: Record<number, boolean> = {};
 
@@ -60,16 +78,24 @@
     createLoading = false;
   }
 
-  async function deleteRoom(id: number, name: string) {
-    const confirm = window.confirm(`Apakah Anda yakin ingin menghapus ruangan "${name}"?`);
-    if (!confirm) return;
+  function promptDeleteRoom(id: number, name: string) {
+    roomToDelete = { id, name };
+    showDeleteModal = true;
+  }
+
+  async function confirmDeleteRoom() {
+    if (!roomToDelete) return;
+    deleteLoading = true;
     try {
-      await api(`/rooms/${id}`, { method: 'DELETE' });
-      toast.success(`Ruang Ujian "${name}" berhasil dihapus!`);
+      await api(`/rooms/${roomToDelete.id}`, { method: 'DELETE' });
+      toast.success(`Ruang Ujian "${roomToDelete.name}" berhasil dihapus!`);
+      showDeleteModal = false;
+      roomToDelete = null;
       await loadRooms();
     } catch (e: any) {
       toast.error('Gagal menghapus ruangan: ' + e.message);
     }
+    deleteLoading = false;
   }
 </script>
 
@@ -87,7 +113,42 @@
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
     <!-- List of rooms (2/3) -->
     <div class="lg:col-span-2 flex flex-col gap-4">
-      <h3 class="text-lg font-bold uppercase tracking-wider text-slate-500">Daftar Ruangan</h3>
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div>
+          <h3 class="text-lg font-bold uppercase tracking-wider text-slate-500 font-mono">Daftar Ruangan</h3>
+          {#if searchQuery}
+            <span class="text-xs text-slate-400 font-mono">Ditemukan <strong class="text-slate-700 tabular-nums">{filteredItems.length}</strong> dari <span class="tabular-nums">{items.length}</span> ruangan</span>
+          {/if}
+        </div>
+
+        <div class="relative w-full sm:w-64">
+          <Input 
+            type="search"
+            placeholder="Cari ruangan atau user..." 
+            bind:value={searchQuery}
+            theme="light"
+          >
+            <svg slot="iconLeft" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <svelte:fragment slot="iconRight">
+              {#if searchQuery}
+                <button 
+                  type="button" 
+                  class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                  on:click={() => searchQuery = ''}
+                  title="Bersihkan pencarian"
+                  aria-label="Bersihkan pencarian"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              {/if}
+            </svelte:fragment>
+          </Input>
+        </div>
+      </div>
 
       {#if loading}
         <div class="bg-white border rounded-2xl p-16 flex flex-col items-center justify-center gap-3">
@@ -110,7 +171,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each items as r}
+            {#each filteredItems as r}
               <tr>
                 <td class="font-mono text-slate-400 font-bold">{r.id}</td>
                 <td class="font-semibold text-slate-800">{r.nama_ruang}</td>
@@ -154,7 +215,7 @@
                       variant="danger" 
                       size="sm" 
                       theme="light"
-                      on:click={() => deleteRoom(r.id, r.nama_ruang)}
+                      on:click={() => promptDeleteRoom(r.id, r.nama_ruang)}
                     >
                       Hapus
                     </Button>
@@ -163,8 +224,24 @@
               </tr>
             {:else}
               <tr>
-                <td colspan="6" class="text-center py-12 text-slate-400 font-medium">
-                  Belum ada ruangan terdaftar. Gunakan panel kanan untuk menambah.
+                <td colspan="6" class="py-8">
+                  {#if searchQuery}
+                    <EmptyState
+                      title="Ruangan Tidak Ditemukan"
+                      description={`Tidak ditemukan ruangan dengan kata kunci "${searchQuery}".`}
+                      icon="search"
+                      actionText="Bersihkan Pencarian"
+                      actionVariant="secondary"
+                      on:action={() => searchQuery = ''}
+                    />
+                  {:else}
+                    <EmptyState
+                      title="Belum Ada Ruangan Terdaftar"
+                      description="Belum ada ruangan fisik ujian yang didaftarkan. Gunakan formulir di sebelah kanan untuk menambahkan ruangan baru."
+                      icon="room"
+                      actionText=""
+                    />
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -219,4 +296,16 @@
       </Card>
     </div>
   </div>
+
+  <ConfirmModal
+    show={showDeleteModal}
+    title="Hapus Ruang Ujian"
+    message={`Apakah Anda yakin ingin menghapus ruangan "${roomToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
+    confirmText="Hapus Ruangan"
+    cancelText="Batal"
+    variant="danger"
+    loading={deleteLoading}
+    on:confirm={confirmDeleteRoom}
+    on:cancel={() => (showDeleteModal = false)}
+  />
 </div>

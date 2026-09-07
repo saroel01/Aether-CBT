@@ -71,9 +71,9 @@
 
 <div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
   <!-- Section Title -->
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/60 pb-6">
     <div>
-      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Multi-Tenant Sekolah</h1>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Multi-Tenant Sekolah</h1>
       <p class="text-slate-500 text-sm">Kelola partisi pangkalan data, slug domain, dan status aktifasi sekolah/tenant.</p>
     </div>
 

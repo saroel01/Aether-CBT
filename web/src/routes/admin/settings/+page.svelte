@@ -147,7 +147,7 @@
   <title>Konfigurasi Ujian - Admin</title>
 </svelte:head>
 
-<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto select-none">
+<div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
   <!-- Section Title -->
   <div class="border-b border-slate-200/60 pb-6">
     <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Pengaturan Ujian</h1>
@@ -156,7 +156,7 @@
 
   {#if loading}
     <div class="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
-      <svg class="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
+      <svg class="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
@@ -211,7 +211,7 @@
                 type="button" 
                 aria-label={isExamActive ? 'Nonaktifkan server ujian' : 'Aktifkan server ujian'}
                 class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:outline-none
-                  {isExamActive ? 'bg-indigo-600' : 'bg-slate-200'}"
+                  {isExamActive ? 'bg-blue-600' : 'bg-slate-200'}"
                 on:click={() => isExamActive = !isExamActive}
               >
                 <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
@@ -247,7 +247,7 @@
               type="text" 
               bind:value={activeToken} 
               disabled={saveLoading} 
-              class="w-full text-center text-xl font-extrabold text-indigo-600 font-mono border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-slate-50/50 uppercase tracking-widest transition-all duration-300"
+              class="w-full text-center text-xl font-extrabold text-blue-600 font-mono border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-slate-50/50 uppercase tracking-widest transition-all duration-300"
             />
             <Button 
               variant="secondary" 
@@ -266,7 +266,7 @@
 
           <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Live QR Code Token</div>
           {#if activeToken}
-            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 hover:scale-[1.01] transition-transform duration-300">
+            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 shadow-sm">
               <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
             </div>
           {/if}

@@ -6,6 +6,7 @@
   import Input from '$lib/components/ui/Input.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
   import { toast } from '$lib/stores/toast';
 
   let items: any[] = [];
@@ -13,6 +14,11 @@
   let newCode = '';
   let loading = true;
   let createLoading = false;
+
+  // Delete confirmation state
+  let showDeleteModal = false;
+  let mapelToDelete: { id: number; name: string } | null = null;
+  let deleteLoading = false;
 
   onMount(async () => {
     await loadMapels();
@@ -51,16 +57,24 @@
     createLoading = false;
   }
 
-  async function deleteMapel(id: number, name: string) {
-    const confirm = window.confirm(`Apakah Anda yakin ingin menghapus mata pelajaran "${name}"?`);
-    if (!confirm) return;
+  function promptDeleteMapel(id: number, name: string) {
+    mapelToDelete = { id, name };
+    showDeleteModal = true;
+  }
+
+  async function confirmDeleteMapel() {
+    if (!mapelToDelete) return;
+    deleteLoading = true;
     try {
-      await api(`/mapel/${id}`, { method: 'DELETE' });
-      toast.success(`Mata Pelajaran "${name}" berhasil dihapus!`);
+      await api(`/mapel/${mapelToDelete.id}`, { method: 'DELETE' });
+      toast.success(`Mata Pelajaran "${mapelToDelete.name}" berhasil dihapus!`);
+      showDeleteModal = false;
+      mapelToDelete = null;
       await loadMapels();
     } catch (e: any) {
       toast.error('Gagal menghapus mata pelajaran: ' + e.message);
     }
+    deleteLoading = false;
   }
 </script>
 
@@ -115,7 +129,7 @@
                     variant="danger" 
                     size="sm" 
                     theme="light"
-                    on:click={() => deleteMapel(m.id, m.nama_mapel)}
+                    on:click={() => promptDeleteMapel(m.id, m.nama_mapel)}
                   >
                     Hapus
                   </Button>
@@ -171,4 +185,16 @@
       </Card>
     </div>
   </div>
+
+  <ConfirmModal
+    show={showDeleteModal}
+    title="Hapus Mata Pelajaran"
+    message={`Apakah Anda yakin ingin menghapus mata pelajaran "${mapelToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
+    confirmText="Hapus Mapel"
+    cancelText="Batal"
+    variant="danger"
+    loading={deleteLoading}
+    on:confirm={confirmDeleteMapel}
+    on:cancel={() => (showDeleteModal = false)}
+  />
 </div>

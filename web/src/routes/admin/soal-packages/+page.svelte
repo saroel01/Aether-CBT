@@ -6,6 +6,7 @@
   import Input from '$lib/components/ui/Input.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
   import { toast } from '$lib/stores/toast';
 
   // Requirement 3.8/3.9/3.10: list, upload (with progress), delete unlinked packages.
@@ -16,6 +17,11 @@
 
   let selectedFile: File | null = null;
   let displayName = '';
+
+  // Delete confirmation state
+  let showDeleteModal = false;
+  let pkgToDelete: { id: number; name: string } | null = null;
+  let deleteLoading = false;
 
   function formatBytes(bytes: number): string {
     if (!bytes || bytes <= 0) return '0 B';
@@ -105,17 +111,25 @@
     xhr.send(formData);
   }
 
-  async function deletePackage(id: number, nama: string) {
-    const confirm = window.confirm(`Hapus paket "${nama}"? Tindakan ini tidak dapat dibatalkan.`);
-    if (!confirm) return;
+  function promptDeletePackage(id: number, nama: string) {
+    pkgToDelete = { id, name: nama };
+    showDeleteModal = true;
+  }
+
+  async function confirmDeletePackage() {
+    if (!pkgToDelete) return;
+    deleteLoading = true;
     try {
-      await api(`/admin/soal-packages/${id}`, { method: 'DELETE' });
-      toast.success(`Paket "${nama}" dihapus.`);
+      await api(`/admin/soal-packages/${pkgToDelete.id}`, { method: 'DELETE' });
+      toast.success(`Paket "${pkgToDelete.name}" dihapus.`);
+      showDeleteModal = false;
+      pkgToDelete = null;
       await loadPackages();
     } catch (e: any) {
       // 409 = linked to an exam; the backend message explains the reason (Requirement 3.10).
       toast.error('Gagal menghapus paket: ' + e.message);
     }
+    deleteLoading = false;
   }
 </script>
 
@@ -124,8 +138,8 @@
 </svelte:head>
 
 <div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
-  <div class="border-b pb-6">
-    <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Paket Soal iSpring</h1>
+  <div class="border-b border-slate-200/60 pb-6">
+    <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Paket Soal iSpring</h1>
     <p class="text-slate-500 text-sm">Unggah arsip ekspor iSpring QuizMaker HTML5, kelola daftar paket per tenant, dan hapus paket yang tidak tertaut.</p>
   </div>
 
@@ -174,7 +188,7 @@
                   {new Date(p.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
                 <td class="text-center">
-                  <Button variant="danger" size="sm" theme="light" on:click={() => deletePackage(p.id, p.nama)}>
+                  <Button variant="danger" size="sm" theme="light" on:click={() => promptDeletePackage(p.id, p.nama)}>
                     Hapus
                   </Button>
                 </td>
@@ -203,7 +217,7 @@
               id="soal_file"
               type="file"
               accept=".zip"
-              class="block w-full text-xs text-slate-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-2xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 file:cursor-pointer file:transition-colors cursor-pointer"
+              class="block w-full text-xs text-slate-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-2xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer file:transition-colors cursor-pointer"
               on:change={onFileChange}
               disabled={uploadLoading}
             />
@@ -225,10 +239,10 @@
             <div class="space-y-1.5">
               <div class="flex items-center justify-between text-xs font-semibold text-slate-500">
                 <span>Mengunggah...</span>
-                <span class="font-mono text-indigo-600">{uploadProgress}%</span>
+                <span class="font-mono text-blue-600">{uploadProgress}%</span>
               </div>
               <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-indigo-600 transition-all duration-200" style="width: {uploadProgress}%"></div>
+                <div class="h-full bg-blue-600 transition-all duration-200" style="width: {uploadProgress}%"></div>
               </div>
             </div>
           {/if}
@@ -238,11 +252,23 @@
           </Button>
 
           <p class="text-[11px] text-slate-400 leading-relaxed pt-2 border-t">
-            Pastikan arsip memuat <code class="font-mono text-indigo-600">index.html</code> di akar.
+            Pastikan arsip memuat <code class="font-mono text-blue-600">index.html</code> di akar.
             Paket disimpan terisolasi per tenant.
           </p>
         </div>
       </Card>
     </div>
   </div>
+
+  <ConfirmModal
+    show={showDeleteModal}
+    title="Hapus Paket Soal"
+    message={`Hapus paket soal "${pkgToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
+    confirmText="Hapus Paket"
+    cancelText="Batal"
+    variant="danger"
+    loading={deleteLoading}
+    on:confirm={confirmDeletePackage}
+    on:cancel={() => (showDeleteModal = false)}
+  />
 </div>

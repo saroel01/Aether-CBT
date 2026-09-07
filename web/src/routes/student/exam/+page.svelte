@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api, apiUrl } from '$lib/api';
   import Button from '$lib/components/ui/Button.svelte';
+  import Badge from '$lib/components/ui/Badge.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import { toast } from '$lib/stores/toast';
   import { makeCountdown, deadlineFromServerRemaining, formatHMS } from '$lib/timer';
@@ -40,6 +41,24 @@
   let lastHiddenAt: number | null = null;
   const INFRACTION_DEBOUNCE_MS = 1500;
   const SERIOUS_AWAY_MS = 30_000;
+
+  // --- Network Resilience & Offline Detection (Phase 2 R1) ---
+  let isOnline = true;
+  let isPinging = false;
+  let wasOffline = false;
+  let showReconnectedBanner = false;
+  let reconnectedTimer: ReturnType<typeof setTimeout> | null = null;
+  let pingHandle: ReturnType<typeof setInterval> | null = null;
+  const PING_INTERVAL_ONLINE_MS = 10_000;
+  const PING_INTERVAL_OFFLINE_MS = 3_000;
+
+  // Submission retry state (Zero-Data-Loss Auto-Retry Engine)
+  let submissionPending = false;
+  let pendingPayload: string | null = null;
+  let retryCount = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let isSubmitting = false;
+  const PENDING_SUBMISSION_KEY = 'aether_pending_submission';
 
   // Time-warning thresholds (P3). The server is authoritative for remaining time (wall-clock,
   // resynced every 60s); these are pure UI signals so the student is alerted at the 10/5/1 minute
@@ -113,6 +132,71 @@
   function onIframeLoad() {
     iframeLoaded = true;
     iframeLoadTimer && clearTimeout(iframeLoadTimer);
+
+    // Zero-Data-Loss payload interceptor: hook into the iframe's fetch, XHR, sendBeacon, and form submit
+    try {
+      const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
+      const cw = f?.contentWindow as any;
+      if (cw) {
+        // Hook fetch
+        if (cw.fetch) {
+          const origFetch = cw.fetch;
+          cw.fetch = function (input: any, init: any) {
+            const url = typeof input === 'string' ? input : (input?.url || '');
+            const isWebhook = typeof url === 'string' && (url.includes('/ispring/webhook') || url.includes('/webhook'));
+            const hasDr = init?.body && typeof init.body === 'string' && (init.body.includes('dr=') || init.body.includes('sp='));
+            if (isWebhook || hasDr) {
+              saveSubmissionPayload(init?.body);
+            }
+            const p = origFetch.apply(this, arguments);
+            if (p && typeof p.catch === 'function') {
+              p.catch(() => {
+                if (isWebhook || hasDr) {
+                  isOnline = false;
+                  submissionPending = true;
+                  retrySubmission();
+                }
+              });
+            }
+            return p;
+          };
+        }
+        // Hook XMLHttpRequest
+        if (cw.XMLHttpRequest && cw.XMLHttpRequest.prototype) {
+          const origSend = cw.XMLHttpRequest.prototype.send;
+          cw.XMLHttpRequest.prototype.send = function (body: any) {
+            if (body && ((typeof body === 'string' && (body.includes('dr=') || body.includes('sp='))) || (typeof FormData !== 'undefined' && body instanceof FormData && (body.has('dr') || body.has('sp'))))) {
+              saveSubmissionPayload(body);
+            }
+            return origSend.apply(this, arguments);
+          };
+        }
+        // Hook navigator.sendBeacon
+        if (cw.navigator && cw.navigator.sendBeacon) {
+          const origBeacon = cw.navigator.sendBeacon.bind(cw.navigator);
+          cw.navigator.sendBeacon = function (url: string, data: any) {
+            if (data && ((typeof data === 'string' && (data.includes('dr=') || data.includes('sp='))) || (typeof FormData !== 'undefined' && data instanceof FormData && data.has('dr')))) {
+              saveSubmissionPayload(data);
+            }
+            return origBeacon(url, data);
+          };
+        }
+        // Hook HTMLFormElement.submit
+        if (cw.HTMLFormElement && cw.HTMLFormElement.prototype) {
+          const origFormSubmit = cw.HTMLFormElement.prototype.submit;
+          cw.HTMLFormElement.prototype.submit = function () {
+            try {
+              const formData = new FormData(this);
+              saveSubmissionPayload(formData);
+            } catch (e) { /* ignore */ }
+            return origFormSubmit.apply(this, arguments);
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Same-origin iframe hook notice:', e);
+    }
+
     // Same-origin: sanity-check the document isn't a near-empty error page.
     try {
       const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
@@ -125,6 +209,196 @@
     } catch {
       // cross-origin: assume loaded OK.
       iframeError = false;
+    }
+  }
+
+  // --- Zero-Data-Loss Submission Intercept & Auto-Retry Engine ---
+  function saveSubmissionPayload(body: any) {
+    let bodyStr = '';
+    if (typeof body === 'string') {
+      bodyStr = body;
+    } else if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      const params = new URLSearchParams();
+      body.forEach((val, key) => {
+        params.append(key, String(val));
+      });
+      bodyStr = params.toString();
+    } else if (body && typeof body === 'object') {
+      if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+        bodyStr = body.toString();
+      } else {
+        try {
+          bodyStr = JSON.stringify(body);
+        } catch {
+          bodyStr = String(body);
+        }
+      }
+    }
+    if (!bodyStr) return;
+
+    // Ensure attempt_token, sid, and session_id are populated if known
+    try {
+      const params = new URLSearchParams(bodyStr);
+      if (attemptToken && !params.get('attempt_token')) {
+        params.set('attempt_token', attemptToken);
+      }
+      if (pesertaNoId && !params.get('sid')) {
+        params.set('sid', pesertaNoId);
+      }
+      if (sessionId && !params.get('session_id')) {
+        params.set('session_id', sessionId);
+      }
+      bodyStr = params.toString();
+    } catch { /* keep existing bodyStr */ }
+
+    pendingPayload = bodyStr;
+    try {
+      localStorage.setItem(PENDING_SUBMISSION_KEY, JSON.stringify({
+        body: bodyStr,
+        peserta_id: pesertaId,
+        peserta_no_id: pesertaNoId,
+        session_id: sessionId,
+        attempt_token: attemptToken,
+        saved_at: Date.now()
+      }));
+    } catch (e) {
+      console.warn('Failed to save pending submission to localStorage:', e);
+    }
+  }
+
+  function checkPendingSubmission() {
+    try {
+      const raw = localStorage.getItem(PENDING_SUBMISSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.body && (!attemptToken || parsed?.attempt_token === attemptToken)) {
+          pendingPayload = parsed.body;
+          submissionPending = true;
+          submitted = true;
+          retrySubmission();
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function retrySubmission() {
+    if (isSubmitting) return;
+    if (!pendingPayload) {
+      if (submissionPending) {
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(retrySubmission, 1000);
+      }
+      return;
+    }
+
+    isSubmitting = true;
+    retryCount++;
+
+    try {
+      const res = await fetch(apiUrl('/ispring/webhook'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: pendingPayload
+      });
+
+      if (res.ok) {
+        localStorage.removeItem(PENDING_SUBMISSION_KEY);
+        pendingPayload = null;
+        submissionPending = false;
+        submitted = true;
+        showResultModal = true;
+        toast.success('Hasil ujian berhasil disinkronkan ke server!');
+        return;
+      }
+    } catch (e) {
+      // Network failure; auto-retry will trigger again
+    } finally {
+      isSubmitting = false;
+    }
+
+    if (submissionPending) {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(retrySubmission, 3500);
+    }
+  }
+
+  // --- Network Resilience & Connectivity Probing ---
+  async function pingBackend(): Promise<boolean> {
+    if (typeof window === 'undefined') return true;
+    isPinging = true;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(apiUrl('/health'), {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      const ok = res.ok && res.status === 200;
+      handlePingResult(ok);
+      return ok;
+    } catch {
+      handlePingResult(false);
+      return false;
+    } finally {
+      isPinging = false;
+    }
+  }
+
+  function handlePingResult(ok: boolean) {
+    if (ok) {
+      if (!isOnline || wasOffline) {
+        isOnline = true;
+        showReconnectedBanner = true;
+        if (reconnectedTimer) clearTimeout(reconnectedTimer);
+        reconnectedTimer = setTimeout(() => {
+          showReconnectedBanner = false;
+          wasOffline = false;
+        }, 4000);
+        toast.success('Koneksi jaringan pulih.');
+        onNetworkRestored();
+      }
+      isOnline = true;
+      adjustPingInterval(PING_INTERVAL_ONLINE_MS);
+    } else {
+      if (isOnline) {
+        wasOffline = true;
+        showReconnectedBanner = false;
+        toast.warning('Jaringan terputus. Jawaban tersimpan aman di peramban.');
+      }
+      isOnline = false;
+      adjustPingInterval(PING_INTERVAL_OFFLINE_MS);
+    }
+  }
+
+  function adjustPingInterval(intervalMs: number) {
+    if (pingHandle) clearInterval(pingHandle);
+    pingHandle = setInterval(pingBackend, intervalMs);
+  }
+
+  function handleWindowOnline() {
+    pingBackend();
+  }
+
+  function handleWindowOffline() {
+    handlePingResult(false);
+  }
+
+  function onNetworkRestored() {
+    resyncFromServer();
+    flushProgress();
+    if (submissionPending) {
+      retrySubmission();
+    }
+  }
+
+  function handleBeforeUnload(e: BeforeUnloadEvent) {
+    if ((!submitted && !locked) || submissionPending) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
     }
   }
 
@@ -158,6 +432,22 @@
       window.location.href = '/student/login';
       return;
     }
+
+    // Network resilience initialization (Phase 2 R1)
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      isOnline = false;
+      wasOffline = true;
+    }
+    window.addEventListener('online', handleWindowOnline);
+    window.addEventListener('offline', handleWindowOffline);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Check for uncompleted pending submission from previous session/crash
+    checkPendingSubmission();
+
+    // Start periodic connectivity ping to /api/health
+    adjustPingInterval(isOnline ? PING_INTERVAL_ONLINE_MS : PING_INTERVAL_OFFLINE_MS);
+    pingBackend();
 
     // Fetch authoritative remaining time once; the local timer counts down from there.
     await refreshRemainingTime();
@@ -201,6 +491,12 @@
   onDestroy(() => {
     window.removeEventListener('message', onIframeMessage);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('online', handleWindowOnline);
+    window.removeEventListener('offline', handleWindowOffline);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    if (pingHandle) clearInterval(pingHandle);
+    if (reconnectedTimer) clearTimeout(reconnectedTimer);
+    if (retryTimer) clearTimeout(retryTimer);
     if (progressTimer) clearInterval(progressTimer);
     if (tickHandle) clearInterval(tickHandle);
     if (resyncHandle) clearInterval(resyncHandle);
@@ -209,6 +505,7 @@
   });
 
   async function refreshRemainingTime() {
+    if (!isOnline) return;
     try {
       const res = await api(
         `/student/remaining-time?peserta_id=${encodeURIComponent(pesertaId)}` +
@@ -259,14 +556,19 @@
       pendingTotal = d.total;
       progressDirty = true;
     } else if (d.type === 'aether_result') {
-      // Result was sent through the shim to the webhook; surface success to the student.
-      submitted = true;
-      showResultModal = true;
+      // Result was sent through the shim to the webhook; surface success or enter pending retry
+      if (!isOnline || submissionPending) {
+        submissionPending = true;
+        retrySubmission();
+      } else {
+        submitted = true;
+        showResultModal = true;
+      }
     }
   }
 
   async function flushProgress() {
-    if (!progressDirty || submitted || locked) return;
+    if (!progressDirty || submitted || locked || !isOnline) return;
     progressDirty = false;
     try {
       await api('/student/progress', {
@@ -291,6 +593,7 @@
     tabSwitchCount++;
     showCheatModal = true;
     toast.error(`⚠️ Dilarang meninggalkan halaman ujian! (${tabSwitchCount}x)`);
+    if (!isOnline) return;
     try {
       const res = await api('/student/infraction', {
         method: 'POST',
@@ -386,6 +689,10 @@
       sendForceSubmitToShim();
     }
     submitted = true;
+    if (!isOnline) {
+      submissionPending = true;
+      retrySubmission();
+    }
   }
 
   function confirmExit() {
@@ -399,8 +706,13 @@
       forceSubmitSent = true;
       sendForceSubmitToShim();
     }
-    submitted = true;
-    showResultModal = true;
+    if (!isOnline) {
+      submissionPending = true;
+      retrySubmission();
+    } else {
+      submitted = true;
+      showResultModal = true;
+    }
   }
 
   function finishExam() {
@@ -413,31 +725,83 @@
   <title>Lembar Ujian: {examLabel} - Aether CBT</title>
 </svelte:head>
 
-<div class="min-h-screen bg-slate-950 bg-grid-sovereign text-slate-100 flex flex-col select-none relative overflow-hidden">
+<div class="min-h-dvh bg-slate-950 bg-grid-sovereign text-slate-100 flex flex-col select-none relative overflow-hidden">
   <!-- Top focus-mode bar -->
-  <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md px-6 py-4 flex justify-between items-center z-20 sticky top-0">
-    <div class="flex items-center gap-4">
-      <div>
-        <span class="text-[10px] uppercase tracking-widest text-indigo-500 font-bold font-mono">Ujian Sedang Berlangsung</span>
-        <h1 class="text-lg font-bold text-slate-200 font-display">{examLabel}</h1>
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 py-3.5 flex justify-between items-center z-20 sticky top-0">
+    <div class="flex items-center gap-3">
+      <div class="flex flex-col">
+        <div class="flex items-center gap-2">
+          <h1 class="text-base font-bold text-slate-100 font-display leading-tight">{examLabel}</h1>
+          <Badge variant="cobalt" theme="dark">Sedang Berlangsung</Badge>
+        </div>
+        <div class="text-xs text-slate-400 font-medium mt-0.5">
+          No. Peserta: <span class="font-mono tabular-nums text-slate-300">{pesertaNoId}</span>
+        </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-6">
-      <!-- Local UX countdown; server is authoritative (Requirement 7.5) -->
-      <div class="flex items-center gap-2 px-4 py-2 rounded-2xl border border-slate-800 bg-slate-900/50 font-mono">
-        <svg class="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <div class="flex items-center gap-4">
+      <!-- Fixed Tabular Countdown Timer with min-w-[7.5rem] -->
+      <div 
+        class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl min-w-[7.5rem] font-mono transition-colors duration-150 {remainingSeconds < 60 ? 'border border-ruby-800/60 bg-ruby-950/40' : remainingSeconds < 300 ? 'border border-amber-800/60 bg-amber-950/40' : 'border border-slate-800 bg-slate-900/60'}"
+      >
+        <svg class="h-4 w-4 shrink-0 {remainingSeconds < 60 ? 'text-ruby-400' : remainingSeconds < 300 ? 'text-amber-400' : 'text-cobalt-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span class="text-sm font-bold tabular-nums {remainingSeconds < 300 ? 'text-red-400' : 'text-slate-200'}">
+        <span class="text-sm font-bold tabular-nums {remainingSeconds < 60 ? 'text-ruby-300' : remainingSeconds < 300 ? 'text-amber-300' : 'text-slate-100'}">
           {fmtTime(remainingSeconds)}
         </span>
       </div>
+
       <Button variant="danger" size="sm" class="font-semibold" on:click={confirmExit} disabled={submitted}>
         Hentikan Ujian
       </Button>
     </div>
   </header>
+
+  <!-- Calming Network Connectivity Banner (Phase 2 R1) -->
+  {#if !isOnline}
+    <div class="bg-amber-950/90 border-b border-amber-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-sm transition-all duration-200">
+      <div class="flex items-center gap-3">
+        <div class="h-8 w-8 rounded-lg bg-amber-900/60 border border-amber-700/60 flex items-center justify-center text-amber-400 shrink-0">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L3 3m15.364 2.636A9 9 0 005.636 5.636m12.728 0l-2.829 2.829M9.88 9.88a3 3 0 104.24 4.24m-4.24-4.24L3 3" />
+          </svg>
+        </div>
+        <div class="text-xs">
+          <div class="font-bold text-amber-200 flex items-center gap-2">
+            <span>Koneksi Jaringan Terputus Sementara</span>
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-900/70 text-amber-300 border border-amber-700/50">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              Mencoba menghubungkan kembali...
+            </span>
+          </div>
+          <p class="text-amber-300/80 mt-0.5 leading-relaxed">
+            Tetap tenang dan lanjutkan pengerjaan. <strong>Jangan tutup atau muat ulang (refresh) halaman ini</strong>. Jawaban Anda tersimpan aman di peramban dan akan otomatis disinkronkan ke server.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0 ml-4">
+        <Button variant="secondary" size="sm" class="text-xs py-1 px-2.5 border-amber-700/60 hover:bg-amber-900/40 text-amber-200" on:click={pingBackend} disabled={isPinging} loading={isPinging}>
+          {isPinging ? 'Memeriksa...' : 'Periksa Sekarang'}
+        </Button>
+      </div>
+    </div>
+  {:else if showReconnectedBanner}
+    <div class="bg-emerald-950/90 border-b border-emerald-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-sm transition-all duration-200">
+      <div class="flex items-center gap-3">
+        <div class="h-8 w-8 rounded-lg bg-emerald-900/60 border border-emerald-700/60 flex items-center justify-center text-emerald-400 shrink-0">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div class="text-xs">
+          <span class="font-bold text-emerald-200">Koneksi Jaringan Telah Pulih</span>
+          <span class="text-emerald-300/80 ml-2">Tersambung kembali ke server ujian. Seluruh data dan progres pengerjaan Anda telah tersinkronisasi ke server.</span>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Real iSpring content (Task 14). Same-origin iframe: the content-session cookie (set by
        POST /student/start) is sent automatically, and the server injects the shim on the
@@ -447,17 +811,21 @@
        The iSpring desktop player renders at a fixed 984x676 canvas, so the iframe is wrapped
        in a scaler div: the iframe keeps its native size while a CSS transform: scale() fit to
        the container makes the whole player responsive (desktop fullscreen, small mobile). -->
-  <div class="flex-1 relative z-10 bg-slate-950 overflow-hidden" bind:clientWidth={contentW} bind:clientHeight={contentH}>
+  <div 
+    class="flex-1 relative z-10 bg-slate-950 overflow-hidden transition-opacity duration-200 {contentW > 0 && contentH > 0 ? 'opacity-100' : 'opacity-0'}" 
+    bind:clientWidth={contentW} 
+    bind:clientHeight={contentH}
+  >
     {#if iframeError}
-      <div class="absolute inset-0 bg-red-950/40 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-30">
-        <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md shadow-2xl">
-          <div class="h-16 w-16 bg-red-950/40 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-900/30">
-            <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <div class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-30">
+        <div class="bg-slate-900 border border-ruby-800/60 rounded-2xl p-8 max-w-md shadow-xl">
+          <div class="h-14 w-14 bg-ruby-950/40 text-ruby-400 rounded-xl flex items-center justify-center mx-auto mb-4 border border-ruby-800/50">
+            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.7-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
             </svg>
           </div>
           <h3 class="text-lg font-bold text-slate-100 mb-2 font-display">Gagal memuat soal ujian</h3>
-          <p class="text-sm text-slate-400 mb-5 leading-relaxed">
+          <p class="text-sm text-slate-400 mb-5 leading-relaxed text-pretty">
             Periksa koneksi internet, lalu coba lagi. Jika masih gagal, hubungi pengawas.
           </p>
           <div class="flex flex-col gap-2">
@@ -484,32 +852,41 @@
   </div>
 
   <!-- Confirm exit modal -->
-  <Modal theme="dark" bind:show={showConfirmExit} title="Akhiri Sesi Ujian" size="sm">
+  <Modal theme="dark" bind:show={showConfirmExit} title="Konfirmasi Penghentian Ujian" size="sm">
     <div class="text-slate-300 p-2">
-      <p class="text-lg font-bold text-slate-100 mb-2 font-display">Akhiri ujian sekarang?</p>
-      <p class="text-sm text-slate-400 leading-relaxed">
-        Bila Anda sudah mengirim jawaban melalui pemain iSpring, hasil Anda telah tercatat di server. Menekan tombol di bawah hanya menutup halaman ini — pastikan Anda sudah menekan tombol kirim di dalam lembar soal.
-      </p>
+      <div class="flex items-start gap-3 mb-3">
+        <div class="p-2 rounded-xl border border-ruby-800/60 bg-ruby-950/50 text-ruby-400 shrink-0">
+          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-100 font-display">Akhiri ujian sekarang?</h3>
+          <p class="text-xs text-slate-400 mt-1 leading-relaxed text-pretty">
+            Bila Anda sudah mengirim jawaban melalui lembar iSpring, hasil Anda telah tercatat di server. Menekan tombol di bawah akan menutup sesi ujian secara permanen.
+          </p>
+        </div>
+      </div>
     </div>
     <div slot="footer" class="flex gap-3 justify-end">
-      <Button variant="secondary" size="sm" on:click={() => (showConfirmExit = false)}>Batal</Button>
-      <Button variant="primary" size="sm" on:click={endExamEarly}>Ya, Akhiri</Button>
+      <Button variant="secondary" size="sm" on:click={() => (showConfirmExit = false)}>Kembali Mengerjakan</Button>
+      <Button variant="danger" size="sm" on:click={endExamEarly}>Ya, Hentikan Ujian</Button>
     </div>
   </Modal>
 
   <!-- Result acknowledgement modal -->
   <Modal theme="dark" bind:show={showResultModal} title="Sesi Ujian Selesai" size="sm">
     <div class="text-center py-6 text-slate-300 px-4">
-      <div class="h-16 w-16 bg-emerald-950/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-900/30 shadow-sm">
-        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <div class="h-14 w-14 bg-emerald-950/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-800/50 shadow-sm">
+        <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
       <h3 class="text-2xl font-bold text-slate-100 mb-2 font-display">Sesi Selesai</h3>
-      <p class="text-sm text-slate-400 leading-relaxed mb-6">
-        Terima kasih telah berpartisipasi. Hasil pengerjaan Anda telah dilaporkan dan tercatat dengan aman.
+      <p class="text-sm text-slate-400 leading-relaxed mb-6 text-pretty">
+        Terima kasih telah berpartisipasi. Hasil pengerjaan Anda telah dilaporkan dan tercatat dengan aman di server.
       </p>
-      <div class="bg-slate-950/40 border border-[oklch(0.22_0.016_250)] p-4 rounded-2xl max-w-xs mx-auto mb-6 flex justify-between text-left text-sm">
+      <div class="bg-slate-950/60 border border-slate-800 p-4 rounded-xl max-w-xs mx-auto mb-6 flex justify-between text-left text-sm">
         <span class="text-slate-400 font-semibold">Ujian:</span>
         <span class="font-bold text-slate-200">{examLabel}</span>
       </div>
@@ -520,16 +897,16 @@
   <!-- Anti-cheat infraction warning -->
   <Modal theme="dark" bind:show={showCheatModal} title="Peringatan Keamanan Ujian" size="sm">
     <div class="text-center py-4 text-slate-300 px-4">
-      <div class="h-16 w-16 bg-red-950/20 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-900/30 animate-pulse">
-        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <div class="h-14 w-14 bg-ruby-950/40 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-ruby-800/50 shadow-sm">
+        <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
       </div>
-      <h3 class="text-xl font-bold text-red-500 mb-2 font-display">Peringatan Keamanan!</h3>
-      <p class="text-sm text-slate-400 leading-relaxed mb-5">
-        Sistem mencatat Anda meninggalkan halaman ujian. Aktivitas ini telah dilaporkan kepada proktor.
+      <h3 class="text-xl font-bold text-ruby-400 mb-2 font-display">Peringatan Keamanan!</h3>
+      <p class="text-sm text-slate-400 leading-relaxed mb-5 text-pretty">
+        Sistem mencatat Anda meninggalkan halaman ujian. Aktivitas ini telah dilaporkan kepada proktor ruangan.
       </p>
-      <div class="bg-red-950/30 border border-red-900/20 p-3 rounded-2xl max-w-xs mx-auto mb-6 text-sm text-red-400 font-bold">
+      <div class="bg-ruby-950/40 border border-ruby-800/50 p-3 rounded-xl max-w-xs mx-auto mb-6 text-sm text-ruby-300 font-bold font-mono tabular-nums">
         Jumlah Pelanggaran: {tabSwitchCount}x
       </div>
       <Button variant="primary" size="md" class="w-full" on:click={() => (showCheatModal = false)}>Kembali Mengerjakan Ujian</Button>
@@ -539,23 +916,55 @@
   <!-- Authoritative lock overlay (server-locked via RecordInfraction, Requirement 10/Property 11) -->
   {#if locked}
     <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none">
-      <div class="bg-slate-900 border border-red-900/30 p-8 rounded-3xl max-w-md w-full text-center shadow-2xl space-y-6 relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-[2px] bg-red-600"></div>
-        <div class="h-16 w-16 bg-red-950/40 text-red-400 rounded-2xl flex items-center justify-center mx-auto border border-red-900/30 animate-pulse">
-          <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <div class="bg-slate-900 border border-ruby-800/60 p-8 rounded-2xl max-w-md w-full text-center shadow-xl space-y-6">
+        <div class="h-16 w-16 bg-ruby-950/50 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto border border-ruby-800/60 shadow-sm">
+          <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
         <div class="space-y-2">
-          <h3 class="text-2xl font-extrabold text-red-500 font-display">UJIAN ANDA DIKUNCI!</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">
-            Sesi ujian Anda ditangguhkan oleh server karena terdeteksi pelanggaran keamanan. Konten ujian kini ditolak (HTTP 403).
+          <h3 class="text-xl font-extrabold text-ruby-400 font-display uppercase tracking-wide">Sesi Ujian Dikunci</h3>
+          <p class="text-slate-300 text-sm leading-relaxed text-pretty">
+            Sesi ujian Anda ditangguhkan oleh server karena sistem mendeteksi indikasi pelanggaran keamanan berulang. Akses konten soal dihentikan sementara.
           </p>
         </div>
-        <div class="bg-red-950/10 border border-red-900/20 p-4 rounded-2xl text-xs text-red-400 leading-normal font-semibold">
-          Silakan hubungi pengawas ruangan Anda untuk memverifikasi dan membuka kembali sesi ujian.
+        <div class="bg-ruby-950/30 border border-ruby-800/40 p-4 rounded-xl text-xs text-ruby-300 leading-relaxed font-semibold">
+          Silakan tetap di tempat dan hubungi pengawas ruangan Anda untuk melakukan verifikasi dan pembukaan kunci sesi ujian.
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Reassuring Submission Pending Overlay (Phase 2 R1) -->
+  {#if submissionPending}
+    <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none">
+      <div class="bg-slate-900 border border-amber-700/60 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl space-y-6">
+        <div class="h-16 w-16 bg-amber-950/50 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-700/60 shadow-sm">
+          <svg class="h-8 w-8 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+        </div>
+        <div class="space-y-2">
+          <h3 class="text-xl font-bold text-amber-200 font-display">Menyimpan & Mengirim Jawaban</h3>
+          <p class="text-slate-300 text-sm leading-relaxed text-pretty">
+            Waktu ujian telah berakhir dan seluruh jawaban Anda telah <strong>tersimpan aman di peramban ini</strong>.
+          </p>
+          <div class="text-xs text-amber-300/90 leading-relaxed bg-amber-950/40 p-3 rounded-xl border border-amber-800/40 text-left space-y-1">
+            <div class="flex justify-between items-center font-mono">
+              <span>Status Pengiriman:</span>
+              <span class="font-bold text-amber-200">Menunggu Jaringan ({retryCount}x)</span>
+            </div>
+            <div>Jangan matikan komputer atau menutup peramban ini. Sistem akan mengirim jawaban secara otomatis saat jaringan server terhubung kembali.</div>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <Button variant="primary" size="md" class="w-full" on:click={retrySubmission} disabled={isSubmitting} loading={isSubmitting}>
+            {isSubmitting ? 'Mengirim Ulang...' : 'Kirim Ulang Sekarang'}
+          </Button>
         </div>
       </div>
     </div>
   {/if}
 </div>
+

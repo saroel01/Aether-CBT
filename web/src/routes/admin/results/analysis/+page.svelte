@@ -76,9 +76,9 @@
 
 <div class="p-8 flex flex-col gap-8 max-w-7xl mx-auto">
   <!-- Section Title -->
-  <div class="border-b pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+  <div class="border-b border-slate-200/60 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
     <div>
-      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Detail Analisis Butir Soal</h1>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Detail Analisis Butir Soal</h1>
       <p class="text-slate-500 text-sm">Agregasi kualitatif dan tingkat kesulitan butir soal ujian dari berkas hasil iSpring XML.</p>
     </div>
     
@@ -89,7 +89,7 @@
       class="font-semibold shadow-sm flex items-center gap-2"
       on:click={loadAnalytics}
     >
-      <svg class="h-4 w-4 text-slate-505" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
       </svg>
       Segarkan Analisis
@@ -98,7 +98,7 @@
 
   {#if loading}
     <div class="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
-      <svg class="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
+      <svg class="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
@@ -114,12 +114,12 @@
     </div>
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card padding="md" class="border-indigo-100/70 bg-indigo-50/20 hover:bg-indigo-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
+      <Card padding="md" class="border-blue-100/70 bg-blue-50/20 hover:bg-blue-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
         <div>
-          <span class="text-xs text-indigo-600 font-bold uppercase tracking-wider font-mono">Akurasi Rata-Rata</span>
-          <div class="text-4xl font-extrabold text-indigo-700 mt-1.5 font-display">{averagePassingRate}%</div>
+          <span class="text-xs text-blue-600 font-bold uppercase tracking-wider font-mono">Akurasi Rata-Rata</span>
+          <div class="text-4xl font-extrabold text-blue-700 mt-1.5 font-display">{averagePassingRate}%</div>
         </div>
-        <div class="h-12 w-12 bg-indigo-100/50 text-indigo-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">📊</div>
+        <div class="h-12 w-12 bg-blue-100/50 text-blue-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">📊</div>
       </Card>
 
       <Card padding="md" class="border-red-100/70 bg-red-50/20 hover:bg-red-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
@@ -242,13 +242,13 @@
                   <div class="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/50">
                     <div 
                       class="h-full rounded-full transition-all duration-300 
-                        {rate < 50 ? 'bg-red-500' : rate < 80 ? 'bg-indigo-600' : 'bg-emerald-500'}" 
+                        {rate < 50 ? 'bg-red-500' : rate < 80 ? 'bg-blue-600' : 'bg-emerald-500'}" 
                       style="width: {rate}%"
                     ></div>
                   </div>
                   <span 
                     class="text-xs font-bold font-mono min-w-[32px] text-right
-                      {rate < 50 ? 'text-red-500' : rate < 80 ? 'text-indigo-600' : 'text-emerald-500'}"
+                      {rate < 50 ? 'text-red-500' : rate < 80 ? 'text-blue-600' : 'text-emerald-500'}"
                   >
                     {rate}%
                   </span>

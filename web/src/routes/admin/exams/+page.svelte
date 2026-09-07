@@ -7,6 +7,7 @@
   import Modal from '$lib/components/ui/Modal.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
   import { toast } from '$lib/stores/toast';
 
   // Requirement 2.1-2.6: exam definition CRUD + link soal package.
@@ -18,6 +19,11 @@
   let modalOpen = false;
   let editingId: number | null = null;
   let saving = false;
+
+  // Delete confirmation state
+  let showDeleteModal = false;
+  let examToDelete: { id: number; name: string } | null = null;
+  let deleteLoading = false;
 
   // Form state.
   let fMapelID = 0;
@@ -114,17 +120,25 @@
     saving = false;
   }
 
-  async function deleteExam(id: number, nama: string) {
-    const confirm = window.confirm(`Hapus ujian "${nama}"?`);
-    if (!confirm) return;
+  function promptDeleteExam(id: number, nama: string) {
+    examToDelete = { id, name: nama };
+    showDeleteModal = true;
+  }
+
+  async function confirmDeleteExam() {
+    if (!examToDelete) return;
+    deleteLoading = true;
     try {
-      await api(`/admin/exams/${id}`, { method: 'DELETE' });
-      toast.success(`Ujian "${nama}" dihapus.`);
+      await api(`/admin/exams/${examToDelete.id}`, { method: 'DELETE' });
+      toast.success(`Ujian "${examToDelete.name}" dihapus.`);
+      showDeleteModal = false;
+      examToDelete = null;
       await loadAll();
     } catch (e: any) {
       // 409 = has scheduled/active session (Requirement 2.5).
       toast.error('Gagal menghapus ujian: ' + e.message);
     }
+    deleteLoading = false;
   }
 
   function mapelName(id: number): string {
@@ -141,9 +155,9 @@
 </svelte:head>
 
 <div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
-  <div class="border-b pb-6 flex items-end justify-between gap-4">
+  <div class="border-b border-slate-200/60 pb-6 flex items-end justify-between gap-4">
     <div>
-      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Definisi Ujian</h1>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Definisi Ujian</h1>
       <p class="text-slate-500 text-sm">Kombinasi mapel + tingkat + paket soal + durasi + KKM yang dapat dijadwalkan ulang lewat sesi.</p>
     </div>
     <Button variant="primary" theme="light" on:click={openCreate}>+ Buat Ujian</Button>
@@ -196,7 +210,7 @@
             <td class="text-center">
               <div class="flex items-center justify-center gap-2">
                 <Button variant="secondary" size="sm" theme="light" on:click={() => openEdit(e)}>Sunting</Button>
-                <Button variant="danger" size="sm" theme="light" on:click={() => deleteExam(e.id, e.nama || `#${e.id}`)}>Hapus</Button>
+                <Button variant="danger" size="sm" theme="light" on:click={() => promptDeleteExam(e.id, e.nama || `#${e.id}`)}>Hapus</Button>
               </div>
             </td>
           </tr>
@@ -219,7 +233,7 @@
     <div class="flex flex-col gap-2">
       <label for="exam_mapel" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mata Pelajaran *</label>
       <select id="exam_mapel" bind:value={fMapelID} disabled={saving}
-        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
         <option value={0}>Pilih Mapel...</option>
         {#each mapelList as m}
           <option value={m.id}>{m.nama_mapel} ({m.kode_mapel || '—'})</option>
@@ -231,7 +245,7 @@
       <div class="flex flex-col gap-2">
         <label for="exam_tingkat" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tingkat</label>
         <select id="exam_tingkat" bind:value={fTingkat} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
           <option value="">—</option>
           <option value="X">X</option>
           <option value="XI">XI</option>
@@ -241,7 +255,7 @@
       <div class="flex flex-col gap-2">
         <label for="exam_pkg" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Paket Soal</label>
         <select id="exam_pkg" bind:value={fPackageID} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
           <option value={0}>— belum ditaut (draft) —</option>
           {#each packageList as p}
             <option value={p.id}>{p.nama}</option>
@@ -257,11 +271,11 @@
 
     <div class="flex items-center gap-6 pt-2">
       <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" bind:checked={fShuffleQ} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
+        <input type="checkbox" bind:checked={fShuffleQ} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600/20" />
         <span class="text-sm font-semibold text-slate-600">Acak Soal</span>
       </label>
       <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" bind:checked={fShuffleA} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
+        <input type="checkbox" bind:checked={fShuffleA} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600/20" />
         <span class="text-sm font-semibold text-slate-600">Acak Jawaban</span>
       </label>
     </div>
@@ -272,3 +286,15 @@
     <Button variant="primary" size="sm" theme="light" on:click={saveExam} loading={saving}>{editingId ? 'Simpan Perubahan' : 'Buat Ujian'}</Button>
   </div>
 </Modal>
+
+<ConfirmModal
+  show={showDeleteModal}
+  title="Hapus Definisi Ujian"
+  message={`Hapus definisi ujian "${examToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
+  confirmText="Hapus Ujian"
+  cancelText="Batal"
+  variant="danger"
+  loading={deleteLoading}
+  on:confirm={confirmDeleteExam}
+  on:cancel={() => (showDeleteModal = false)}
+/>

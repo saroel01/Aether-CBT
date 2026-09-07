@@ -50,7 +50,7 @@
   // NOTE: never embed a password. The student authenticates with their own per-student
   // password, printed separately on the card by the admin (review Critical #3, Task 7).
   function getLoginURL(noId: string): string {
-    return `http://${window.location.hostname}:5173/student/login?no_id=${noId}&token=${activeToken}`;
+    return `${window.location.origin}/student/login?no_id=${noId}&token=${activeToken}`;
   }
 </script>
 
@@ -89,7 +89,7 @@
           <!-- Card Header -->
           <div class="flex items-center justify-between border-b pb-2 mb-3">
             <div class="text-left">
-              <div class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest leading-none">KARTU PESERTA</div>
+              <div class="text-[10px] font-extrabold text-cobalt-600 uppercase tracking-widest leading-none">KARTU PESERTA</div>
               <div class="text-xs font-bold text-slate-900 leading-tight mt-0.5 line-clamp-1">{examTitle}</div>
             </div>
             <div class="text-right font-extrabold text-xs text-slate-400 font-mono tracking-wider scale-90">AETHER-CBT</div>
@@ -101,7 +101,7 @@
             <div class="flex-1 space-y-1.5 text-xs text-left">
               <div class="grid grid-cols-3">
                 <span class="text-slate-500 font-medium">Nomor ID</span>
-                <span class="col-span-2 font-extrabold font-mono text-slate-800 text-sm">: {s.no_id}</span>
+                <span class="col-span-2 font-extrabold font-mono text-slate-800 text-sm tabular-nums">: {s.no_id}</span>
               </div>
               <div class="grid grid-cols-3">
                 <span class="text-slate-500 font-medium">Nama</span>
@@ -117,7 +117,7 @@
               </div>
               <div class="grid grid-cols-3 pt-1 border-t border-slate-100 mt-2">
                 <span class="text-slate-500 font-medium">Sandi</span>
-                <span class="col-span-2 font-mono font-bold text-indigo-600">: ____________________</span>
+                <span class="col-span-2 font-mono font-bold text-cobalt-600">: ____________________</span>
               </div>
             </div>
 

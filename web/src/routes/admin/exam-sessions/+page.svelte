@@ -7,6 +7,7 @@
   import Modal from '$lib/components/ui/Modal.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
   import { toast } from '$lib/stores/toast';
 
   // Requirement 4.1-4.8: session CRUD + token + classes/rooms + effective status.
@@ -24,6 +25,11 @@
   let selectedClasses: number[] = [];
   let selectedRooms: number[] = [];
   let linking = false;
+
+  // Delete confirmation state
+  let showDeleteModal = false;
+  let sessionToDelete: { id: number; name: string } | null = null;
+  let deleteLoading = false;
 
   // Form state.
   let fExamID = 0;
@@ -171,16 +177,24 @@
     saving = false;
   }
 
-  async function deleteSession(id: number, nama: string) {
-    const confirm = window.confirm(`Hapus sesi "${nama || '#' + id}"?`);
-    if (!confirm) return;
+  function promptDeleteSession(id: number, nama: string) {
+    sessionToDelete = { id, name: nama || '#' + id };
+    showDeleteModal = true;
+  }
+
+  async function confirmDeleteSession() {
+    if (!sessionToDelete) return;
+    deleteLoading = true;
     try {
-      await api(`/admin/exam-sessions/${id}`, { method: 'DELETE' });
-      toast.success('Sesi dihapus.');
+      await api(`/admin/exam-sessions/${sessionToDelete.id}`, { method: 'DELETE' });
+      toast.success(`Sesi "${sessionToDelete.name}" dihapus.`);
+      showDeleteModal = false;
+      sessionToDelete = null;
       await loadAll();
     } catch (e: any) {
       toast.error('Gagal menghapus sesi: ' + e.message);
     }
+    deleteLoading = false;
   }
 
   async function openLinker(s: any) {
@@ -224,9 +238,9 @@
 </svelte:head>
 
 <div class="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
-  <div class="border-b pb-6 flex items-end justify-between gap-4">
+  <div class="border-b border-slate-200/60 pb-6 flex items-end justify-between gap-4">
     <div>
-      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Sesi Ujian</h1>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight font-display">Sesi Ujian</h1>
       <p class="text-slate-500 text-sm">Gelombang terjadwal dengan jendela waktu, token unik, dan daftar kelas/ruang peserta.</p>
     </div>
     <Button variant="primary" theme="light" on:click={openCreate}>+ Buat Sesi</Button>
@@ -262,7 +276,7 @@
               <div class="font-semibold text-slate-800">{s.nama || '—'}</div>
               <div class="text-xs text-slate-500">{examLabel(s.exam_id)}</div>
             </td>
-            <td class="font-mono text-xs text-indigo-600 font-bold select-all">{s.token}</td>
+            <td class="font-mono text-xs text-blue-600 font-bold select-all">{s.token}</td>
             <td class="text-xs text-slate-500">
               <div>{new Date(s.waktu_mulai).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</div>
               <div>s/d {new Date(s.waktu_selesai).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</div>
@@ -280,7 +294,7 @@
               <div class="flex items-center justify-center gap-1.5">
                 <Button variant="secondary" size="sm" theme="light" on:click={() => openLinker(s)}>Peserta</Button>
                 <Button variant="ghost" size="sm" theme="light" on:click={() => openEdit(s)}>Sunting</Button>
-                <Button variant="danger" size="sm" theme="light" on:click={() => deleteSession(s.id, s.nama)}>Hapus</Button>
+                <Button variant="danger" size="sm" theme="light" on:click={() => promptDeleteSession(s.id, s.nama)}>Hapus</Button>
               </div>
             </td>
           </tr>
@@ -392,3 +406,15 @@
     <Button variant="primary" size="sm" theme="light" on:click={linkParticipants} loading={linking}>Tautkan Terpilih</Button>
   </div>
 </Modal>
+
+<ConfirmModal
+  show={showDeleteModal}
+  title="Hapus Sesi Ujian"
+  message={`Hapus sesi ujian "${sessionToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
+  confirmText="Hapus Sesi"
+  cancelText="Batal"
+  variant="danger"
+  loading={deleteLoading}
+  on:confirm={confirmDeleteSession}
+  on:cancel={() => (showDeleteModal = false)}
+/>

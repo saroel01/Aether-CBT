@@ -1,14 +1,71 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
-  import Button from '$lib/components/ui/Button.svelte';
+  import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
+  import { fade, fly } from 'svelte/transition';
+  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
   let loading = true;
   let activeRoute = '';
+  let isDrawerOpen = false;
+  let showLogoutModal = false;
+  let innerWidth = 0;
 
-  // Subscribe to page stores to track active menu items
+  // Track active menu route
   $: activeRoute = $page.url.pathname;
+
+  // Auto-close mobile drawer when route changes
+  $: if ($page.url.pathname) {
+    isDrawerOpen = false;
+  }
+
+  // Auto-close mobile drawer when viewport expands to desktop breakpoint (>= 1024px)
+  $: if (innerWidth >= 1024 && isDrawerOpen) {
+    isDrawerOpen = false;
+  }
+
+  // Manage body scroll-lock when mobile drawer is open
+  $: if (browser) {
+    if (isDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else if (!showLogoutModal) {
+      document.body.style.overflow = '';
+    }
+  }
+
+  onDestroy(() => {
+    if (browser) {
+      document.body.style.overflow = '';
+    }
+  });
+
+  function toggleDrawer() {
+    isDrawerOpen = !isDrawerOpen;
+  }
+
+  function closeDrawer() {
+    isDrawerOpen = false;
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && isDrawerOpen) {
+      event.preventDefault();
+      closeDrawer();
+    }
+  }
+
+  function promptLogout() {
+    isDrawerOpen = false;
+    showLogoutModal = true;
+  }
+
+  function handleConfirmLogout() {
+    showLogoutModal = false;
+    authStore.logout();
+    goto('/');
+  }
 
   onMount(() => {
     // Check authentication. A non-admin (or unauthenticated) user is sent to "/" via a full
@@ -20,12 +77,16 @@
         const storedUser = localStorage.getItem('aether_user');
 
         if (storedToken && storedUser) {
-          const u = JSON.parse(storedUser);
-          if (u.role === 'admin' || u.role === 'superadmin') {
-            authStore.login(storedToken, u);
-          } else {
-            // A logged-in non-admin has no business under /admin — send them home.
-            window.location.href = '/';
+          try {
+            const u = JSON.parse(storedUser);
+            if (u.role === 'admin' || u.role === 'superadmin') {
+              authStore.login(storedToken, u);
+            } else {
+              // A logged-in non-admin has no business under /admin — send them home.
+              window.location.href = '/';
+            }
+          } catch {
+            window.location.href = '/admin';
           }
         } else if (window.location.pathname !== '/admin') {
           // Not logged in and not on the login page: go to the admin login form.
@@ -52,36 +113,38 @@
   ];
 </script>
 
+<svelte:window on:keydown={handleKeydown} bind:innerWidth />
+
 {#if loading}
-  <div class="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400 gap-3">
-    <svg class="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
+  <div class="min-h-dvh bg-slate-50 flex items-center justify-center text-slate-400 gap-3">
+    <svg class="animate-spin h-8 w-8 text-cobalt-600" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
     </svg>
-    <p class="text-sm font-semibold">Memuat data panel admin...</p>
+    <p class="text-sm font-semibold text-slate-600">Memuat data panel admin...</p>
   </div>
 {:else}
-  <div class="min-h-screen bg-slate-100/50 flex">
-    <!-- Left Sidebar (Collapsible/Fixed) -->
+  <div class="min-h-dvh bg-slate-50 flex">
+    <!-- Desktop Persistent Sidebar (>= lg) -->
     {#if $authStore.isAuthenticated}
-      <aside class="w-64 bg-slate-950 text-white flex flex-col justify-between shadow-xl shrink-0 z-10 sticky top-0 h-screen border-r border-slate-900">
-        <div>
+      <aside class="hidden lg:flex w-64 bg-slate-900 text-white flex-col justify-between shadow-xl shrink-0 z-20 sticky top-0 h-dvh border-r border-slate-800 print:hidden">
+        <div class="flex-1 overflow-y-auto">
           <!-- Sidebar Brand Header -->
-          <div class="h-16 flex items-center px-6 border-b border-slate-900 bg-slate-950/20">
+          <div class="h-16 flex items-center px-6 border-b border-slate-800 bg-slate-900/50">
             <div class="flex items-center gap-3">
-              <span class="text-lg font-bold tracking-tight text-slate-200 font-display">AETHER CBT</span>
-              <span class="text-[9px] px-2 py-0.5 bg-indigo-950 text-indigo-400 border border-indigo-900/60 rounded font-bold uppercase tracking-wider font-mono">PROKTOR</span>
+              <span class="text-lg font-bold tracking-tight text-white font-display">AETHER CBT</span>
+              <span class="text-[9px] px-2 py-0.5 bg-cobalt-950 text-cobalt-300 border border-cobalt-800/60 rounded font-bold uppercase tracking-wider font-mono">PROKTOR</span>
             </div>
           </div>
 
           <!-- Navigation Links -->
-          <nav class="p-4 space-y-1.5">
+          <nav class="p-3 space-y-1">
             {#each menus as m}
               {@const isActive = activeRoute === m.path}
               <a 
                 href={m.path}
-                class="flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold text-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
-                  {isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50 scale-[1.02]' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'}"
+                class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-colors duration-150
+                  {isActive ? 'bg-cobalt-600 text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'}"
               >
                 <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d={m.icon} />
@@ -93,20 +156,21 @@
         </div>
 
         <!-- Sidebar footer profiles -->
-        <div class="p-4 border-t border-slate-900 bg-slate-950/40">
+        <div class="p-4 border-t border-slate-800 bg-slate-900/60 shrink-0">
           <div class="flex items-center justify-between">
             <div class="flex flex-col text-left">
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Pengguna</span>
-              <span class="text-sm font-bold text-slate-200 truncate max-w-[130px]">
+              <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">Pengguna</span>
+              <span class="text-sm font-semibold text-slate-200 truncate max-w-[130px]">
                 {$authStore.user?.full_name || $authStore.user?.username || 'Proktor'}
               </span>
             </div>
             
             <button 
               type="button"
-              class="text-red-400 hover:text-red-300 transition-colors p-2 hover:bg-slate-900/50 rounded-xl"
-              on:click={() => { authStore.logout(); goto('/'); }}
-              title="Logout"
+              class="text-ruby-400 hover:text-ruby-300 transition-colors p-2 hover:bg-slate-800/60 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-ruby-500"
+              on:click={promptLogout}
+              title="Keluar dari Panel Admin"
+              aria-label="Keluar dari Panel Admin"
             >
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -115,24 +179,118 @@
           </div>
         </div>
       </aside>
+
+      <!-- Mobile / Tablet Responsive Drawer & Backdrop (< lg) -->
+      {#if isDrawerOpen}
+        <!-- Backdrop overlay with smooth fade -->
+        <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+        <div 
+          class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-40 lg:hidden transition-opacity print:hidden"
+          on:click={closeDrawer}
+          transition:fade={{ duration: 200 }}
+          aria-hidden="true"
+        ></div>
+
+        <!-- Slide-out Drawer Panel -->
+        <aside
+          class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-slate-900 text-white flex flex-col justify-between shadow-2xl border-r border-slate-800 lg:hidden h-dvh print:hidden"
+          transition:fly={{ x: -288, duration: 250 }}
+          aria-label="Menu Navigasi Admin"
+        >
+          <div class="flex-1 overflow-y-auto">
+            <!-- Drawer Header with Brand and Close Button -->
+            <div class="h-16 flex items-center justify-between px-5 border-b border-slate-800 bg-slate-900/60">
+              <div class="flex items-center gap-2.5">
+                <span class="text-lg font-bold tracking-tight text-white font-display">AETHER CBT</span>
+                <span class="text-[9px] px-2 py-0.5 bg-cobalt-950 text-cobalt-300 border border-cobalt-800/60 rounded font-bold uppercase tracking-wider font-mono">PROKTOR</span>
+              </div>
+              <button
+                type="button"
+                class="p-2 -mr-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500"
+                on:click={closeDrawer}
+                aria-label="Tutup navigasi"
+              >
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <!-- Drawer Navigation Links -->
+            <nav class="p-3 space-y-1">
+              {#each menus as m}
+                {@const isActive = activeRoute === m.path}
+                <a 
+                  href={m.path}
+                  class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-colors duration-150
+                    {isActive ? 'bg-cobalt-600 text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'}"
+                  on:click={closeDrawer}
+                >
+                  <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d={m.icon} />
+                  </svg>
+                  <span>{m.label}</span>
+                </a>
+              {/each}
+            </nav>
+          </div>
+
+          <!-- Drawer Footer with User and Logout -->
+          <div class="p-4 border-t border-slate-800 bg-slate-900/80 shrink-0">
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col text-left">
+                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">Pengguna</span>
+                <span class="text-sm font-semibold text-slate-200 truncate max-w-[150px]">
+                  {$authStore.user?.full_name || $authStore.user?.username || 'Proktor'}
+                </span>
+              </div>
+              
+              <button 
+                type="button"
+                class="text-ruby-400 hover:text-ruby-300 transition-colors p-2 hover:bg-slate-800/60 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-ruby-500"
+                on:click={promptLogout}
+                title="Keluar dari Panel Admin"
+                aria-label="Keluar dari Panel Admin"
+              >
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </aside>
+      {/if}
     {/if}
 
     <!-- Main Content Container -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Top header bar -->
       {#if $authStore.isAuthenticated}
-        <header class="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 sticky top-0 z-10 shadow-sm shadow-slate-100/50 shrink-0">
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold uppercase tracking-wider rounded-full border border-indigo-100 font-mono">
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 sticky top-0 z-10 shadow-sm shrink-0 print:hidden">
+          <div class="flex items-center gap-3">
+            <!-- Mobile / Tablet Hamburger Button (< lg) -->
+            <button
+              type="button"
+              class="lg:hidden p-2 -ml-1 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 border border-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-600"
+              on:click={toggleDrawer}
+              aria-label="Buka menu navigasi"
+              aria-expanded={isDrawerOpen}
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <span class="text-[11px] px-2.5 py-1 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider rounded-lg border border-slate-200 font-mono">
               TENANT-ID: {$authStore.user?.tenant_id || 1}
             </span>
           </div>
 
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-3 font-mono">
-            <span>Server CBT Aktif</span>
-            <span class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2.5 font-mono">
+            <span class="hidden sm:inline">Server CBT Aktif</span>
+            <span class="sm:hidden">Aktif</span>
+            <span class="relative flex h-2.5 w-2.5">
+              <span class="inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
           </div>
         </header>
@@ -143,4 +301,17 @@
       </div>
     </div>
   </div>
+
+  <!-- Logout Confirmation Modal Protection -->
+  <ConfirmModal
+    bind:isOpen={showLogoutModal}
+    title="Konfirmasi Keluar Sesi Admin"
+    message="Apakah Anda yakin ingin keluar dari panel admin? Sesi aktif Anda akan ditutup dan Anda harus login kembali untuk mengelola ujian."
+    confirmLabel="Keluar Sistem"
+    cancelLabel="Batal"
+    variant="danger"
+    theme="light"
+    on:confirm={handleConfirmLogout}
+    on:cancel={() => { showLogoutModal = false; }}
+  />
 {/if}
