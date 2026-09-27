@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { api, qrCodeUrl } from '$lib/api';
+  import { api, qrCodeUrl, studentLoginQrUrl } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -458,7 +458,7 @@
           
           {#if activeToken}
             <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-4 shadow-sm">
-              <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-44 w-44 mx-auto object-contain" />
+              <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-44 w-44 mx-auto object-contain" />
             </div>
           {/if}
 
@@ -524,7 +524,7 @@
     {#if activeToken}
       <div class="bg-white p-6 rounded-2xl inline-block shadow-2xl mx-auto my-6 border-4 border-slate-800">
         <img 
-          src={qrCodeUrl(activeToken)} 
+          src={studentLoginQrUrl(activeToken)} 
           alt="QR Token Proyektor" 
           class="h-80 w-80 object-contain mx-auto" 
         />

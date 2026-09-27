@@ -11,7 +11,7 @@ build:
 	go build -o bin/aether-cbt cmd/server/main.go
 
 clean:
-	rm -rf bin/ data/cbt_aether.db
+	rm -rf bin/
 
 help:
 	@echo "Aether CBT - Available commands:"

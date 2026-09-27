@@ -46,6 +46,19 @@ export function qrCodeUrl(text: string): string {
   return apiUrl(`/qrcode?text=${encodeURIComponent(text)}`);
 }
 
+/**
+ * Builds a QR Code image URL pointing directly to the student login page
+ * with pre-filled exam token and optional student ID.
+ */
+export function studentLoginQrUrl(token: string, noId?: string): string {
+  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  const params = new URLSearchParams();
+  if (noId) params.set('no_id', noId);
+  if (token) params.set('token', token);
+  const path = `/student/login?${params.toString()}`;
+  return qrCodeUrl(origin ? `${origin}${path}` : path);
+}
+
 // api delegates to the auth-aware fetch wrapper so every caller gets centralized 401
 // handling + timeout. Callers that need the raw 401 (login) pass { raw401: true }.
 export async function api<T = any>(path: string, options: RequestInit & { raw401?: boolean } = {}): Promise<T> {
@@ -73,27 +86,4 @@ export const auth = {
       localStorage.removeItem('aether_user');
     }
   }
-};
-
-export const students = {
-  list: () => api('/students'),
-  // add create later
-};
-
-export const classes = {
-  list: () => api('/classes'),
-  create: (nama_kelas: string) =>
-    api('/classes', { method: 'POST', body: JSON.stringify({ nama_kelas }) })
-};
-
-export const mapel = {
-  list: () => api('/mapel'),
-  create: (nama_mapel: string, kode_mapel?: string) =>
-    api('/mapel', { method: 'POST', body: JSON.stringify({ nama_mapel, kode_mapel }) })
-};
-
-export const rooms = {
-  list: () => api('/rooms'),
-  create: (nama_ruang: string, username: string, password: string) =>
-    api('/rooms', { method: 'POST', body: JSON.stringify({ nama_ruang, username, password }) })
 };

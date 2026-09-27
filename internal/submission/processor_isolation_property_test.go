@@ -112,8 +112,9 @@ func TestPropertyBatchFailureIsolation(t *testing.T) {
 		for i := 0; i < n; i++ {
 			job := &SubmissionJob{
 				TenantID:     1,
-				Score:        "80",
-				MaxScore:     "100",
+				Score:        "10",
+				MaxScore:     "20",
+				DetailXML:    detailXMLWithQuestions(),
 				AttemptToken: isolationToken(i),
 			}
 			if failing[i] {

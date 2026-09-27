@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -47,6 +49,25 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).SendString("invalid attempt token")
 	}
 
+	// P0-1: Numeric validation for score (sp) and maxScore (tp)
+	clientScore, err := strconv.ParseFloat(score, 64)
+	if err != nil || math.IsNaN(clientScore) || math.IsInf(clientScore, 0) || clientScore < 0 {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid or missing score (sp)")
+	}
+
+	clientMaxScore, err := strconv.ParseFloat(maxScore, 64)
+	if err != nil || math.IsNaN(clientMaxScore) || math.IsInf(clientMaxScore, 0) || clientMaxScore <= 0 {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid or missing max score (tp)")
+	}
+
+	// P0-1: detail XML (dr) is mandatory
+	if strings.TrimSpace(detailXML) == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Missing iSpring detailed results XML (dr is required)")
+	}
+	if _, err := ispringparser.ParseDetailedResults(detailXML); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid iSpring detailed results XML")
+	}
+
 	// Resolve tenant + session from the attempt_token alone. The webhook is public and
 	// the client-controlled X-Tenant-ID (held in c.Locals("tenant_id")) is NOT trusted
 	// (review finding H6 / iSpring F3): the attempt_token is crypto-random and globally
@@ -55,13 +76,14 @@ func ISpringWebhook(c *fiber.Ctx) error {
 	var mapelID sql.NullInt64
 	var sessionID sql.NullInt64
 	var locked bool
-	err := db.DB.QueryRowContext(c.Context(), `
+	sanitizedNoID := SanitizeFormulaField(noID)
+	err = db.DB.QueryRowContext(c.Context(), `
 		SELECT cl.tenant_id, cl.mapel_id, cl.session_id, COALESCE(cl.locked, 0)
 		  FROM cek_login cl
 		  JOIN peserta p ON cl.peserta_id = p.id AND cl.tenant_id = p.tenant_id
-		 WHERE cl.attempt_token = ? AND p.no_id = ?
+		 WHERE cl.attempt_token = ? AND (p.no_id = ? OR p.no_id = ?)
 		 LIMIT 1
-	`, attemptToken, noID).Scan(&resolvedTenantID, &mapelID, &sessionID, &locked)
+	`, attemptToken, noID, sanitizedNoID).Scan(&resolvedTenantID, &mapelID, &sessionID, &locked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.Status(fiber.StatusForbidden).SendString("active session not found")
 	}
@@ -91,10 +113,13 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		validasi = fmt.Sprintf("%d_%s_%d", tenantID, noID, int(sessionID.Int64))
 	}
 
-	if detailXML != "" {
-		if _, err := ispringparser.ParseDetailedResults(detailXML); err != nil {
-			return c.Status(fiber.StatusBadRequest).SendString("Invalid iSpring detailed results XML")
-		}
+	// P0-2: Immutability check - if already submitted, acknowledge idempotently without re-queuing
+	var existingStatus string
+	_ = db.DB.QueryRowContext(c.Context(), `
+		SELECT status FROM hasil_tes WHERE tenant_id = ? AND validasi = ?
+	`, tenantID, validasi).Scan(&existingStatus)
+	if existingStatus == "submitted" {
+		return c.SendString("Result already submitted successfully")
 	}
 
 	job := &submission.SubmissionJob{

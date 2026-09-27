@@ -22,6 +22,7 @@ func isAPIRoute(path string) bool {
 //   - X-Tenant-ID: 2
 //   - X-Tenant-Slug: sman1kluet
 //   - Subdomain: sman1kluet.aethercbt.id
+//
 // In development: falls back to tenant 1 for convenience.
 // In production: requires explicit tenant identifier (returns 400 if missing).
 func TenantMiddleware() fiber.Handler {

@@ -15,9 +15,9 @@ import (
 // after the upgrade without admin intervention (Requirement 14.3, design AD-1). The mapel
 // and exam are deterministic placeholders so the migration is fully idempotent.
 const (
-	legacyMapelName = "Warisan (Migrasi)"
-	legacyMapelKode = "WARISAN"
-	legacyExamName  = "Ujian Warisan"
+	legacyMapelName  = "Warisan (Migrasi)"
+	legacyMapelKode  = "WARISAN"
+	legacyExamName   = "Ujian Warisan"
 	legacyExamDurasi = 90
 
 	// The legacy session window is wide-open around "now" so an old install can log in
@@ -60,9 +60,9 @@ func NewLegacyMigrator(exams *repository.ExamRepository, sessions *repository.Ex
 
 // legacyTenant is a tenant that has a settings row but no exam_session yet.
 type legacyTenant struct {
-	id          int
-	token       string
-	examActive  bool
+	id         int
+	token      string
+	examActive bool
 }
 
 // Migrate scans for tenants still on the legacy global-token model and creates one legacy

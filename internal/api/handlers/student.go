@@ -78,6 +78,11 @@ func CreateStudent(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.NoID) == "" {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "no_id is required")
 	}
+
+	// Prevent formula injection (P2-29)
+	req.NoID = SanitizeFormulaField(req.NoID)
+	req.NamaPeserta = SanitizeFormulaField(req.NamaPeserta)
+
 	var dup int
 	_ = db.DB.QueryRowContext(c.Context(),
 		`SELECT COUNT(*) FROM peserta WHERE tenant_id = ? AND no_id = ? AND deleted_at IS NULL`,

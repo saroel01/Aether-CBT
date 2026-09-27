@@ -1,15 +1,35 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/saroel01/aether-cbt/internal/db"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
 
 func main() {
-	if err := db.Connect("data/cbt_aether.db", db.DefaultPoolConfig()); err != nil {
+	env := strings.ToLower(os.Getenv("ENV"))
+	appEnv := strings.ToLower(os.Getenv("APP_ENV"))
+	if env == "production" || env == "prod" || appEnv == "production" || appEnv == "prod" {
+		log.Fatal("FATAL: cmd/seed tidak boleh dijalankan di environment production!")
+	}
+
+	defaultDB := os.Getenv("DATABASE_URL")
+	if defaultDB == "" {
+		defaultDB = os.Getenv("DATABASE_PATH")
+	}
+	if defaultDB == "" {
+		defaultDB = "data/cbt_aether.db"
+	}
+
+	dbPath := flag.String("db", defaultDB, "Path to sqlite database")
+	flag.Parse()
+
+	if err := db.Connect(*dbPath, db.DefaultPoolConfig()); err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()

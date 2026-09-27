@@ -5,21 +5,40 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/saroel01/aether-cbt/internal/db"
 )
 
 func main() {
-	db, err := sql.Open("sqlite", "data/cbt_aether.db?_journal_mode=WAL&_busy_timeout=5000")
+	defaultDB := os.Getenv("DATABASE_PATH")
+	if defaultDB == "" {
+		defaultDB = os.Getenv("DATABASE_URL")
+	}
+	if defaultDB == "" {
+		defaultDB = "data/cbt_aether.db"
+	}
+
+	dbPath := flag.String("db", defaultDB, "Path ke file database")
+	flag.Parse()
+
+	conn, err := sql.Open("sqlite", db.DSN(*dbPath))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer conn.Close()
+
+	if err := db.VerifyPragmas(conn); err != nil {
+		log.Fatal(err)
+	}
 
 	fmt.Println("=== submission_queue counts by status ===")
-	rows, err := db.Query("SELECT status, COUNT(*) FROM submission_queue GROUP BY status")
+	rows, err := conn.Query("SELECT status, COUNT(*) FROM submission_queue GROUP BY status")
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -31,7 +50,7 @@ func main() {
 	}
 
 	fmt.Println("\n=== stuck rows (processing or failed) ===")
-	rows2, err := db.Query(`
+	rows2, err := conn.Query(`
 		SELECT id, no_id, status, retry_count, COALESCE(last_error,''),
 		       created_at, updated_at, next_retry_at
 		FROM submission_queue
@@ -56,13 +75,13 @@ func main() {
 
 	fmt.Println("\n=== failed_submissions count ===")
 	var failed int
-	db.QueryRow("SELECT COUNT(*) FROM failed_submissions").Scan(&failed)
+	conn.QueryRow("SELECT COUNT(*) FROM failed_submissions").Scan(&failed)
 	fmt.Printf("  total: %d\n", failed)
 
 	fmt.Println("\n=== current peserta with E2E* prefix and active sessions ===")
 	var pesertaCount, sessionCount, hasilCount int
-	db.QueryRow("SELECT COUNT(*) FROM peserta WHERE no_id LIKE 'E2E%'").Scan(&pesertaCount)
-	db.QueryRow("SELECT COUNT(*) FROM cek_login WHERE peserta_id IN (SELECT id FROM peserta WHERE no_id LIKE 'E2E%')").Scan(&sessionCount)
-	db.QueryRow("SELECT COUNT(*) FROM hasil_tes WHERE peserta_id IN (SELECT id FROM peserta WHERE no_id LIKE 'E2E%')").Scan(&hasilCount)
+	conn.QueryRow("SELECT COUNT(*) FROM peserta WHERE no_id LIKE 'E2E%'").Scan(&pesertaCount)
+	conn.QueryRow("SELECT COUNT(*) FROM cek_login WHERE peserta_id IN (SELECT id FROM peserta WHERE no_id LIKE 'E2E%')").Scan(&sessionCount)
+	conn.QueryRow("SELECT COUNT(*) FROM hasil_tes WHERE peserta_id IN (SELECT id FROM peserta WHERE no_id LIKE 'E2E%')").Scan(&hasilCount)
 	fmt.Printf("  E2E* peserta: %d\n  E2E* cek_login: %d\n  E2E* hasil_tes: %d\n", pesertaCount, sessionCount, hasilCount)
 }

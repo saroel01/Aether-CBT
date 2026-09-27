@@ -12,7 +12,7 @@
     "dev:backend:noreload": "go run cmd/server/main.go",
     "seed": "go run cmd/seed/main.go",
     "build": "cd web && npm run build",
-    "clean": "rm -rf web/.svelte-kit web/node_modules bin data/cbt_aether.db"
+    "clean": "rm -rf web/.svelte-kit web/node_modules bin"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -24,14 +24,30 @@
       const urlPass = params.get('password');
       const urlToken = params.get('token');
       
+      if (urlNoId) noId = urlNoId.trim();
+      if (urlToken) token = urlToken.trim();
+      if (urlPass) password = urlPass;
+
       if (urlNoId && urlPass && urlToken) {
-        noId = urlNoId;
-        password = urlPass;
-        token = urlToken;
         toast.info('Masuk otomatis dari QR Code terdeteksi. Memproses...');
         setTimeout(() => {
           login();
         }, 600);
+      } else if (urlNoId && urlToken) {
+        toast.info('Nomor ID & Token terisi otomatis. Silakan masukkan kata sandi.');
+        setTimeout(() => {
+          document.getElementById('password')?.focus();
+        }, 200);
+      } else if (urlToken) {
+        toast.info('Token ujian terisi otomatis.');
+        setTimeout(() => {
+          document.getElementById('no-peserta')?.focus();
+        }, 200);
+      } else if (urlNoId) {
+        toast.info('Nomor ID terisi otomatis.');
+        setTimeout(() => {
+          document.getElementById('exam-token')?.focus();
+        }, 200);
       }
     }
   });

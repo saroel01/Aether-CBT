@@ -249,6 +249,7 @@ func TestEndToEndRoutingAndExemptions(t *testing.T) {
 		form.Add("sp", "80")
 		form.Add("tp", "100")
 		form.Add("attempt_token", "test-attempt-token")
+		form.Add("dr", `<quizReport version="1"><questions><multipleChoiceQuestion id="q1" evaluationEnabled="true" maxPoints="10" awardedPoints="10" status="correct"><direction><text>Q1</text></direction><answers correctAnswerIndex="0" userAnswerIndex="0"><answer><text>A</text></answer></answers></multipleChoiceQuestion></questions></quizReport>`)
 
 		req := httptest.NewRequest("POST", "/api/ispring/webhook", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

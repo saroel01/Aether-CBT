@@ -33,6 +33,18 @@ func getDefaultStudentPasswordHash() (string, error) {
 	return defaultStudentPasswordHash, defaultStudentPasswordHashErr
 }
 
+// MaxCSVImportRows defines the maximum number of data rows allowed in a single CSV import (P2-23).
+const MaxCSVImportRows = 5000
+
+// MaxUniquePasswordsPerImport defines the maximum number of unique passwords allowed per import (P2-23)
+// to prevent CPU exhaustion and prolonged SQLite database lock times from bcrypt hashing.
+const MaxUniquePasswordsPerImport = 500
+
+// SanitizeFormulaField neutralizes CSV/formula injection for spreadsheet cells (P2-29).
+func SanitizeFormulaField(s string) string {
+	return utils.SanitizeFormulaField(s)
+}
+
 // ImportStudentsCSV parses a multipart CSV upload and imports students into the database
 func ImportStudentsCSV(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
@@ -83,7 +95,8 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 		passwordCache["siswa123"] = defHash
 	}
 
-	rowIdx := 1 // header is row 0
+	seenNoIDs := make(map[string]int) // tracks no_id to row number for uniqueness validation
+	rowIdx := 1                       // header is row 0
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -92,20 +105,42 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 		if err != nil {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("CSV parse error on row %d", rowIdx+1))
 		}
+		if (rowIdx - 1) >= MaxCSVImportRows {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Jumlah baris CSV melebihi batas maksimum (%d baris)", MaxCSVImportRows))
+		}
 		rowIdx++
 
-		noID := strings.TrimSpace(record[0])
-		namaPeserta := strings.TrimSpace(record[1])
+		rawNoID := strings.Trim(record[0], " ")
+		rawNamaPeserta := strings.Trim(record[1], " ")
 		kelasCell := strings.TrimSpace(record[2])
 		ruangCell := strings.TrimSpace(record[3])
 		jenisKelamin := strings.TrimSpace(record[4])
-		password := "siswa123" // default password if not provided
-		if len(record) > 5 && record[5] != "" {
-			password = record[5]
+
+		if strings.TrimSpace(rawNoID) == "" || strings.TrimSpace(rawNamaPeserta) == "" {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
 		}
 
-		if noID == "" || namaPeserta == "" {
-			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: missing/invalid no_id, nama, kelas_id, or ruang_id", rowIdx))
+		// Prevent formula injection (P2-29)
+		noID := SanitizeFormulaField(rawNoID)
+		namaPeserta := SanitizeFormulaField(rawNamaPeserta)
+
+		// Validate uniqueness of no_id within CSV (P2-23)
+		if prevRow, exists := seenNoIDs[noID]; exists {
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: duplikat nomor peserta '%s' dalam berkas CSV (sebelumnya di baris %d)", rowIdx, rawNoID, prevRow))
+		}
+		seenNoIDs[noID] = rowIdx
+
+		// Password handling (P2-22):
+		// If password column is provided and non-empty (and not default "siswa123"), mark as explicit.
+		// If empty or default "siswa123", do NOT overwrite existing student's password in the database.
+		hasExplicitPassword := 0
+		password := "siswa123" // default for newly created students
+		if len(record) > 5 {
+			p := strings.TrimSpace(record[5])
+			if p != "" && p != "siswa123" {
+				hasExplicitPassword = 1
+				password = p
+			}
 		}
 
 		// A blank cell, or the legacy sentinel 0, means "not assigned" and is normalized to
@@ -145,6 +180,9 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 
 		passwordHash, cached := passwordCache[password]
 		if !cached {
+			if len(passwordCache) >= MaxUniquePasswordsPerImport {
+				return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Jumlah password unik dalam satu berkas CSV melebihi batas maksimum (%d)", MaxUniquePasswordsPerImport))
+			}
 			var hashErr error
 			passwordHash, hashErr = utils.HashPassword(password)
 			if hashErr != nil {
@@ -161,8 +199,11 @@ func ImportStudentsCSV(c *fiber.Ctx) error {
 				kelas_id = excluded.kelas_id,
 				ruang_id = excluded.ruang_id,
 				jenis_kelamin = excluded.jenis_kelamin,
-				password = excluded.password
-		`, tenantID, noID, passwordHash, namaPeserta, kelasRef, ruangRef, jenisKelamin)
+				password = CASE
+					WHEN ? = 1 THEN excluded.password
+					ELSE peserta.password
+				END
+		`, tenantID, noID, passwordHash, namaPeserta, kelasRef, ruangRef, jenisKelamin, hasExplicitPassword)
 		if err != nil {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, fmt.Sprintf("Row %d: failed to insert (%v)", rowIdx, err))
 		}
@@ -245,10 +286,10 @@ func ExportResultsCSV(c *fiber.Ctx) error {
 		}
 
 		writer.Write([]string{
-			noID,
-			namaPeserta,
-			namaKelas,
-			namaMapel,
+			SanitizeFormulaField(noID),
+			SanitizeFormulaField(namaPeserta),
+			SanitizeFormulaField(namaKelas),
+			SanitizeFormulaField(namaMapel),
 			skorStr,
 			skorMaksStr,
 			status,

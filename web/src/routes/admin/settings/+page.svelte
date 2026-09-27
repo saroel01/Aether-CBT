@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, qrCodeUrl } from '$lib/api';
+  import { api, qrCodeUrl, studentLoginQrUrl } from '$lib/api';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import Input from '$lib/components/ui/Input.svelte';
@@ -267,7 +267,7 @@
           <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Live QR Code Token</div>
           {#if activeToken}
             <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 shadow-sm">
-              <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
+              <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
             </div>
           {/if}
 

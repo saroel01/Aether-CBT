@@ -53,14 +53,8 @@ func RecordInfraction(c *fiber.Ctx) error {
 			return utils.ErrorResponse(c, fiber.StatusForbidden, "Students can only record their own infractions")
 		}
 	case "supervisor":
-		ruangID, _ := c.Locals("user_id").(int)
-		var belongs int
-		_ = db.DB.QueryRowContext(c.Context(),
-			`SELECT COUNT(*) FROM peserta WHERE id = ? AND tenant_id = ? AND ruang_id = ? AND deleted_at IS NULL`,
-			req.PesertaID, tenantID, ruangID,
-		).Scan(&belongs)
-		if belongs == 0 {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, "Supervisor can only record infractions in their own room")
+		if err := AssertSupervisorOwnsPeserta(c, req.PesertaID, req.SessionID); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, err.Error())
 		}
 	}
 

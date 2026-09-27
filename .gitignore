@@ -16,6 +16,7 @@ tests/load/load
 *.db-shm
 *.db-wal
 data/
+backups/
 
 # IDE
 .idea/

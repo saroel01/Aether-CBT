@@ -424,4 +424,3 @@ func isBusyErr(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
-

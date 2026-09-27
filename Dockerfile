@@ -17,7 +17,7 @@ RUN npm run build
 # ==============================================================================
 # STAGE 2: Build Backend (Go)
 # ==============================================================================
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 WORKDIR /app
 
 # Install build dependencies
@@ -55,10 +55,10 @@ RUN mkdir -p ./data
 # Expose Fiber default port
 EXPOSE 3000
 
-# Set environment defaults (can be overridden in Coolify environment variables)
+# Set environment defaults (can be overridden in deployment environment variables)
 ENV PORT=3000
 ENV DATABASE_URL=data/cbt_aether.db
-ENV JWT_SECRET=supersecurejwtkey2026
+ENV ENV=production
 
 # Run the unified Go server serving both frontend and backend
 CMD ["./server"]

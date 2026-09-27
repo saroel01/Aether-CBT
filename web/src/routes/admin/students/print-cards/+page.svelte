@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, qrCodeUrl } from '$lib/api';
+  import { api, studentLoginQrUrl } from '$lib/api';
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
@@ -46,12 +46,6 @@
     return found ? found.nama_ruang : `ID: ${id}`;
   }
 
-  // Generates the login URL to encode in the QR Code.
-  // NOTE: never embed a password. The student authenticates with their own per-student
-  // password, printed separately on the card by the admin (review Critical #3, Task 7).
-  function getLoginURL(noId: string): string {
-    return `${window.location.origin}/student/login?no_id=${noId}&token=${activeToken}`;
-  }
 </script>
 
 <svelte:head>
@@ -84,7 +78,6 @@
     <!-- Exam Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
       {#each students as s}
-        {@const qrUrl = getLoginURL(s.no_id)}
         <div class="border-2 border-dashed border-slate-400 p-5 rounded-2xl relative bg-white flex flex-col justify-between h-[230px] shadow-sm select-none break-inside-avoid">
           <!-- Card Header -->
           <div class="flex items-center justify-between border-b pb-2 mb-3">
@@ -124,7 +117,7 @@
             <!-- Right QR code box for login -->
             <div class="w-[85px] text-center border-l pl-3.5 shrink-0">
               <img 
-                src={qrCodeUrl(qrUrl)}
+                src={studentLoginQrUrl(activeToken, s.no_id)}
                 alt="Login QR" 
                 class="h-[75px] w-[75px] mx-auto border p-1 rounded-lg"
               />

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/saroel01/aether-cbt/internal/db"
 )
 
 type TestStudent struct {
@@ -27,22 +29,26 @@ type DataPrep struct {
 }
 
 func NewDataPrep(dbPath string, tenantID, mapelID int) (*DataPrep, error) {
-	connStr := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
-	db, err := sql.Open("sqlite", connStr)
+	conn, err := sql.Open("sqlite", db.DSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	db.SetMaxOpenConns(1)
+	conn.SetMaxOpenConns(1)
+
+	if err := db.VerifyPragmas(conn); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("verify pragmas: %w", err)
+	}
 
 	dp := &DataPrep{
-		DB:       db,
+		DB:       conn,
 		TenantID: tenantID,
 		MapelID:  mapelID,
 	}
 
 	if err := dp.ensurePrerequisites(); err != nil {
-		db.Close()
+		conn.Close()
 		return nil, err
 	}
 

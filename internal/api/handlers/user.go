@@ -56,11 +56,11 @@ func CreateUser(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
-	// Role allowlist (review H15, Task 24): an admin may only mint admin/supervisor accounts,
-	// never superadmin (which is reserved for out-of-band provisioning).
-	allowedRoles := map[string]bool{"admin": true, "supervisor": true}
+	// Role allowlist (P1-7, review H15): an admin may only mint admin accounts.
+	// Supervisors are room credentials managed via /api/rooms, and superadmin is out-of-band.
+	allowedRoles := map[string]bool{"admin": true}
 	if !allowedRoles[req.Role] {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "role must be 'admin' or 'supervisor'")
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "role must be 'admin' (supervisors are managed via rooms)")
 	}
 	if strings.TrimSpace(req.Username) == "" || req.Password == "" {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "username and password are required")

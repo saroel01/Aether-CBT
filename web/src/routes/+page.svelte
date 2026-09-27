@@ -1,74 +1,95 @@
 <script lang="ts">
-  // Simple landing page for CBT portal
+  import { onMount } from 'svelte';
+
+  let studentLoginHref = '/student/login';
+
+  onMount(() => {
+    if (typeof window !== 'undefined' && window.location.search) {
+      const search = window.location.search;
+      const params = new URLSearchParams(search);
+      if (params.has('token') || params.has('no_id')) {
+        studentLoginHref = `/student/login${search}`;
+        window.location.replace(`/student/login${search}`);
+      }
+    }
+  });
 </script>
 
 <svelte:head>
-  <title>Portal Aether CBT - Sistem Ujian Berbasis Komputer</title>
-  <meta name="description" content="Portal Computer-Based Testing Multi-Tenant Berkinerja Tinggi" />
+  <title>Aether CBT</title>
+  <meta name="description" content="Pilih portal untuk masuk ke Aether CBT." />
+  <meta name="theme-color" content="#020617" />
 </svelte:head>
 
-<div class="min-h-dvh flex flex-col justify-between bg-slate-950 bg-grid-sovereign text-slate-100 relative overflow-hidden">
-  <!-- Header -->
-  <header class="max-w-6xl w-full mx-auto px-6 py-6 flex justify-between items-center z-10">
-    <div class="flex items-center gap-2">
-      <span class="text-lg font-bold tracking-tight text-slate-200 font-display">AETHER <span class="text-cobalt-400">CBT</span></span>
-    </div>
-    <div class="text-xs text-slate-400 font-mono tracking-wider">v1.0.0-hardened</div>
+<a href="#konten" class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-cobalt-600 focus:text-white focus:text-sm focus:font-semibold">
+  Lewati ke konten utama
+</a>
+
+<div class="min-h-dvh flex flex-col bg-slate-950 text-slate-100 relative overflow-hidden bg-noise">
+  <div class="absolute inset-0 bg-grid-sovereign" aria-hidden="true"></div>
+  <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[720px] h-[420px] rounded-full bg-cobalt-600/20 blur-[120px] pointer-events-none" aria-hidden="true"></div>
+  <div class="absolute top-1/3 -left-40 w-[420px] h-[420px] rounded-full bg-cobalt-900/40 blur-[100px] pointer-events-none" aria-hidden="true"></div>
+
+  <header class="relative z-10 w-full max-w-6xl mx-auto px-6 pt-6 flex items-center justify-center">
+    <span class="flex items-center gap-2.5" aria-label="Aether CBT">
+      <span class="w-8 h-8 rounded-lg bg-cobalt-600 shadow-glow-cobalt flex items-center justify-center text-white font-extrabold font-display text-sm" aria-hidden="true">Æ</span>
+      <span class="text-[17px] font-bold tracking-tight text-slate-100 font-display">AETHER <span class="text-cobalt-400">CBT</span></span>
+    </span>
   </header>
 
-  <!-- Hero Content -->
-  <main class="flex-1 flex items-center justify-center px-6 z-10">
-    <div class="text-center max-w-2xl">
-      <!-- Badge -->
-      <span class="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-semibold bg-cobalt-950/50 text-cobalt-400 border border-cobalt-800/50 mb-8 tracking-wider uppercase font-sans">
-        Sovereign Testing Environment
-      </span>
-
-      <!-- Title -->
-      <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-4 font-display text-balance">
+  <main id="konten" class="relative z-10 flex-1 w-full max-w-6xl mx-auto px-6 flex items-center justify-center">
+    <div class="w-full max-w-xl mx-auto text-center py-16">
+      <h1 class="animate-rise animate-rise-1 text-5xl sm:text-6xl font-extrabold tracking-tight text-white font-display text-balance">
         Aether CBT
       </h1>
-      
-      <!-- Subtitle -->
-      <p class="text-lg md:text-xl text-slate-400 font-normal mb-12 max-w-xl mx-auto leading-relaxed text-pretty">
-        Computer-Based Testing Platform dengan performa tinggi, keamanan berlapis, dan tata letak yang menenangkan.
+      <p class="animate-rise animate-rise-2 mt-4 text-base text-slate-400">
+        Pilih portal untuk masuk.
       </p>
 
-      <!-- Navigation links as custom precision buttons -->
-      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-        <a 
-          href="/student/login" 
-          class="w-full sm:w-auto px-7 py-3.5 bg-cobalt-600 hover:bg-cobalt-700 active:bg-cobalt-800 text-white rounded-xl font-semibold shadow-sm border border-cobalt-500/30 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+      <div class="animate-rise animate-rise-3 mt-10 flex flex-col gap-3 w-full max-w-sm mx-auto" role="group" aria-label="Pilih portal masuk">
+        <a
+          href={studentLoginHref}
+          class="group flex items-center gap-4 px-5 py-4 bg-cobalt-600 hover:bg-cobalt-500 active:scale-[0.98] text-white rounded-2xl font-semibold shadow-glow-cobalt transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
-          Portal Login Siswa
+          <span class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0v6" /></svg>
+          </span>
+          <span class="flex-1 text-left text-[15px]">Siswa</span>
+          <svg class="w-4 h-4 opacity-70 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
+          </svg>
         </a>
-        
-        <a 
-          href="/supervisor/login" 
-          class="w-full sm:w-auto px-7 py-3.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-800 text-slate-200 rounded-xl font-semibold shadow-sm border border-slate-800 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        <a
+          href="/supervisor/login"
+          class="group flex items-center gap-4 px-5 py-4 bg-slate-900 hover:bg-slate-800 hover:border-slate-700 active:scale-[0.98] text-slate-100 rounded-2xl font-semibold border border-slate-800 transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
-          Masuk Proktor / Pengawas
+          <span class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0" aria-hidden="true">
+            <svg class="w-5 h-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.05 12c1.5-3.5 5-6 9.95-6s8.45 2.5 9.95 6c-1.5 3.5-5 6-9.95 6s-8.45-2.5-9.95-6z" /></svg>
+          </span>
+          <span class="flex-1 text-left text-[15px]">Pengawas</span>
+          <svg class="w-4 h-4 text-slate-500 transition-transform group-hover:translate-x-1 group-hover:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
+          </svg>
         </a>
-
-        <a 
-          href="/admin" 
-          class="w-full sm:w-auto px-7 py-3.5 bg-slate-900/40 hover:bg-slate-900 active:bg-slate-800 text-slate-300 hover:text-white rounded-xl font-semibold border border-slate-800 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        <a
+          href="/admin"
+          class="group flex items-center gap-4 px-5 py-4 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700 active:scale-[0.98] text-slate-200 rounded-2xl font-semibold border border-slate-800/80 transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
-          Admin Panel
+          <span class="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-center shrink-0" aria-hidden="true">
+            <svg class="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.6-4A11.9 11.9 0 0112 3a11.9 11.9 0 01-8.6 3.1A12 12 0 003 9c0 5.6 3.8 10.3 9 11.6 5.2-1.3 9-6 9-11.6 0-1-.1-2-.4-3z" /></svg>
+          </span>
+          <span class="flex-1 text-left text-[15px]">Admin</span>
+          <svg class="w-4 h-4 text-slate-600 transition-transform group-hover:translate-x-1 group-hover:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6" />
+          </svg>
         </a>
       </div>
     </div>
   </main>
 
-  <!-- Footer -->
-  <footer class="max-w-6xl w-full mx-auto px-6 py-8 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-400 border-t border-slate-900 z-10">
-    <div>
-      © 2026 Aether CBT. Hak Cipta Dilindungi.
-    </div>
-    <div class="flex items-center gap-3">
-      <a href="https://github.com/saroel01/aether-cbt" class="hover:text-slate-300 transition-colors underline underline-offset-4">Dokumentasi</a>
-      <span class="text-slate-700">•</span>
-      <span>Multi-Tenant SQLite-WAL Infrastructure</span>
-    </div>
+  <footer class="relative z-10 w-full max-w-6xl mx-auto px-6 pb-8">
+    <p class="pt-6 border-t border-slate-900 text-center text-xs text-slate-600">
+      © 2026 Aether CBT
+    </p>
   </footer>
 </div>

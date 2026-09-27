@@ -98,7 +98,7 @@ func TestSchedulingService_RemainingSeconds_WithLoginTime(t *testing.T) {
 	database, cleanup := testutil.NewMigratedDB(t)
 	defer cleanup()
 	sess := &models.ExamSession{WaktuSelesai: atTime(1, 10)} // ends at 10:00
-	exam := &models.Exam{DurasiMenit: 60}                   // 60 minutes exam
+	exam := &models.Exam{DurasiMenit: 60}                    // 60 minutes exam
 
 	loginTime := atTime(1, 8) // student started at 08:00
 

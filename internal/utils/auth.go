@@ -38,9 +38,13 @@ func GetJWTSecret() string {
 	return string(jwtSecret)
 }
 
-// HashPassword hashes a password using bcrypt
+// BcryptCost is the cost factor used for bcrypt password hashing (10 = standard).
+// Cost 14 was previously saturating CPU cores when hundreds of students logged in concurrently (P1-8).
+const BcryptCost = 10
+
+// HashPassword hashes a password using bcrypt with BcryptCost
 func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	return string(bytes), err
 }
 

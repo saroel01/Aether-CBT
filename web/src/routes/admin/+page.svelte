@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth';
-  import { api, apiUrl, authHeaders, qrCodeUrl, auth as apiAuth } from '$lib/api';
+  import { api, apiUrl, authHeaders, qrCodeUrl, studentLoginQrUrl, auth as apiAuth } from '$lib/api';
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
@@ -333,7 +333,7 @@
           <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3 font-mono">QR Code Ujian Resmi</div>
           
           <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-3 shadow-sm">
-            <img src={qrCodeUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
+            <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
           </div>
 
           <p class="text-xs text-slate-500 leading-relaxed px-2">

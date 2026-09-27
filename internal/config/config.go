@@ -1,13 +1,58 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/saroel01/aether-cbt/internal/db"
 )
+
+// InsecureJWTSecrets contains known default or weak secrets that must never be used.
+var InsecureJWTSecrets = map[string]struct{}{
+	"supersecurejwtkey2026":                      {},
+	"aether-cbt-secret-key-change-in-production": {},
+	"secret":                  {},
+	"secretkey":               {},
+	"changeme":                {},
+	"jwt_secret":              {},
+	"jwtsecret":               {},
+	"admin":                   {},
+	"admin123":                {},
+	"default":                 {},
+	"password":                {},
+	"123456":                  {},
+	"12345678":                {},
+	"your_secure_secret_here": {},
+	"isidengansecretpanjangacakminimal32karakter": {},
+	"kuncisangatpanjangdanacak2026min32karakter":  {},
+}
+
+// ValidateJWTSecret validates that the JWT secret is non-empty, not in the insecure denylist,
+// and meets the minimum length requirement (>= 32 chars) when in production.
+func ValidateJWTSecret(secret, env string) error {
+	trimmed := strings.TrimSpace(secret)
+	if trimmed == "" {
+		return errors.New("FATAL: JWT_SECRET wajib diisi melalui environment variable. Jangan gunakan secret default yang lemah.")
+	}
+
+	lower := strings.ToLower(trimmed)
+	if _, bad := InsecureJWTSecrets[lower]; bad {
+		return fmt.Errorf("FATAL: JWT_SECRET menggunakan secret default atau tidak aman: %q", secret)
+	}
+
+	isProd := strings.EqualFold(env, "production") || strings.EqualFold(env, "prod")
+	if isProd {
+		if len(trimmed) < 32 {
+			return fmt.Errorf("FATAL: JWT_SECRET di environment production harus memiliki panjang minimal 32 karakter (saat ini: %d karakter)", len(trimmed))
+		}
+	}
+	return nil
+}
 
 type Config struct {
 	Port               string
@@ -36,7 +81,13 @@ type Config struct {
 	ContentCookieSecure string
 }
 
-func Load() *Config {
+// Validate checks the configuration for security requirements.
+func (c *Config) Validate() error {
+	return ValidateJWTSecret(c.JWTSecret, c.Environment)
+}
+
+// LoadWithError loads configuration from environment and returns an error if validation fails.
+func LoadWithError() (*Config, error) {
 	// Pool defaults come from a single canonical source (db.DefaultPoolConfig) so the
 	// 25/10/30m values are not duplicated across packages and cannot drift silently
 	// when one side changes (Requirement 13.7). Environment values override them.
@@ -61,10 +112,19 @@ func Load() *Config {
 		ContentCookieSecure: getEnv("CONTENT_COOKIE_SECURE", "auto"),
 	}
 
-	if cfg.JWTSecret == "" {
-		log.Fatal("FATAL: JWT_SECRET wajib diisi melalui environment variable. Jangan gunakan secret default yang lemah.")
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 
+	return cfg, nil
+}
+
+// Load loads configuration from environment, terminating the process on error.
+func Load() *Config {
+	cfg, err := LoadWithError()
+	if err != nil {
+		log.Fatal(err)
+	}
 	return cfg
 }
 

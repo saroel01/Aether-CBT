@@ -8,6 +8,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -17,14 +18,20 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("DATABASE_PATH")
-	if dbPath == "" {
-		dbPath = "data/cbt_aether.db"
+	defaultDB := os.Getenv("DATABASE_PATH")
+	if defaultDB == "" {
+		defaultDB = os.Getenv("DATABASE_URL")
+	}
+	if defaultDB == "" {
+		defaultDB = "data/cbt_aether.db"
 	}
 
-	// Connect with the project's standard pool config (WAL, busy_timeout, FK on).
-	if err := db.Connect(dbPath, db.DefaultPoolConfig()); err != nil {
-		log.Fatalf("connect db %s: %v", dbPath, err)
+	dbPath := flag.String("db", defaultDB, "Path to sqlite database")
+	flag.Parse()
+
+	// Connect with the project's standard pool config (WAL, busy_timeout, FK on via db.DSN).
+	if err := db.Connect(*dbPath, db.DefaultPoolConfig()); err != nil {
+		log.Fatalf("connect db %s: %v", *dbPath, err)
 	}
 	defer db.Close()
 

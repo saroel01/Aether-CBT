@@ -20,6 +20,10 @@ type LoginResponse struct {
 	User  *models.User `json:"user"`
 }
 
+// DefaultBcryptCost specifies the standard bcrypt cost factor (10) for authentication (P1-8).
+// Lowering from 14 to 10 prevents CPU exhaustion when hundreds of students log in concurrently in a lab.
+const DefaultBcryptCost = utils.BcryptCost
+
 // Login handles user authentication
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
@@ -47,6 +51,10 @@ func Login(c *fiber.Ctx) error {
 
 	if !utils.CheckPasswordHash(req.Password, passwordHash) {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
+	}
+
+	if user.Role == "supervisor" {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Supervisor accounts must log in via /api/auth/supervisor-login with room credentials")
 	}
 
 	// Generate JWT token

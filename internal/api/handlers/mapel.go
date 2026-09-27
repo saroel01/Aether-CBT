@@ -22,10 +22,10 @@ func GetMapel(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type Mapel struct {
-		ID         int    `json:"id"`
-		NamaMapel  string `json:"nama_mapel"`
-		KodeMapel  string `json:"kode_mapel"`
-		CreatedAt  string `json:"created_at"`
+		ID        int    `json:"id"`
+		NamaMapel string `json:"nama_mapel"`
+		KodeMapel string `json:"kode_mapel"`
+		CreatedAt string `json:"created_at"`
 	}
 
 	var mapels []Mapel

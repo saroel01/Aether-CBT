@@ -9,7 +9,7 @@ import (
 // TestPasswordHashing verifies that the bcrypt password hash helper performs correctly
 func TestPasswordHashing(t *testing.T) {
 	password := "ruang123"
-	
+
 	hash, err := utils.HashPassword(password)
 	if err != nil {
 		t.Fatalf("Failed to hash password: %v", err)
@@ -48,7 +48,7 @@ func TestJWTTokenGeneration(t *testing.T) {
 // TestQRCodeGeneration verifies that go-qrcode generates PNG output correctly
 func TestQRCodeGeneration(t *testing.T) {
 	content := "ujian2026"
-	
+
 	pngBytes, err := utils.GenerateQRCode(content, 128)
 	if err != nil {
 		t.Fatalf("Failed to generate QR Code: %v", err)

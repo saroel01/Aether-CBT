@@ -4,20 +4,65 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/saroel01/aether-cbt/internal/db"
 )
 
 func main() {
-	db, err := sql.Open("sqlite", "data/cbt_aether.db?_journal_mode=WAL&_busy_timeout=5000")
-	if err != nil {
-		log.Fatal(err)
+	defaultDB := os.Getenv("DATABASE_PATH")
+	if defaultDB == "" {
+		defaultDB = os.Getenv("DATABASE_URL")
 	}
-	defer db.Close()
+	if defaultDB == "" {
+		defaultDB = "data/cbt_aether.db"
+	}
+
+	dbPath := flag.String("db", defaultDB, "Path ke file database")
+	yes := flag.Bool("yes", false, "Lewati prompt konfirmasi (sama dengan --force)")
+	force := flag.Bool("force", false, "Lewati prompt konfirmasi")
+	flag.BoolVar(yes, "y", false, "Lewati prompt konfirmasi (shorthand)")
+	flag.BoolVar(force, "f", false, "Lewati prompt konfirmasi (shorthand)")
+	flag.Parse()
+
+	if _, err := os.Stat(*dbPath); os.IsNotExist(err) {
+		log.Fatalf("ERROR: Database tidak ditemukan: %s", *dbPath)
+	}
+
+	// P1-16: Konfirmasi sebelum melakukan reset kecuali jika diberikan flag --yes atau --force
+	if !*yes && !*force {
+		fmt.Printf("PERINGATAN: Operasi ini akan mengosongkan antrean submission dan menghapus data peserta uji pada %s.\n", *dbPath)
+		fmt.Print("Apakah Anda yakin ingin melanjutkan? (ketik 'yes' untuk konfirmasi): ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("ERROR: Gagal membaca input: %v", err)
+		}
+		input = strings.TrimSpace(strings.ToLower(input))
+		if input != "yes" && input != "y" {
+			fmt.Println("Operasi reset dibatalkan.")
+			os.Exit(1)
+		}
+	}
+
+	// Buka koneksi database menggunakan DSN standar ber-pragma modern (P1-15)
+	database, err := sql.Open("sqlite", db.DSN(*dbPath))
+	if err != nil {
+		log.Fatalf("ERROR: Gagal membuka database: %v", err)
+	}
+	defer database.Close()
+
+	if err := db.VerifyPragmas(database); err != nil {
+		log.Fatalf("ERROR: Pragma database tidak sesuai: %v", err)
+	}
 
 	statements := []string{
 		`DELETE FROM submission_queue`,
@@ -45,10 +90,9 @@ func main() {
 	}
 
 	for _, s := range statements {
-		res, err := db.Exec(s)
+		res, err := database.Exec(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: %v (sql=%s)\n", err, s[:min(60, len(s))])
-			continue
+			log.Fatalf("ERROR: Gagal mengeksekusi statement: %v (sql=%s)", err, s[:min(60, len(s))])
 		}
 		if res != nil {
 			n, _ := res.RowsAffected()

@@ -168,6 +168,17 @@ func StartExamSession(c *fiber.Ctx) error {
 		if locked, _ := cekRepo.IsLocked(tenantID, req.PesertaID, req.SessionID); locked {
 			return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
 		}
+		// Check if student has already submitted this exam session (P0-2)
+		var sessionAlreadySubmitted bool
+		err = db.DB.QueryRowContext(c.Context(), `
+			SELECT 1 FROM hasil_tes
+			WHERE tenant_id = ? AND peserta_id = ? AND exam_session_id = ? AND status = 'submitted'
+			LIMIT 1
+		`, tenantID, req.PesertaID, req.SessionID).Scan(&sessionAlreadySubmitted)
+		if err == nil && sessionAlreadySubmitted {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, "Exam session has already been submitted")
+		}
+
 		if err := cekRepo.Start(tenantID, req.PesertaID, req.SessionID, attemptToken); err != nil {
 			if errors.Is(err, repository.ErrConflict) {
 				return utils.ErrorResponse(c, fiber.StatusConflict, "You already have an active exam session; submit or have it reset first")
@@ -190,6 +201,27 @@ func StartExamSession(c *fiber.Ctx) error {
 	if req.MapelID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
 	}
+	// P0-2: Check if student has already submitted this mapel
+	var legacySubmitted bool
+	err = db.DB.QueryRowContext(c.Context(), `
+		SELECT 1 FROM hasil_tes
+		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ? AND status = 'submitted'
+		LIMIT 1
+	`, tenantID, req.PesertaID, req.MapelID).Scan(&legacySubmitted)
+	if err == nil && legacySubmitted {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Exam has already been submitted")
+	}
+
+	// Verify mapel exists
+	var mapelExists bool
+	err = db.DB.QueryRowContext(c.Context(),
+		`SELECT 1 FROM mapel WHERE tenant_id = ? AND id = ?`,
+		tenantID, req.MapelID,
+	).Scan(&mapelExists)
+	if err != nil || !mapelExists {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "Mapel not found")
+	}
+
 	// Lock guard: if an existing (tenant, peserta, mapel) cek_login row is server-locked,
 	// refuse to register a fresh attempt. Without this a locked student could bypass the lock
 	// via the legacy path (review H1, Task 13).

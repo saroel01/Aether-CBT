@@ -266,6 +266,8 @@
     }
   }
 
+  const MAX_RETRY_ATTEMPTS = 10;
+
   function checkPendingSubmission() {
     try {
       const raw = localStorage.getItem(PENDING_SUBMISSION_KEY);
@@ -274,7 +276,7 @@
         if (parsed?.body && (!attemptToken || parsed?.attempt_token === attemptToken)) {
           pendingPayload = parsed.body;
           submissionPending = true;
-          submitted = true;
+          // P1-11: Do NOT set submitted = true before backend confirms HTTP 200
           retrySubmission();
         }
       }
@@ -286,8 +288,13 @@
     if (!pendingPayload) {
       if (submissionPending) {
         if (retryTimer) clearTimeout(retryTimer);
-        retryTimer = setTimeout(retrySubmission, 1000);
+        retryTimer = setTimeout(retrySubmission, 1500);
       }
+      return;
+    }
+
+    if (retryCount >= MAX_RETRY_ATTEMPTS) {
+      toast.error('Gagal mengirim hasil setelah beberapa percobaan. Hubungi pengawas ruangan.');
       return;
     }
 
@@ -310,15 +317,34 @@
         toast.success('Hasil ujian berhasil disinkronkan ke server!');
         return;
       }
+
+      // P1-10/P1-11: Stop retry on non-retryable 4xx errors
+      if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+        console.warn(`Submission rejected with terminal status ${res.status}`);
+        if (res.status === 409) {
+          localStorage.removeItem(PENDING_SUBMISSION_KEY);
+          pendingPayload = null;
+          submissionPending = false;
+          submitted = true;
+          showResultModal = true;
+          toast.info('Hasil ujian Anda sudah tercatat di server.');
+          return;
+        }
+        submissionPending = false;
+        toast.error(`Pengiriman ditolak oleh server (Kode: ${res.status}). Hubungi pengawas.`);
+        return;
+      }
     } catch (e) {
-      // Network failure; auto-retry will trigger again
+      // Network failure; auto-retry with exponential backoff below
     } finally {
       isSubmitting = false;
     }
 
-    if (submissionPending) {
+    if (submissionPending && retryCount < MAX_RETRY_ATTEMPTS) {
       if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = setTimeout(retrySubmission, 3500);
+      // Exponential backoff with jitter: base 2s, factor 1.5, max 30s, + 0-1s random jitter
+      const backoffMs = Math.min(30000, Math.pow(1.5, Math.min(retryCount, 8)) * 2000 + Math.random() * 1000);
+      retryTimer = setTimeout(retrySubmission, backoffMs);
     }
   }
 
@@ -409,16 +435,6 @@
   let progressDirty = false;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
   const PROGRESS_DEBOUNCE_MS = 5000;
-
-  function fmtTime(total: number): string {
-    if (total <= 0) return '00:00';
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    const mm = String(m).padStart(2, '0');
-    const ss = String(s).padStart(2, '0');
-    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-  }
 
   onMount(async () => {
     pesertaId = localStorage.getItem('peserta_id') || '';
@@ -538,16 +554,19 @@
       const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
       const target = f?.contentWindow;
       if (target) {
-        target.postMessage({ type: 'aether_force_submit', aether: true }, '*');
+        target.postMessage({ type: 'aether_force_submit', aether: true }, window.location.origin);
       }
     } catch { /* best-effort */ }
   }
 
   function onIframeMessage(e: MessageEvent) {
-    // Trust messages stamped with our 'aether' marker (the shim sets it). A same-origin origin
-    // check is brittle here because the iSpring content can legitimately originate from a host
-    // other than the page (e.g. served by the backend on a different port); the marker is the
-    // authority and the payload is constrained to known types, so no untrusted data is acted on.
+    // Validate origin: accept messages only from our own origin
+    if (typeof window !== 'undefined' && e.origin !== window.location.origin) return;
+
+    // Verify source is strictly from our exam iframe contentWindow
+    const f = document.getElementById('exam-iframe') as HTMLIFrameElement | null;
+    if (!f || !f.contentWindow || e.source !== f.contentWindow) return;
+
     const d = e.data;
     if (!d || typeof d !== 'object' || d.aether !== true) return;
     // The shim posts { type: 'aether_progress', answered, total } and { type: 'aether_result' }.
@@ -556,13 +575,41 @@
       pendingTotal = d.total;
       progressDirty = true;
     } else if (d.type === 'aether_result') {
-      // Result was sent through the shim to the webhook; surface success or enter pending retry
-      if (!isOnline || submissionPending) {
-        submissionPending = true;
-        retrySubmission();
-      } else {
+      if (d.payload) {
+        saveSubmissionPayload(d.payload);
+      }
+      if (d.ok === true) {
+        // P1-11: Confirmed HTTP 200 from backend!
+        if (retryTimer) {
+          clearTimeout(retryTimer);
+          retryTimer = null;
+        }
+        localStorage.removeItem(PENDING_SUBMISSION_KEY);
+        pendingPayload = null;
+        submissionPending = false;
+        isSubmitting = false;
         submitted = true;
         showResultModal = true;
+        toast.success('Hasil ujian berhasil disinkronkan ke server!');
+      } else {
+        // Submission failed or network error: enter pending mode, do not show 'Selesai'
+        isSubmitting = false;
+        submissionPending = true;
+        if (d.status === 403 || d.status === 409) {
+          if (d.status === 409) {
+            localStorage.removeItem(PENDING_SUBMISSION_KEY);
+            pendingPayload = null;
+            submissionPending = false;
+            submitted = true;
+            showResultModal = true;
+            toast.info('Hasil ujian Anda sudah tercatat di server.');
+          } else {
+            toast.error('Sesi ujian telah terkunci atau tidak aktif. Hubungi pengawas.');
+          }
+        } else {
+          toast.warning('Pengiriman hasil ujian tertunda. Mencoba sinkronisasi otomatis...');
+          retrySubmission();
+        }
       }
     }
   }
@@ -680,7 +727,7 @@
   }
 
   function handleTimeExpired() {
-    toast.warning('Waktu ujian telah habis. Silakan tunggu hasil dari server.');
+    toast.warning('Waktu ujian telah habis. Mengirim jawaban ke server...');
     // P2: tell the iSpring shim to force-submit now (capture answers). The local countdown
     // detects expiry within 1s, much faster than waiting for the 60s server resync to report
     // force_submit. forceSubmitSent guards against a double drive if both paths fire.
@@ -688,11 +735,15 @@
       forceSubmitSent = true;
       sendForceSubmitToShim();
     }
-    submitted = true;
-    if (!isOnline) {
-      submissionPending = true;
-      retrySubmission();
-    }
+    // P1-11: Do NOT set submitted = true immediately; wait for backend confirmation.
+    // Give shim up to 6 seconds to deliver confirmed aether_result; if not yet submitted,
+    // transition to submissionPending and initiate retry.
+    setTimeout(() => {
+      if (!submitted) {
+        submissionPending = true;
+        retrySubmission();
+      }
+    }, 6000);
   }
 
   function confirmExit() {
@@ -702,21 +753,25 @@
   function endExamEarly() {
     // The student ends early; tell the iSpring shim to force-submit now to capture answers.
     showConfirmExit = false;
+    toast.info('Menyelesaikan ujian... Mohon tunggu konfirmasi server.');
     if (!forceSubmitSent) {
       forceSubmitSent = true;
       sendForceSubmitToShim();
     }
-    if (!isOnline) {
-      submissionPending = true;
-      retrySubmission();
-    } else {
-      submitted = true;
-      showResultModal = true;
-    }
+    // P1-11: Do NOT set submitted = true or showResultModal = true immediately;
+    // wait for verified response from backend before showing completion.
+    setTimeout(() => {
+      if (!submitted) {
+        submissionPending = true;
+        retrySubmission();
+      }
+    }, 6000);
   }
 
   function finishExam() {
-    localStorage.clear();
+    ['peserta_id', 'peserta_no_id', 'exam_token', 'aether_token', 'aether_user', 'session_id', 'attempt_token', 'selected_mapel_name', PENDING_SUBMISSION_KEY].forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
     window.location.href = '/student/login';
   }
 </script>
@@ -749,7 +804,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span class="text-sm font-bold tabular-nums {remainingSeconds < 60 ? 'text-ruby-300' : remainingSeconds < 300 ? 'text-amber-300' : 'text-slate-100'}">
-          {fmtTime(remainingSeconds)}
+          {formatHMS(remainingSeconds)}
         </span>
       </div>
 
@@ -844,7 +899,7 @@
         title="Lembar Ujian iSpring"
         src={apiUrl('/exam/content/index.html')}
         allow="fullscreen; autoplay; clipboard-write"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        sandbox="allow-scripts allow-forms allow-same-origin"
         style="width:{ISPRING_NATIVE_W}px; height:{ISPRING_NATIVE_H}px; border:0; display:block;"
         on:load={onIframeLoad}
       ></iframe>

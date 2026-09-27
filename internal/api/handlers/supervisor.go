@@ -154,17 +154,29 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		       COALESCE((SELECT cl.total_questions FROM cek_login cl WHERE ` + sub + `), 0) AS total_questions
 		FROM peserta p
 		LEFT JOIN kelas k ON p.kelas_id = k.id` + hasilJoin + `
-		WHERE p.ruang_id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
+		WHERE p.tenant_id = ? AND p.deleted_at IS NULL
+		  AND (
+			p.ruang_id = ?
+			OR (
+				(p.ruang_id IS NULL OR p.ruang_id = 0)
+				AND EXISTS (
+					SELECT 1 FROM exam_session_ruang esr
+					JOIN exam_session_kelas esk ON esk.session_id = esr.session_id
+					WHERE esr.ruang_id = ? AND esk.kelas_id = p.kelas_id
+					  AND (? <= 0 OR esr.session_id = ?)
+				)
+			)
+		  )
 	`
 	// Bind order follows the order the placeholders appear in the statement: 9 cek_login
 	// subqueries in the SELECT list, then the hasil_tes join scope, then the trailing
-	// ruang/tenant of the WHERE clause.
-	args := make([]any, 0, 9*len(subArgs)+len(hasilArgs)+2)
+	// tenant/ruang of the WHERE clause.
+	args := make([]any, 0, 9*len(subArgs)+len(hasilArgs)+5)
 	for i := 0; i < 9; i++ {
 		args = append(args, subArgs...)
 	}
 	args = append(args, hasilArgs...)
-	args = append(args, ruangID, tenantID)
+	args = append(args, tenantID, ruangID, ruangID, sessionID, sessionID)
 
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -267,6 +279,80 @@ func GetRoomStatus(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, list, "Room status retrieved")
 }
 
+// AssertSupervisorOwnsPeserta verifies that the caller has authority over the given student.
+// Admins and superadmins have unrestricted access across all rooms.
+// Supervisors are strictly restricted to students in their own room (ruang_id)
+// or enrolled via exam_session_ruang / exam_session_kelas for the targeted exam session (P1-6).
+func AssertSupervisorOwnsPeserta(c *fiber.Ctx, pesertaID int, sessionID int) error {
+	tenantVal := c.Locals("tenant_id")
+	tenantID, ok := tenantVal.(int)
+	if !ok {
+		return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
+	}
+
+	roleVal := c.Locals("role")
+	role, ok := roleVal.(string)
+	if !ok {
+		return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
+	}
+
+	if role == "admin" || role == "superadmin" {
+		return nil
+	}
+	if role != "supervisor" {
+		return fiber.NewError(fiber.StatusForbidden, "Unauthorized access")
+	}
+
+	ruangVal := c.Locals("user_id")
+	ruangID, ok := ruangVal.(int)
+	if !ok {
+		return fiber.NewError(fiber.StatusForbidden, "Invalid supervisor room identity")
+	}
+
+	// If sessionID is specified (>0), verify that if the session has room restrictions,
+	// the supervisor's room is one of the assigned rooms.
+	if sessionID > 0 {
+		var hasRoomFilter int
+		_ = db.DB.QueryRowContext(c.Context(),
+			`SELECT COUNT(*) FROM exam_session_ruang WHERE session_id = ?`,
+			sessionID,
+		).Scan(&hasRoomFilter)
+		if hasRoomFilter > 0 {
+			var inSessionRoom int
+			_ = db.DB.QueryRowContext(c.Context(),
+				`SELECT COUNT(*) FROM exam_session_ruang WHERE session_id = ? AND ruang_id = ?`,
+				sessionID, ruangID,
+			).Scan(&inSessionRoom)
+			if inSessionRoom == 0 {
+				return fiber.NewError(fiber.StatusForbidden, "Supervisor room is not assigned to this exam session")
+			}
+		}
+	}
+
+	var belongs int
+	query := `
+		SELECT COUNT(*) FROM peserta p
+		WHERE p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
+		  AND (
+			p.ruang_id = ?
+			OR (
+				(p.ruang_id IS NULL OR p.ruang_id = 0)
+				AND EXISTS (
+					SELECT 1 FROM exam_session_ruang esr
+					JOIN exam_session_kelas esk ON esk.session_id = esr.session_id
+					WHERE esr.ruang_id = ? AND esk.kelas_id = p.kelas_id
+					  AND (? <= 0 OR esr.session_id = ?)
+				)
+			)
+		  )
+	`
+	_ = db.DB.QueryRowContext(c.Context(), query, pesertaID, tenantID, ruangID, ruangID, sessionID, sessionID).Scan(&belongs)
+	if belongs == 0 {
+		return fiber.NewError(fiber.StatusForbidden, "Supervisor can only manage students in their assigned room")
+	}
+	return nil
+}
+
 // ResetStudentSession resets a student's session. When session_id is provided it targets ONLY
 // that session (clearing its server lock by removing the row), leaving any other active
 // session intact; otherwise it falls back to resetting all of the peserta's active sessions
@@ -288,6 +374,11 @@ func ResetStudentSession(c *fiber.Ctx) error {
 	}
 	if req.PesertaID <= 0 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
+	}
+
+	// Verify room authorization for supervisors (P1-6)
+	if err := AssertSupervisorOwnsPeserta(c, req.PesertaID, req.SessionID); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, err.Error())
 	}
 
 	var (
@@ -333,16 +424,8 @@ func UnlockStudentSession(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid student ID")
 	}
 
-	if role == "supervisor" {
-		ruangID := c.Locals("user_id").(int)
-		var belongs int
-		_ = db.DB.QueryRowContext(c.Context(),
-			`SELECT COUNT(*) FROM peserta WHERE id = ? AND tenant_id = ? AND ruang_id = ? AND deleted_at IS NULL`,
-			req.PesertaID, tenantID, ruangID,
-		).Scan(&belongs)
-		if belongs == 0 {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, "Supervisor can only unlock students in their own room")
-		}
+	if err := AssertSupervisorOwnsPeserta(c, req.PesertaID, req.SessionID); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, err.Error())
 	}
 
 	cekRepo := repository.NewCekLoginRepository(db.DB)

@@ -29,9 +29,9 @@ func enterableWindow() (time.Time, time.Time) {
 
 // contentSeed describes the tenant-scoped graph a content-serving test needs.
 type contentSeed struct {
-	tenantID, kelasID, ruangID, pesertaID, mapelID, packageID, examID int
+	tenantID, kelasID, ruangID, pesertaID, mapelID, packageID, examID        int
 	slug, noID, nama, packageUUID, attemptToken, contentToken, token, status string
-	mulai, selesai                                                        time.Time
+	mulai, selesai                                                           time.Time
 }
 
 // seedContentGraph inserts the full graph and an active cek_login bound to contentToken,

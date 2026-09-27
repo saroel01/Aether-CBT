@@ -173,3 +173,99 @@ func TestResetStudentSession_StudentRoleForbidden(t *testing.T) {
 		t.Fatalf("status = %d, want 403 (student forbidden)", resp.StatusCode)
 	}
 }
+
+// TestResetStudentSession_SupervisorScopedToOwnRoom (P1-6 regression test)
+// Supervisor in room 1 cannot reset a student in room 2.
+// Assert: 403 Forbidden and the cek_login row for room 2 student remains intact.
+func TestResetStudentSession_SupervisorScopedToOwnRoom(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "supervisor") // user_id = 1 (Ruang 1)
+	defer cleanup()
+	app.Post("/api/supervisor/reset", ResetStudentSession)
+
+	// Seed room 1 first (supervisor's room)
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+
+	// Seed student in room 2 via seedContentGraph
+	s := defaultTenant1Seed("tok-room-b")
+	s.pesertaID = 2
+	s.ruangID = 2
+	s.noID = "2026002"
+	s.nama = "Room B Student"
+	sid := seedContentGraph(t, database, s)
+
+	cekRepo := repository.NewCekLoginRepository(database)
+
+	// Supervisor from Room 1 tries to reset student in Room 2
+	body := strings.NewReader(fmt.Sprintf(`{"peserta_id":2,"session_id":%d}`, sid))
+	resp := doJSON(t, app, "POST", "/api/supervisor/reset", body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 Forbidden (supervisor cannot reset other room)", resp.StatusCode)
+	}
+
+	// Verify cek_login was NOT deleted
+	active, err := cekRepo.GetBySession(1, 2, sid)
+	if err != nil {
+		t.Fatalf("expected student session in room 2 to still exist, got err: %v", err)
+	}
+	if active.PesertaID != 2 {
+		t.Errorf("peserta_id = %d, want 2", active.PesertaID)
+	}
+}
+
+// TestResetStudentSession_AdminCanResetAnyRoom verifies admins are not restricted by room.
+func TestResetStudentSession_AdminCanResetAnyRoom(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/supervisor/reset", ResetStudentSession)
+
+	s := defaultTenant1Seed("tok-admin-reset")
+	s.pesertaID = 2
+	s.ruangID = 2
+	s.noID = "2026002"
+	s.nama = "Room B Student"
+	sid := seedContentGraph(t, database, s)
+
+	cekRepo := repository.NewCekLoginRepository(database)
+
+	body := strings.NewReader(fmt.Sprintf(`{"peserta_id":2,"session_id":%d}`, sid))
+	resp := doJSON(t, app, "POST", "/api/supervisor/reset", body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 OK (admin can reset any room)", resp.StatusCode)
+	}
+
+	// Verify cek_login was deleted
+	if _, err := cekRepo.GetBySession(1, 2, sid); !errors.Is(err, repository.ErrNotFound) {
+		t.Errorf("expected session to be deleted, got err: %v", err)
+	}
+}
+
+// TestResetStudentSession_SessionRoomRestriction (P1-6) verifies that even if student's default ruang_id
+// matches supervisor's room, if the specific session is restricted to another room via exam_session_ruang,
+// the supervisor cannot manage or reset that session (returns 403 Forbidden).
+func TestResetStudentSession_SessionRoomRestriction(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "supervisor") // user_id = 1 (Ruang 1)
+	defer cleanup()
+	app.Post("/api/supervisor/reset", ResetStudentSession)
+
+	// Seed student in room 1 (seedContentGraph seeds room 1)
+	s := defaultTenant1Seed("tok-session-room-test")
+	s.pesertaID = 1
+	s.ruangID = 1
+	sid := seedContentGraph(t, database, s)
+
+	// Seed room 2
+	testutil.SeedRuang(t, database, 2, 1, "Ruang B", "ruang_b")
+
+	// Explicitly restrict this exam session to room 2 ONLY
+	_, err := database.Exec(`INSERT INTO exam_session_ruang (session_id, ruang_id) VALUES (?, 2)`, sid)
+	if err != nil {
+		t.Fatalf("link session to room 2: %v", err)
+	}
+
+	// Supervisor from Room 1 tries to reset the session restricted to Room 2
+	body := strings.NewReader(fmt.Sprintf(`{"peserta_id":1,"session_id":%d}`, sid))
+	resp := doJSON(t, app, "POST", "/api/supervisor/reset", body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for supervisor whose room is not linked to session, got: %d", resp.StatusCode)
+	}
+}

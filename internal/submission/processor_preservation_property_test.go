@@ -148,8 +148,9 @@ func TestPropertyAllValidBatchIsOneTransaction(t *testing.T) {
 				TenantID:     1,
 				NoID:         isolationNoID(i),
 				Validasi:     fmt.Sprintf("1_%s_7", isolationNoID(i)),
-				Score:        "80",
-				MaxScore:     "100",
+				Score:        "10",
+				MaxScore:     "20",
+				DetailXML:    detailXMLWithQuestions(),
 				AttemptToken: isolationToken(i),
 			})
 		}

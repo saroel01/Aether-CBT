@@ -58,15 +58,18 @@
   var A = window.__AETHER__;
   if (!A || !A.webhook) { return; }
 
-  // Post a message to the parent window (the Aether exam screen). Same-origin (dev proxy /
-  // single-port production), so cross-origin is not a concern. Failures are swallowed — the
+  // Post a message to the parent window (the Aether exam screen). Failures are swallowed — the
   // shim's primary job is network redirection; postMessage is a best-effort convenience.
   function notifyParent(type, data) {
     try {
       var msg = { type: type, aether: true };
       if (data) { for (var k in data) { if (Object.prototype.hasOwnProperty.call(data, k)) { msg[k] = data[k]; } } }
       var target = (window.parent && window.parent !== window) ? window.parent : window;
-      target.postMessage(msg, "*");
+      var loc = window.location;
+      var targetOrigin = (loc && loc.origin && loc.origin !== "null")
+        ? loc.origin
+        : (loc && loc.protocol && loc.host ? (loc.protocol + "//" + loc.host) : "*");
+      target.postMessage(msg, targetOrigin);
     } catch (e) { /* parent messaging is best-effort */ }
   }
 
@@ -109,10 +112,44 @@
           oOpen.call(this, "POST", A.webhook, true);
           var e = enrich(body);
           if (typeof e === "string") { this.setRequestHeader("Content-Type", "application/x-www-form-urlencoded"); }
-          var r = oSend.call(this, e);
-          notifyParent("aether_result", {});
-          return r;
-        } catch (err) { /* fall through */ }
+          var self = this;
+          this.addEventListener("load", function () {
+            if (self.status >= 200 && self.status < 300) {
+              notifyParent("aether_result", { ok: true, status: self.status });
+            } else {
+              notifyParent("aether_result", {
+                ok: false,
+                status: self.status,
+                error: "HTTP " + self.status,
+                payload: (typeof e === "string" ? e : "")
+              });
+            }
+          });
+          this.addEventListener("error", function () {
+            notifyParent("aether_result", {
+              ok: false,
+              status: 0,
+              error: "Network error",
+              payload: (typeof e === "string" ? e : "")
+            });
+          });
+          this.addEventListener("timeout", function () {
+            notifyParent("aether_result", {
+              ok: false,
+              status: 408,
+              error: "Request timeout",
+              payload: (typeof e === "string" ? e : "")
+            });
+          });
+          return oSend.call(this, e);
+        } catch (err) {
+          notifyParent("aether_result", {
+            ok: false,
+            status: 0,
+            error: err && err.message ? err.message : "XHR error",
+            payload: (typeof e === "string" ? e : "")
+          });
+        }
       }
       return oSend.apply(this, arguments);
     };
@@ -124,9 +161,29 @@
     window.fetch = function (input, init) {
       init = init || {};
       if (hasResult(init.body)) {
-        init = Object.assign({}, init, { method: "POST", body: enrich(init.body) });
-        notifyParent("aether_result", {});
-        return oFetch.call(this, A.webhook, init);
+        var enrichedBody = enrich(init.body);
+        init = Object.assign({}, init, { method: "POST", body: enrichedBody });
+        return oFetch.call(this, A.webhook, init).then(function (res) {
+          if (res.ok) {
+            notifyParent("aether_result", { ok: true, status: res.status });
+          } else {
+            notifyParent("aether_result", {
+              ok: false,
+              status: res.status,
+              error: "HTTP " + res.status,
+              payload: (typeof enrichedBody === "string" ? enrichedBody : "")
+            });
+          }
+          return res;
+        }).catch(function (err) {
+          notifyParent("aether_result", {
+            ok: false,
+            status: 0,
+            error: err && err.message ? err.message : "Fetch network error",
+            payload: (typeof enrichedBody === "string" ? enrichedBody : "")
+          });
+          throw err;
+        });
       }
       return oFetch.apply(this, arguments);
     };
@@ -137,8 +194,19 @@
     var oBeacon = navigator.sendBeacon.bind(navigator);
     navigator.sendBeacon = function (url, data) {
       if (hasResult(data)) {
-        notifyParent("aether_result", {});
-        return oBeacon(A.webhook, enrich(data));
+        var enriched = enrich(data);
+        var success = oBeacon(A.webhook, enriched);
+        if (success) {
+          notifyParent("aether_result", { ok: true, status: 200, beacon: true });
+        } else {
+          notifyParent("aether_result", {
+            ok: false,
+            status: 0,
+            error: "sendBeacon queue failed",
+            payload: (typeof enriched === "string" ? enriched : "")
+          });
+        }
+        return success;
       }
       return oBeacon(url, data);
     };
@@ -160,7 +228,18 @@
           hidden(this, "tenant_id", A.tenantId);
           hidden(this, "sid", A.sid);
           this.action = A.webhook;
-          notifyParent("aether_result", {});
+          if (window.fetch) {
+            var backgroundFd = new FormData(this);
+            fetch(A.webhook, { method: "POST", body: backgroundFd }).then(function (res) {
+              if (res.ok) {
+                notifyParent("aether_result", { ok: true, status: res.status });
+              } else {
+                notifyParent("aether_result", { ok: false, status: res.status, error: "HTTP " + res.status });
+              }
+            }).catch(function (err) {
+              notifyParent("aether_result", { ok: false, status: 0, error: err && err.message ? err.message : "Form submit network error" });
+            });
+          }
         }
       } catch (e) { /* fall through */ }
       return oSubmit.apply(this, arguments);
@@ -184,7 +263,8 @@
       var player = window.ispringPresenter && window.ispringPresenter.player;
       if (player && typeof player.submitQuiz === "function") {
         player.submitQuiz();
-        notifyParent("aether_result", { forced: true });
+        // Do NOT notifyParent('aether_result') here: submitQuiz triggers XHR/fetch/form
+        // which will notify parent with the actual HTTP status!
         return;
       }
     } catch (e) { /* fall through to form fallback */ }
@@ -194,18 +274,26 @@
       for (var i = 0; i < document.forms.length; i++) {
         var form = document.forms[i];
         if (hasResult(new FormData(form))) {
-          notifyParent("aether_result", { forced: true });
           form.submit();
           return;
         }
       }
     } catch (e2) { /* no result form available; the player may not have built one yet */ }
-    // Last resort: still tell the parent a result was "forced" so it can show the completion modal,
-    // even though no payload was sent — the supervisor can then follow up.
-    notifyParent("aether_result", { forced: true, empty: true });
+    // Last resort: tell the parent that force-submit found no quiz payload
+    notifyParent("aether_result", { ok: false, forced: true, empty: true, error: "No iSpring quiz payload found" });
   }
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
     window.addEventListener("message", function (e) {
+      var loc = window.location;
+      var expectedOrigin = (loc && loc.origin && loc.origin !== "null")
+        ? loc.origin
+        : (loc && loc.protocol && loc.host ? (loc.protocol + "//" + loc.host) : "");
+      if (!expectedOrigin || !e.origin || e.origin !== expectedOrigin) {
+        return;
+      }
+      if (window.parent && e.source !== window.parent) {
+        return;
+      }
       var d = e && e.data;
       if (!d || typeof d !== "object" || d.aether !== true) { return; }
       if (d.type === "aether_force_submit") { forceSubmitQuiz(); }

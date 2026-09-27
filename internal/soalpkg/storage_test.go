@@ -47,9 +47,9 @@ func defaultOpts(slug string) StoreOptions {
 func TestStore_ValidPackageExtractsAndDetectsVersion(t *testing.T) {
 	baseDir := t.TempDir()
 	zipBytes := buildZip(t, map[string]string{
-		"index.html":         versionedIndexHTML,
-		"data/player.js":     "console.log('player');",
-		"data/asset.css":     "body{}",
+		"index.html":     versionedIndexHTML,
+		"data/player.js": "console.log('player');",
+		"data/asset.css": "body{}",
 	})
 
 	res, err := Store(bytes.NewReader(zipBytes), baseDir, defaultOpts("default"))
@@ -123,9 +123,9 @@ func TestStore_RejectsZipSlipAndCleansUp(t *testing.T) {
 	baseDir := t.TempDir()
 	// A malicious entry that resolves outside the package directory.
 	zipBytes := buildZip(t, map[string]string{
-		"index.html":       plainIndexHTML(),
-		"../escape.txt":    "pwned",
-		"data/legit.js":    "ok",
+		"index.html":    plainIndexHTML(),
+		"../escape.txt": "pwned",
+		"data/legit.js": "ok",
 	})
 	_, err := Store(bytes.NewReader(zipBytes), baseDir, defaultOpts("default"))
 	if err == nil {

@@ -1,0 +1,17 @@
+# 2026/09/26 10:42:14.742375 [TestPropertyBatchFailureIsolation] [rapid] draw batch_size: 2
+# 2026/09/26 10:42:14.742375 [TestPropertyBatchFailureIsolation] [rapid] draw failing_mask: []bool{false, false}
+# 2026/09/26 10:42:14.742375 [TestPropertyBatchFailureIsolation] [rapid] draw forced_failure_idx: 0
+# 2026/09/26 10:42:14.846279 [TestPropertyBatchFailureIsolation] done/ = [], want exactly the valid jobs [OK-001] (failure was not isolated: valid submissions in the same batch were rolled back)
+# 
+v0.4.8#16513058162860146727
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

@@ -56,8 +56,8 @@ func TestLinkSessionClasses_CrossTenantRejected(t *testing.T) {
 	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
 	testutil.SeedExam(t, database, 1, 1, 1, nil)
 	testutil.SeedExamSession(t, database, 1, 1, 1, "2026-06-01 08:00:00", "2026-06-01 10:00:00", "TOK", "draft")
-	testutil.SeedKelas(t, database, 1, 1, "Kelas A")      // tenant 1
-	testutil.SeedKelas(t, database, 2, 2, "Kelas Other")  // tenant 2
+	testutil.SeedKelas(t, database, 1, 1, "Kelas A")     // tenant 1
+	testutil.SeedKelas(t, database, 2, 2, "Kelas Other") // tenant 2
 
 	// Linking a class from another tenant -> 400 (Requirement 4.7).
 	resp := doJSON(t, app, "POST", "/api/admin/exam-sessions/1/classes", strings.NewReader(`{"ids":[1,2]}`))

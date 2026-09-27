@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	"github.com/saroel01/aether-cbt/internal/api/handlers"
 	"github.com/saroel01/aether-cbt/internal/api/middleware"
@@ -46,7 +48,16 @@ func main() {
 		}
 	}
 
-	cfg := config.Load()
+	cfg, err := config.LoadWithError()
+	if err != nil {
+		log.Fatalf("FATAL configuration error: %v", err)
+	}
+	// Explicit security check for production startup (P0-3)
+	if cfg.Environment == "production" || cfg.Environment == "prod" {
+		if err := config.ValidateJWTSecret(cfg.JWTSecret, cfg.Environment); err != nil {
+			log.Fatalf("FATAL production configuration rejected: %v", err)
+		}
+	}
 	utils.SetJWTSecret(cfg.JWTSecret) // configure JWT from env/config
 
 	// Configure soal-package upload caps from config (Requirement 3.2, 10.6).
@@ -69,6 +80,31 @@ func main() {
 	// Run migrations (idempotent)
 	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Bootstrap initial admin account if none exists and SETUP_ADMIN_PASSWORD is provided (P0-4)
+	var adminCount int
+	if err := db.DB.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL`).Scan(&adminCount); err == nil && adminCount == 0 {
+		setupPW := strings.TrimSpace(os.Getenv("SETUP_ADMIN_PASSWORD"))
+		if setupPW != "" {
+			if (cfg.Environment == "production" || cfg.Environment == "prod") && (setupPW == "admin123" || setupPW == "admin" || setupPW == "password" || len(setupPW) < 8) {
+				log.Fatalf("FATAL: SETUP_ADMIN_PASSWORD terlalu lemah untuk environment production (panjang minimal 8 karakter dan tidak boleh menggunakan password default).")
+			}
+			hash, err := utils.HashPassword(setupPW)
+			if err != nil {
+				log.Fatalf("Failed to hash SETUP_ADMIN_PASSWORD: %v", err)
+			}
+			_, err = db.DB.Exec(`
+				INSERT INTO users (tenant_id, username, password_hash, role, full_name, is_active)
+				VALUES (1, 'admin', ?, 'admin', 'System Administrator', TRUE)
+			`, hash)
+			if err != nil {
+				log.Fatalf("Failed to bootstrap initial admin user: %v", err)
+			}
+			log.Println("✅ Initial admin user bootstrapped successfully from SETUP_ADMIN_PASSWORD (username: admin)")
+		} else {
+			log.Println("⚠️  SECURITY WARNING: Belum ada akun admin di database. Set SETUP_ADMIN_PASSWORD atau jalankan cmd/createadmin untuk membuat akun admin pertama.")
+		}
 	}
 
 	// Legacy data migration: for any tenant still on the old global settings.token model
@@ -124,11 +160,67 @@ func main() {
 
 	app := fiber.New(fiber.Config{
 		AppName: "Aether CBT v1.0",
-		// Body limit sized to the largest legitimate payload: soal-package uploads.
-		// Quizzes with images commonly run 15-20 MB. Driven from the upload cap so the two
-		// stay in sync; the upload handler (task 6.2) may tighten this to a per-route
-		// middleware so only /soal-packages/upload accepts the full size (Requirement 3.2).
-		BodyLimit: int(cfg.SoalUploadMaxBytes),
+		// Transport-level BodyLimit configured to cfg.SoalUploadMaxBytes (100 MB)
+		// to allow legitimate package uploads. A global middleware enforces a strict 2 MB
+		// limit on all other endpoints (P1-9).
+		BodyLimit:   int(cfg.SoalUploadMaxBytes),
+		ReadTimeout: 60 * time.Second,
+		IdleTimeout: 120 * time.Second,
+	})
+
+	// Panic recovery middleware (P1-13) - prevents unhandled panics from crashing the server
+	app.Use(recover.New())
+
+	// Global BodyLimit guard (P1-9): general routes are restricted to 2 MB (1 MB for webhook).
+	// Only /api/admin/soal-packages/upload and /api/soal-packages/upload are allowed up to cfg.SoalUploadMaxBytes.
+	defaultBodyLimit := 2 * 1024 * 1024 // 2 MB
+	app.Use(func(c *fiber.Ctx) error {
+		// Non-body methods pass through immediately without buffering checks
+		method := c.Method()
+		if method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodOptions {
+			return c.Next()
+		}
+
+		p := strings.ToLower(c.Path())
+
+		// Upload routes are permitted up to SoalUploadMaxBytes (default 100 MB)
+		if strings.HasPrefix(p, "/api/admin/soal-packages/upload") || strings.HasPrefix(p, "/api/soal-packages/upload") {
+			maxUpload := int(cfg.SoalUploadMaxBytes)
+			if c.Request().Header.ContentLength() > maxUpload || len(c.Body()) > maxUpload {
+				return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+					"status":  "error",
+					"message": fmt.Sprintf("Ukuran file paket soal melebihi batas maksimum (%d MB)", maxUpload/(1024*1024)),
+				})
+			}
+			return c.Next()
+		}
+
+		// Webhook route has a dedicated 1 MB limit to prevent memory exhaustion DoS
+		if strings.HasPrefix(p, "/api/ispring/webhook") {
+			webhookLimit := 1 * 1024 * 1024 // 1 MB
+			if c.Request().Header.ContentLength() > webhookLimit || len(c.Body()) > webhookLimit {
+				return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+					"status":  "error",
+					"message": "Webhook payload exceeds maximum allowed size (1 MB)",
+				})
+			}
+			return c.Next()
+		}
+
+		cl := c.Request().Header.ContentLength()
+		if cl > defaultBodyLimit {
+			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Payload too large. Maximum body size is 2 MB.",
+			})
+		}
+		if len(c.Body()) > defaultBodyLimit {
+			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Payload too large. Maximum body size is 2 MB.",
+			})
+		}
+		return c.Next()
 	})
 
 	// CORS - menggunakan allow-list (bukan wildcard)
@@ -160,15 +252,43 @@ func main() {
 
 	// Auth routes (public)
 	auth := api.Group("/auth")
-	auth.Post("/login", handlers.Login)
-	auth.Post("/student-login", handlers.StudentLogin)
-	auth.Post("/supervisor-login", handlers.SupervisorLogin)
+
+	// P1-8: Rate limiter on login endpoints to prevent brute-force and CPU exhaustion DoS.
+	loginMax := 10
+	if v := os.Getenv("AUTH_RATE_LIMIT_PER_MIN"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			loginMax = parsed
+		}
+	}
+	loginLimiter := limiter.New(limiter.Config{
+		Max:        loginMax,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			tenant := ""
+			if t := c.Locals("tenant_id"); t != nil {
+				tenant = fmt.Sprint(t)
+			}
+			return c.IP() + "|" + tenant
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Terlalu banyak percobaan login. Silakan coba beberapa saat lagi.",
+			})
+		},
+	})
+
+	auth.Post("/login", loginLimiter, handlers.Login)
+	auth.Post("/student-login", loginLimiter, handlers.StudentLogin)
+	auth.Post("/supervisor-login", loginLimiter, handlers.SupervisorLogin)
 
 	// Public QR Code generator
 	api.Get("/qrcode", handlers.GetTokenQRCode)
 
-	// iSpring Webhook (public) - registered BEFORE protected group to avoid auth middleware
-	webhookMax := 100
+	// iSpring Webhook (public) - registered BEFORE protected group to avoid auth middleware.
+	// P1-10: Rate limit keyed per attempt_token so multiple students behind a single NAT/LAN
+	// IP do not exhaust a shared quota. Default raised to 1000/min per token.
+	webhookMax := 1000
 	if v := os.Getenv("WEBHOOK_RATE_LIMIT_PER_MIN"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 			webhookMax = parsed
@@ -177,6 +297,20 @@ func main() {
 	webhookLimiter := limiter.New(limiter.Config{
 		Max:        webhookMax,
 		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			token := c.FormValue("attempt_token")
+			if token == "" {
+				token = c.FormValue("AETHER_ATTEMPT_TOKEN")
+			}
+			if token == "" {
+				token = c.Query("attempt_token")
+			}
+			if token != "" {
+				return "tok:" + token
+			}
+			tenant := fmt.Sprint(c.Locals("tenant_id"))
+			return "ip:" + c.IP() + ":" + tenant
+		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).SendString("Too many submissions. Please try again later.")
 		},
@@ -330,7 +464,7 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		log.Printf("Server failed to start or listen error: %v", err)
+		log.Fatalf("Server failed to start or listen error: %v", err)
 	case sig := <-sigChan:
 		log.Printf("Received signal %s, initiating graceful shutdown...", sig)
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)

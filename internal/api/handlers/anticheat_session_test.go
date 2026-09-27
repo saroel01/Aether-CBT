@@ -182,3 +182,64 @@ func TestStartExamSession_LockedRejected(t *testing.T) {
 		t.Fatalf("status = %d, want 403 (locked)", resp.StatusCode)
 	}
 }
+
+// TestStartLegacySessionRejectsAlreadySubmitted (P0-2 regression test)
+func TestStartLegacySessionRejectsAlreadySubmitted(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "student")
+	defer cleanup()
+	app.Post("/api/student/start", StartExamSession)
+
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	testutil.SeedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
+
+	// Pre-existing submitted hasil_tes for this mapel
+	if _, err := database.Exec(`
+		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, skor, skor_maks, status, validasi)
+		VALUES (1, 1, 1, 80.0, 100.0, 'submitted', '1_2026001_1')
+	`); err != nil {
+		t.Fatalf("seed submitted hasil_tes: %v", err)
+	}
+
+	// Start via legacy path should be rejected
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"mapel_id":1}`))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("already submitted legacy start: status = %d, want 403", resp.StatusCode)
+	}
+}
+
+// TestStartSessionRejectsAlreadySubmitted (P0-2 regression test)
+func TestStartSessionRejectsAlreadySubmitted(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "student")
+	defer cleanup()
+	app.Post("/api/student/start", StartExamSession)
+
+	now := time.Now()
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")
+	testutil.SeedRuang(t, database, 1, 1, "Ruang A", "ruang_a")
+	testutil.SeedPeserta(t, database, 1, 1, 1, 1, "2026001", "Siswa")
+	testutil.SeedMapel(t, database, 1, 1, "Kimia", "KIM")
+	testutil.SeedSoalPackage(t, database, 10, 1, "Pkg", "u10")
+	testutil.SeedExam(t, database, 1, 1, 1, intPtr(10))
+	testutil.SeedExamSession(t, database, 1, 1, 1, fmtTime(now.Add(-time.Hour)), fmtTime(now.Add(time.Hour)), "TOK", "aktif")
+	if _, err := database.Exec(`INSERT INTO exam_session_kelas (session_id, kelas_id) VALUES (1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-existing submitted hasil_tes for this exam session
+	if _, err := database.Exec(`
+		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, exam_session_id, skor, skor_maks, status, validasi)
+		VALUES (1, 1, 1, 1, 85.0, 100.0, 'submitted', '1_2026001_1')
+	`); err != nil {
+		t.Fatalf("seed submitted hasil_tes: %v", err)
+	}
+
+	// Attempting to restart an already submitted session must return 403 Forbidden
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("already submitted session start: status = %d, want 403", resp.StatusCode)
+	}
+}

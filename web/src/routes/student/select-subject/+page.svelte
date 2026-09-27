@@ -111,7 +111,9 @@
   }
 
   function logout() {
-    localStorage.clear();
+    ['peserta_id', 'peserta_no_id', 'exam_token', 'aether_token', 'aether_user', 'session_id', 'attempt_token', 'selected_mapel_name'].forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
     toast.info('Keluar dari sesi ujian.');
     window.location.href = '/student/login';
   }

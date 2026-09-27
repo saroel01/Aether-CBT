@@ -28,16 +28,16 @@ const (
 //	ID, Status, CreatedAt, UpdatedAt, NextRetryAt
 type SubmissionJob struct {
 	// Field Job_File — urutan tetap sesuai Requirement 10.1
-	Validasi     string    `json:"validasi"`      // tenant_noID_mapel (untuk idempotency)
+	Validasi     string    `json:"validasi"` // tenant_noID_mapel (untuk idempotency)
 	TenantID     int       `json:"tenant_id"`
-	NoID         string    `json:"no_id"`         // sid / USER_NAME dari iSpring
-	Score        string    `json:"score"`         // sp
-	MaxScore     string    `json:"max_score"`     // tp
+	NoID         string    `json:"no_id"`     // sid / USER_NAME dari iSpring
+	Score        string    `json:"score"`     // sp
+	MaxScore     string    `json:"max_score"` // tp
 	AttemptToken string    `json:"attempt_token"`
 	EnqueuedAt   time.Time `json:"enqueued_at"`
 	RetryCount   int       `json:"retry_count"`
 	LastError    string    `json:"last_error"`
-	DetailXML    string    `json:"detail_xml"`    // dr
+	DetailXML    string    `json:"detail_xml"` // dr
 
 	// Field internal — tidak di-serialize ke Job_File
 	ID          int64     `json:"-"`

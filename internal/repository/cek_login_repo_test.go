@@ -257,8 +257,6 @@ func TestCekLoginRepository_StartRejectsSecondActiveSession(t *testing.T) {
 	}
 }
 
-
-
 // TestProperty_AtomicInfractionIncrement tests Clause 2.22 / C22: atomic increment with RETURNING.
 func TestProperty_AtomicInfractionIncrement(t *testing.T) {
 	database, cleanup := testutil.NewMigratedDB(t)

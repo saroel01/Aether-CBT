@@ -182,15 +182,16 @@ func TestCreateUser_RejectsSuperadminRole(t *testing.T) {
 	}
 }
 
-// TestCreateUser_AcceptsSupervisorRole verifies the allowlist still permits a supervisor.
-func TestCreateUser_AcceptsSupervisorRole(t *testing.T) {
+// TestCreateUser_RejectsSupervisorRole verifies CreateUser rejects role supervisor (P1-7)
+// because supervisor accounts are room credentials managed via /api/rooms.
+func TestCreateUser_RejectsSupervisorRole(t *testing.T) {
 	app, _, _, cleanup := newAdminTestApp(t, "admin")
 	defer cleanup()
 	app.Post("/api/users", CreateUser)
 
 	resp := doJSON(t, app, "POST", "/api/users", strings.NewReader(`{"username":"sup2","password":"y","role":"supervisor"}`))
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("supervisor creation: status = %d, want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("supervisor creation: status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -240,7 +241,7 @@ func TestLinkClassSubject_RejectsCrossTenant(t *testing.T) {
 
 	testutil.SeedTenant(t, database, 1, "default", "Default School")
 	testutil.SeedTenant(t, database, 2, "other", "Other School")
-	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1") // tenant 1
+	testutil.SeedKelas(t, database, 1, 1, "XII IPA 1")      // tenant 1
 	testutil.SeedMapel(t, database, 5, 2, "Biologi", "BIO") // tenant 2 — different tenant
 
 	// Caller is tenant 1 (test middleware); linking kelas 1 (tenant 1) to mapel 5 (tenant 2).

@@ -93,13 +93,15 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 	defer db.Close()
 
 	processor := NewProcessor(db)
-	if err := processor.Process(context.Background(),
-		processorJob("10", detailXMLWithQuestions()), // client score matches XML-derived 10 (Task 2)
-	); err != nil {
+	jobA := processorJob("10", detailXMLWithQuestions())
+	if err := processor.Process(context.Background(), jobA); err != nil {
 		t.Fatalf("first Process: %v", err)
 	}
-	if err := processor.Process(context.Background(), processorJob("90", "")); err != nil {
-		t.Fatalf("duplicate Process: %v", err)
+
+	// Identical replay: exact same payload must be an idempotent no-op (return nil)
+	replayJob := processorJob("10", detailXMLWithQuestions())
+	if err := processor.Process(context.Background(), replayJob); err != nil {
+		t.Fatalf("identical replay Process failed: %v", err)
 	}
 
 	var resultCount int
@@ -109,19 +111,154 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 	if resultCount != 1 {
 		t.Fatalf("hasil_tes rows = %d, want 1", resultCount)
 	}
-	var score string
-	if err := db.QueryRow(`SELECT CAST(skor AS TEXT) FROM hasil_tes WHERE tenant_id = 1 AND validasi = '1_S-001_7'`).Scan(&score); err != nil {
+	var score float64
+	if err := db.QueryRow(`SELECT skor FROM hasil_tes WHERE tenant_id = 1 AND validasi = '1_S-001_7'`).Scan(&score); err != nil {
 		t.Fatalf("select score: %v", err)
 	}
-	if !strings.HasPrefix(score, "90") {
-		t.Fatalf("score after duplicate = %q, want 90", score)
+	if score != 10.0 {
+		t.Fatalf("score after duplicate = %v, want 10", score)
 	}
 	var detailCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM hasil_tes_detail`).Scan(&detailCount); err != nil {
 		t.Fatalf("count details: %v", err)
 	}
-	if detailCount != 0 {
-		t.Fatalf("detail rows after duplicate replacement = %d, want 0", detailCount)
+	if detailCount != 2 {
+		t.Fatalf("detail rows = %d, want 2", detailCount)
+	}
+
+	// Overwrite attempt: different score or payload must be rejected with an error (P0-2)
+	overwriteJob := processorJob("100", detailXMLWithQuestions())
+	if err := processor.Process(context.Background(), overwriteJob); err == nil {
+		t.Fatal("expected error on overwrite attempt of submitted hasil_tes, got nil")
+	}
+
+	// Verify hasil_tes and details are completely unmodified
+	if err := db.QueryRow(`SELECT skor FROM hasil_tes WHERE tenant_id = 1 AND validasi = '1_S-001_7'`).Scan(&score); err != nil {
+		t.Fatalf("select score: %v", err)
+	}
+	if score != 10.0 {
+		t.Fatalf("score was overwritten to %v, want 10.0", score)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM hasil_tes_detail`).Scan(&detailCount); err != nil {
+		t.Fatalf("count details: %v", err)
+	}
+	if detailCount != 2 {
+		t.Fatalf("detail rows after overwrite attempt = %d, want 2", detailCount)
+	}
+}
+
+// TestProcessorRejectsXMLlessSubmission (P0-1 regression test)
+func TestProcessorRejectsXMLlessSubmission(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	p := NewProcessor(db)
+	job := &SubmissionJob{
+		TenantID:     1,
+		NoID:         "S-001",
+		Score:        "100",
+		MaxScore:     "100",
+		AttemptToken: "tok",
+		Validasi:     "1_S-001_7",
+		DetailXML:    "",
+	}
+	if err := p.Process(context.Background(), job); err == nil {
+		t.Fatal("accepted XML-less submission, want error")
+	}
+}
+
+// TestProcessorDerivesMaxScoreFromXML (P0-1 regression test)
+func TestProcessorDerivesMaxScoreFromXML(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	xmlOneQuestion := `<?xml version="1.0" encoding="UTF-8"?>
+<quizReport version="1"><questions>
+  <multipleChoiceQuestion id="q1" evaluationEnabled="true" maxPoints="1" awardedPoints="1" status="correct">
+    <direction><text>1+1?</text></direction>
+    <answers correctAnswerIndex="0" userAnswerIndex="0"><answer><text>2</text></answer></answers>
+  </multipleChoiceQuestion>
+</questions></quizReport>`
+
+	p := NewProcessor(db)
+	job := &SubmissionJob{
+		TenantID:     1,
+		NoID:         "S-001",
+		Score:        "1",
+		MaxScore:     "1000000", // Client claims 1,000,000 max score
+		AttemptToken: "tok",
+		Validasi:     "1_S-001_7",
+		DetailXML:    xmlOneQuestion,
+	}
+	if err := p.Process(context.Background(), job); err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	var storedMaxScore float64
+	if err := db.QueryRow(`SELECT skor_maks FROM hasil_tes WHERE tenant_id = 1 AND validasi = '1_S-001_7'`).Scan(&storedMaxScore); err != nil {
+		t.Fatalf("select skor_maks: %v", err)
+	}
+	if storedMaxScore != 1.0 {
+		t.Fatalf("skor_maks = %v, want 1.0 (derived from XML, ignoring client tp)", storedMaxScore)
+	}
+}
+
+// TestProcessorPreservesEssayGradingOnDuplicateAttempt (P0-2 regression test)
+func TestProcessorPreservesEssayGradingOnDuplicateAttempt(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+
+	p := NewProcessor(db)
+	jobA := processorJob("10", detailXMLWithQuestions())
+	if err := p.Process(context.Background(), jobA); err != nil {
+		t.Fatalf("jobA Process: %v", err)
+	}
+
+	var hasilTesID int
+	if err := db.QueryRow(`SELECT id FROM hasil_tes WHERE tenant_id = 1 AND validasi = '1_S-001_7'`).Scan(&hasilTesID); err != nil {
+		t.Fatalf("get hasilTesID: %v", err)
+	}
+
+	// Teacher grades an essay question: awards 5 points, updates total score to 15
+	if _, err := db.Exec(`UPDATE hasil_tes_detail SET awarded_points = 5 WHERE hasil_tes_id = ? AND question_id = 'q2'`, hasilTesID); err != nil {
+		t.Fatalf("grade essay: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE hasil_tes SET skor = 15.0 WHERE id = ?`, hasilTesID); err != nil {
+		t.Fatalf("update hasil_tes score: %v", err)
+	}
+
+	// Subsequent student attempt arrives with same Validasi and claimed Score: 100
+	jobB := processorJob("100", detailXMLWithQuestions())
+	err := p.Process(context.Background(), jobB)
+	if err == nil {
+		t.Fatal("jobB expected error on duplicate overwrite attempt, got nil")
+	}
+
+	// Assert: score was NOT reverted/overwritten, teacher's 15 remains
+	var scoreAfter float64
+	if err := db.QueryRow(`SELECT skor FROM hasil_tes WHERE id = ?`, hasilTesID).Scan(&scoreAfter); err != nil {
+		t.Fatalf("read score: %v", err)
+	}
+	if scoreAfter != 15.0 {
+		t.Fatalf("hasil_tes.skor = %v, want 15.0 (teacher grade preserved)", scoreAfter)
+	}
+
+	// Assert: detail count remains exactly 2
+	var detailCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM hasil_tes_detail WHERE hasil_tes_id = ?`, hasilTesID).Scan(&detailCount); err != nil {
+		t.Fatalf("count details: %v", err)
+	}
+	if detailCount != 2 {
+		t.Fatalf("hasil_tes_detail count = %d, want 2", detailCount)
+	}
+
+	// Assert: teacher's essay points (5) was preserved
+	var q2Points float64
+	if err := db.QueryRow(`SELECT awarded_points FROM hasil_tes_detail WHERE hasil_tes_id = ? AND question_id = 'q2'`, hasilTesID).Scan(&q2Points); err != nil {
+		t.Fatalf("read q2 points: %v", err)
+	}
+	if q2Points != 5.0 {
+		t.Fatalf("q2 awarded_points = %v, want 5.0 (teacher grade preserved)", q2Points)
 	}
 }
 
@@ -137,7 +274,7 @@ func TestProcessorCleanupTargetsOnlyTheSubmittedSession(t *testing.T) {
 		t.Fatalf("seed second cek_login: %v", err)
 	}
 
-	job := processorJob("80", "") // AttemptToken = "tok" -> targets only the first session
+	job := processorJob("10", detailXMLWithQuestions()) // AttemptToken = "tok" -> targets only the first session
 	if err := NewProcessor(db).Process(context.Background(), job); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
@@ -186,8 +323,8 @@ func TestProcessorProcessBatchIsolatesFailingJob(t *testing.T) {
 	db := setupProcessorDB(t)
 	defer db.Close()
 
-	valid := processorJob("80", "")
-	invalid := processorJob("90", "")
+	valid := processorJob("10", detailXMLWithQuestions())
+	invalid := processorJob("10", detailXMLWithQuestions())
 	invalid.NoID = "missing" // no such peserta -> per-job failure
 	invalid.Validasi = "1_missing_7"
 

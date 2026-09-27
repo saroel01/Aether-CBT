@@ -135,7 +135,9 @@ func TestPropertyEnqueueAtomicityAndUniqueness(t *testing.T) {
 //
 // (a) the pending file matches the retry name shape;
 // (b) its base name (the Enqueue-written prefix, including tenant_id and no_id) is unchanged,
-//     so admins can still correlate the job across directories by prefix;
+//
+//	so admins can still correlate the job across directories by prefix;
+//
 // (c) the encoded due time equals now + min(2^(retry_count-1), 30) seconds.
 //
 // Validates: Requirements 2.3, 3.4

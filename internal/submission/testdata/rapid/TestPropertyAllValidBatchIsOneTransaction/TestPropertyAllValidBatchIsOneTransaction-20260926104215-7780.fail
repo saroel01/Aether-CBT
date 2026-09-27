@@ -1,0 +1,7 @@
+# 2026/09/26 10:42:15.495209 [TestPropertyAllValidBatchIsOneTransaction] [rapid] draw batch_size: 1
+# 2026/09/26 10:42:15.535217 [TestPropertyAllValidBatchIsOneTransaction] jobErrs[0] = detail XML is required, want nil for an all-valid batch
+# 
+v0.4.8#11385155000738354823
+0x0
+0x0
+0x0

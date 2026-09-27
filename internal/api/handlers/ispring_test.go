@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,24 @@ import (
 	"github.com/saroel01/aether-cbt/internal/submission"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
+
+const defaultTestMockXML = `<?xml version="1.0" encoding="UTF-8"?>
+<quizReport version="1">
+	<questions>
+		<multipleChoiceQuestion id="q1" evaluationEnabled="true" maxPoints="10" awardedPoints="10" status="correct">
+			<direction><text>Siapakah nama penemu gravitasi?</text></direction>
+			<answers correctAnswerIndex="1" userAnswerIndex="1">
+				<answer><text>Albert Einstein</text></answer>
+				<answer><text>Isaac Newton</text></answer>
+				<answer><text>Galileo Galilei</text></answer>
+			</answers>
+		</multipleChoiceQuestion>
+		<essayQuestion id="q2" evaluationEnabled="false" maxPoints="20" awardedPoints="0" status="answered">
+			<direction><text>Jelaskan teori relativitas secara singkat.</text></direction>
+			<userAnswer>Teori relativitas adalah teori fisika yang dikembangkan oleh Einstein...</userAnswer>
+		</essayQuestion>
+	</questions>
+</quizReport>`
 
 // setupTestDB initializes an in-memory SQLite database and creates the necessary schemas.
 // Returns a cleanup function that closes the DB.
@@ -371,7 +390,8 @@ func TestPropertyISpringWebhookHappyPathEnqueuesMatchingJob(t *testing.T) {
 		noID := rapid.StringMatching(`[A-Za-z0-9_-]{1,16}`).Draw(rt, "no_id")
 		token := rapid.StringMatching(`[0-9a-f]{32}`).Draw(rt, "attempt_token")
 		score := rapid.StringMatching(`[0-9]{1,3}`).Draw(rt, "score")
-		maxScore := rapid.StringMatching(`[0-9]{1,3}`).Draw(rt, "max_score")
+		maxScoreInt := rapid.IntRange(1, 999).Draw(rt, "max_score")
+		maxScore := fmt.Sprintf("%d", maxScoreInt)
 
 		if _, err := db.DB.Exec("UPDATE peserta SET no_id = ? WHERE id = 42", noID); err != nil {
 			rt.Fatalf("update peserta no_id: %v", err)
@@ -384,6 +404,7 @@ func TestPropertyISpringWebhookHappyPathEnqueuesMatchingJob(t *testing.T) {
 		form.Add("sid", noID)
 		form.Add("sp", score)
 		form.Add("tp", maxScore)
+		form.Add("dr", defaultTestMockXML)
 		form.Add("attempt_token", token)
 
 		req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
@@ -518,7 +539,7 @@ func TestWebhookResolvesTenantFromToken(t *testing.T) {
 	form.Add("sid", "2026001")
 	form.Add("sp", "10")
 	form.Add("tp", "30")
-	form.Add("dr", "")
+	form.Add("dr", defaultTestMockXML)
 	form.Add("attempt_token", "token-belongs-to-tenant-2")
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
@@ -564,7 +585,7 @@ func TestWebhookRejectsLockedSession(t *testing.T) {
 	form.Add("sid", "2026001")
 	form.Add("sp", "10")
 	form.Add("tp", "30")
-	form.Add("dr", "")
+	form.Add("dr", defaultTestMockXML)
 	form.Add("attempt_token", "attempt-secret")
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
@@ -603,7 +624,7 @@ func TestWebhookWithoutTenantContextInLocals(t *testing.T) {
 	form.Add("sid", "2026001")
 	form.Add("sp", "10")
 	form.Add("tp", "30")
-	form.Add("dr", "")
+	form.Add("dr", defaultTestMockXML)
 	form.Add("attempt_token", "attempt-secret")
 
 	req := httptest.NewRequest("POST", "/api/ispring/webhook", strings.NewReader(form.Encode()))
@@ -626,6 +647,112 @@ func TestWebhookWithoutTenantContextInLocals(t *testing.T) {
 	}
 	if job.TenantID != 1 {
 		t.Fatalf("job.TenantID = %d, want 1 (resolved from attempt_token)", job.TenantID)
+	}
+}
+
+// TestISpringWebhookRejectsMissingDR (P0-1 regression test)
+func TestISpringWebhookRejectsMissingDR(t *testing.T) {
+	app, fsQueue, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	for _, emptyDR := range []string{"", "   "} {
+		form := url.Values{}
+		form.Add("sid", "2026001")
+		form.Add("sp", "10")
+		form.Add("tp", "30")
+		form.Add("dr", emptyDR)
+		form.Add("attempt_token", "attempt-secret")
+
+		req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("dr %q: status=%d, want 400", emptyDR, resp.StatusCode)
+		}
+	}
+
+	stats, _ := fsQueue.GetStats(context.Background())
+	if stats.PendingCount != 0 {
+		t.Fatalf("pending queue count = %d, want 0 after 400", stats.PendingCount)
+	}
+}
+
+// TestISpringWebhookRejectsInvalidNumericScores (P0-1 regression test)
+func TestISpringWebhookRejectsInvalidNumericScores(t *testing.T) {
+	app, _, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	cases := []struct {
+		sp, tp string
+	}{
+		{"abc", "10"},
+		{"10", "xyz"},
+		{"-5", "10"},
+		{"10", "-10"},
+		{"10", "0"},
+	}
+
+	for _, tc := range cases {
+		form := url.Values{}
+		form.Add("sid", "2026001")
+		form.Add("sp", tc.sp)
+		form.Add("tp", tc.tp)
+		form.Add("dr", defaultTestMockXML)
+		form.Add("attempt_token", "attempt-secret")
+
+		req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("sp=%q tp=%q: status=%d, want 400", tc.sp, tc.tp, resp.StatusCode)
+		}
+	}
+}
+
+// TestISpringWebhookIdempotentIfAlreadySubmitted (P0-2 regression test)
+func TestISpringWebhookIdempotentIfAlreadySubmitted(t *testing.T) {
+	app, fsQueue, cleanup := setupISpringTestApp(t)
+	defer cleanup()
+
+	// Seed existing submitted hasil_tes
+	_, err := db.DB.Exec(`
+		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, exam_session_id, skor, skor_maks, detail_xml, status, validasi)
+		VALUES (1, 42, 5, 7, 10.0, 30.0, ?, 'submitted', '1_2026001_7')
+	`, defaultTestMockXML)
+	if err != nil {
+		t.Fatalf("seed hasil_tes: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("sid", "2026001")
+	form.Add("sp", "10")
+	form.Add("tp", "30")
+	form.Add("dr", defaultTestMockXML)
+	form.Add("attempt_token", "attempt-secret")
+
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("already submitted status=%d, want 200 (idempotent)", resp.StatusCode)
+	}
+
+	// Must NOT enqueue duplicate job
+	stats, _ := fsQueue.GetStats(context.Background())
+	if stats.PendingCount != 0 {
+		t.Fatalf("pending queue count = %d, want 0 (no duplicate enqueue for submitted)", stats.PendingCount)
 	}
 }
 
