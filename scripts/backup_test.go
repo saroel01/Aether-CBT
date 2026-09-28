@@ -266,6 +266,44 @@ func TestCheckpointScript(t *testing.T) {
 	if !strings.Contains(string(outFK), "pelanggaran foreign key") {
 		t.Errorf("expected 'pelanggaran foreign key' in output, got: %s", string(outFK))
 	}
+
+	// 6. Database with active uncommitted write transaction causes WAL checkpoint to report busy/error and fail
+	busyPath := filepath.Join(tempDir, "busy.db")
+	if err := db.Connect(busyPath, db.DefaultPoolConfig()); err != nil {
+		t.Fatalf("db.Connect busyPath: %v", err)
+	}
+	if err := db.RunMigrations(db.DB, migrationsDir); err != nil {
+		db.Close()
+		t.Fatalf("RunMigrations busyPath: %v", err)
+	}
+	db.Close()
+
+	busyConn, err := sql.Open("sqlite", busyPath+"?_pragma=busy_timeout(100)")
+	if err != nil {
+		t.Fatalf("open busyConn: %v", err)
+	}
+	defer busyConn.Close()
+
+	tx, err := busyConn.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("INSERT INTO tenants (id, name, slug) VALUES (999, 'Active Tx', 'active-tx')"); err != nil {
+		t.Fatalf("insert active tx: %v", err)
+	}
+
+	// Run checkpoint on the busy DB (override busy timeout to 100ms for fast test)
+	cmdBusy := exec.Command("go", "run", "./checkpoint.go", "-db", busyPath)
+	cmdBusy.Dir = "."
+	outBusy, errBusy := cmdBusy.CombinedOutput()
+	if errBusy == nil {
+		t.Fatalf("expected checkpoint.go to fail when database has active uncommitted transaction, but succeeded! Output: %s", string(outBusy))
+	}
+	if !strings.Contains(string(outBusy), "ERROR") {
+		t.Errorf("expected ERROR in output for blocked checkpoint, got: %s", string(outBusy))
+	}
 }
 
 func TestInspectQueueScript(t *testing.T) {

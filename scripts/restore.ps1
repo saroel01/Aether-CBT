@@ -118,12 +118,14 @@ if (Test-Path $shmFile) {
 # Verifikasi integritas database hasil restore
 Write-Host "  Memverifikasi integritas database hasil restore..." -ForegroundColor Yellow
 try {
-    & go run $checkpointScript -db $Database
+    & go run $checkpointScript -db $Database -verify-only
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: Verifikasi database hasil restore melaporkan peringatan!" -ForegroundColor Yellow
+        Write-Host "ERROR: Verifikasi integritas database hasil restore GAGAL! Database hasil restore tidak valid." -ForegroundColor Red
+        exit 1
     }
 } catch {
-    Write-Host "WARNING: Gagal memverifikasi database hasil restore: $_" -ForegroundColor Yellow
+    Write-Host "ERROR: Gagal memverifikasi database hasil restore: $_" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host ""

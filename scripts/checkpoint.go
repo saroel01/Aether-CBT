@@ -80,10 +80,16 @@ func main() {
 		return
 	}
 
-	if _, err := conn.Exec("PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+	var busy, logFrames, checkpointed int
+	if err := conn.QueryRow("PRAGMA wal_checkpoint(TRUNCATE);").Scan(&busy, &logFrames, &checkpointed); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: Gagal menjalankan PRAGMA wal_checkpoint(TRUNCATE): %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ WAL checkpoint (TRUNCATE) berhasil diselesaikan.")
+	if busy != 0 {
+		fmt.Fprintf(os.Stderr, "ERROR: WAL checkpoint terblokir (busy=%d, log=%d, checkpointed=%d). Pastikan tidak ada transaksi atau proses lain yang mengunci database.\n", busy, logFrames, checkpointed)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✅ WAL checkpoint (TRUNCATE) berhasil diselesaikan (log=%d, checkpointed=%d).\n", logFrames, checkpointed)
 }

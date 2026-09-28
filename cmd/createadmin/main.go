@@ -7,9 +7,27 @@ import (
 	"os"
 	"strings"
 
+	"github.com/saroel01/aether-cbt/internal/config"
 	"github.com/saroel01/aether-cbt/internal/db"
 	"github.com/saroel01/aether-cbt/internal/utils"
 )
+
+// isWeakAdminPassword checks if a password is too short or matches known weak/default passwords (case-insensitive).
+func isWeakAdminPassword(password string) bool {
+	trimmed := strings.TrimSpace(password)
+	if len(trimmed) < 8 {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	if _, bad := config.InsecureJWTSecrets[lower]; bad {
+		return true
+	}
+	switch lower {
+	case "adminadmin", "password123", "administrator", "123456789", "qwertyui", "admin2026":
+		return true
+	}
+	return false
+}
 
 func main() {
 	defaultDB := os.Getenv("DATABASE_URL")
@@ -50,8 +68,8 @@ func main() {
 		}
 		password = genPW
 		generated = true
-	} else if isProd && (password == "admin123" || password == "admin" || password == "password" || len(password) < 8) {
-		log.Fatalf("FATAL: Password admin di environment production minimal 8 karakter dan tidak boleh menggunakan password default lemah: %q", password)
+	} else if isProd && isWeakAdminPassword(password) {
+		log.Fatalf("FATAL: Password admin di environment production minimal 8 karakter dan tidak boleh menggunakan password default/lemah: %q", password)
 	}
 
 	// Connect to database using standard pool & DSN with verified pragmas (P1-15, P2-37)
