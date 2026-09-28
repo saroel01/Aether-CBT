@@ -28,6 +28,10 @@ func main() {
 	flag.Parse()
 
 	if _, err := os.Stat(*dbPath); os.IsNotExist(err) {
+		if *verifyOnly {
+			fmt.Fprintf(os.Stderr, "ERROR: File database %s tidak ditemukan.\n", *dbPath)
+			os.Exit(1)
+		}
 		fmt.Printf("File database %s tidak ditemukan, tidak perlu checkpoint.\n", *dbPath)
 		return
 	}
@@ -50,8 +54,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	fkRows, err := conn.Query("PRAGMA foreign_key_check;")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: Gagal cek foreign keys %s: %v\n", *dbPath, err)
+		os.Exit(1)
+	}
+	fkViolations := 0
+	for fkRows.Next() {
+		fkViolations++
+		var table, parent string
+		var rowid, fkid int64
+		_ = fkRows.Scan(&table, &rowid, &parent, &fkid)
+		fmt.Fprintf(os.Stderr, "  FK violation: table=%s, rowid=%d, target=%s\n", table, rowid, parent)
+	}
+	fkRows.Close()
+
+	if fkViolations > 0 {
+		fmt.Fprintf(os.Stderr, "ERROR: Database %s memiliki %d pelanggaran foreign key!\n", *dbPath, fkViolations)
+		os.Exit(1)
+	}
+
 	if *verifyOnly {
 		fmt.Printf("✅ Integritas database %s terverifikasi (ok).\n", *dbPath)
+		fmt.Println("   Foreign Key: ok (0 violations)")
 		return
 	}
 

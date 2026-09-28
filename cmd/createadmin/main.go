@@ -50,8 +50,8 @@ func main() {
 		}
 		password = genPW
 		generated = true
-	} else if isProd && (password == "admin123" || password == "admin" || password == "password") {
-		log.Fatalf("FATAL: Password lemah %q dilarang di environment production!", password)
+	} else if isProd && (password == "admin123" || password == "admin" || password == "password" || len(password) < 8) {
+		log.Fatalf("FATAL: Password admin di environment production minimal 8 karakter dan tidak boleh menggunakan password default lemah: %q", password)
 	}
 
 	// Connect to database using standard pool & DSN with verified pragmas (P1-15, P2-37)

@@ -359,13 +359,13 @@ func ExportEssayResults(c *fiber.Ctx) error {
 			}
 
 			writer.Write([]string{
-				noID,
-				name,
-				className,
-				mapelName,
-				qID,
-				qText,
-				userAns,
+				SanitizeFormulaField(noID),
+				SanitizeFormulaField(name),
+				SanitizeFormulaField(className),
+				SanitizeFormulaField(mapelName),
+				SanitizeFormulaField(qID),
+				SanitizeFormulaField(qText),
+				SanitizeFormulaField(userAns),
 				strconv.FormatFloat(score, 'f', 2, 64),
 				strconv.FormatFloat(maxScore, 'f', 2, 64),
 			})
@@ -410,13 +410,13 @@ func ExportEssayResults(c *fiber.Ctx) error {
 				continue
 			}
 
-			f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowIdx), noID)
-			f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowIdx), name)
-			f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowIdx), className)
-			f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowIdx), mapelName)
-			f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowIdx), qID)
-			f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowIdx), qText)
-			f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowIdx), userAns)
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowIdx), SanitizeFormulaField(noID))
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowIdx), SanitizeFormulaField(name))
+			f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowIdx), SanitizeFormulaField(className))
+			f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowIdx), SanitizeFormulaField(mapelName))
+			f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowIdx), SanitizeFormulaField(qID))
+			f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowIdx), SanitizeFormulaField(qText))
+			f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowIdx), SanitizeFormulaField(userAns))
 			f.SetCellValue(sheetName, fmt.Sprintf("H%d", rowIdx), score)
 			f.SetCellValue(sheetName, fmt.Sprintf("I%d", rowIdx), maxScore)
 

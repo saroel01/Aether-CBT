@@ -36,3 +36,13 @@ tests/
 *.exe
 *.log
 coverage.out
+
+# Machine-local configs, documentation, & tooling
+opencode.json
+.opencode/
+.agents/
+.claude/
+skills-lock.json
+docs/
+mcps/
+tmp/

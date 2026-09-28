@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/xuri/excelize/v2"
 
 	"github.com/saroel01/aether-cbt/internal/db"
 	"github.com/saroel01/aether-cbt/internal/utils"
@@ -318,5 +319,68 @@ func TestAuthLogin_RejectsSupervisorUserRole(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected status 403 Forbidden for supervisor login via /api/auth/login, got %d", resp.StatusCode)
+	}
+}
+
+// TestExportEssayResults_FormulaSanitization (P2-29) verifies that essay answers containing formula
+// triggers (=, +, -, @) are sanitized with a prepended single quote in CSV and XLSX exports.
+func TestExportEssayResults_FormulaSanitization(t *testing.T) {
+	app, _, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+
+	// Insert test data with formula injection characters in essay answer
+	_, err := database.Exec(`
+		INSERT INTO kelas (id, tenant_id, nama_kelas) VALUES (1, 1, 'X-IPA-1');
+		INSERT INTO mapel (id, tenant_id, nama_mapel, kode_mapel) VALUES (1, 1, 'Informatika', 'INF10');
+		INSERT INTO peserta (id, tenant_id, no_id, password, nama_peserta, kelas_id) VALUES (1, 1, 'STU001', 'siswa123', 'Budi Santoso', 1);
+		INSERT INTO hasil_tes (id, tenant_id, peserta_id, mapel_id, skor, skor_maks, status, validasi)
+		VALUES (1, 1, 1, 1, 80, 100, 'submitted', '1_STU001_1');
+		INSERT INTO hasil_tes_detail (id, hasil_tes_id, question_id, question_text, question_type, user_answer, awarded_points, max_points)
+		VALUES (1, 1, 'Q_ESSAY_1', 'Jelaskan konsep TCP/IP', 'essayQuestion', '=CMD|''calc''!A0', 10, 10);
+	`)
+	if err != nil {
+		t.Fatalf("insert essay test data: %v", err)
+	}
+
+	app.Get("/admin/results/essays/export/:format", ExportEssayResults)
+
+	// Test CSV export
+	req := httptest.NewRequest("GET", "/admin/results/essays/export/csv", nil)
+	resp, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatalf("csv export request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("csv export expected status 200, got %d", resp.StatusCode)
+	}
+	var buf bytes.Buffer
+	buf.ReadFrom(resp.Body)
+	csvBody := buf.String()
+	if !strings.Contains(csvBody, "'=CMD|'calc'!A0") {
+		t.Errorf("expected escaped formula in CSV, got: %s", csvBody)
+	}
+
+	// Test XLSX export
+	reqXlsx := httptest.NewRequest("GET", "/admin/results/essays/export/xlsx", nil)
+	respXlsx, err := app.Test(reqXlsx, -1)
+	if err != nil {
+		t.Fatalf("xlsx export request failed: %v", err)
+	}
+	if respXlsx.StatusCode != http.StatusOK {
+		t.Fatalf("xlsx export expected status 200, got %d", respXlsx.StatusCode)
+	}
+	var bufXlsx bytes.Buffer
+	bufXlsx.ReadFrom(respXlsx.Body)
+	f, err := excelize.OpenReader(bytes.NewReader(bufXlsx.Bytes()))
+	if err != nil {
+		t.Fatalf("open excel reader: %v", err)
+	}
+	defer f.Close()
+	val, err := f.GetCellValue("Rekap Esai Siswa", "G2")
+	if err != nil {
+		t.Fatalf("get cell value G2: %v", err)
+	}
+	if val != "'=CMD|'calc'!A0" {
+		t.Errorf("expected escaped formula in XLSX G2, got %q", val)
 	}
 }

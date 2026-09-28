@@ -198,7 +198,7 @@ func TestCheckpointScript(t *testing.T) {
 		t.Errorf("expected verified ok message, got: %s", string(outVerify))
 	}
 
-	// 3. Non-existent DB should report gracefully
+	// 3. Non-existent DB without verify-only should report gracefully with exit 0
 	nonExistent := filepath.Join(tempDir, "does_not_exist.db")
 	cmdMissing := exec.Command("go", "run", "./checkpoint.go", "-db", nonExistent)
 	cmdMissing.Dir = "."
@@ -208,6 +208,17 @@ func TestCheckpointScript(t *testing.T) {
 	}
 	if !strings.Contains(string(outMissing), "tidak ditemukan, tidak perlu checkpoint") {
 		t.Errorf("expected non-existent message, got: %s", string(outMissing))
+	}
+
+	// 3b. Non-existent DB with -verify-only must fail with non-zero exit code
+	cmdMissingVerify := exec.Command("go", "run", "./checkpoint.go", "-db", nonExistent, "-verify-only")
+	cmdMissingVerify.Dir = "."
+	outMissingVerify, errMissingVerify := cmdMissingVerify.CombinedOutput()
+	if errMissingVerify == nil {
+		t.Fatalf("expected checkpoint.go -verify-only on missing file to fail, but succeeded! Output: %s", string(outMissingVerify))
+	}
+	if !strings.Contains(string(outMissingVerify), "tidak ditemukan") {
+		t.Errorf("expected 'tidak ditemukan' in error output, got: %s", string(outMissingVerify))
 	}
 
 	// 4. Corrupt file should fail integrity check with non-zero exit code
@@ -223,6 +234,37 @@ func TestCheckpointScript(t *testing.T) {
 	}
 	if !strings.Contains(string(outCorrupt), "ERROR") {
 		t.Errorf("expected ERROR in output, got: %s", string(outCorrupt))
+	}
+
+	// 5. Database with Foreign Key violation must fail verification
+	fkPath := filepath.Join(tempDir, "fk_broken.db")
+	if err := db.Connect(fkPath, db.DefaultPoolConfig()); err != nil {
+		t.Fatalf("db.Connect fkPath: %v", err)
+	}
+	if err := db.RunMigrations(db.DB, migrationsDir); err != nil {
+		db.Close()
+		t.Fatalf("RunMigrations fkPath: %v", err)
+	}
+	db.Close()
+	rawConn, err := sql.Open("sqlite", fkPath)
+	if err != nil {
+		t.Fatalf("rawConn fkPath: %v", err)
+	}
+	_, err = rawConn.Exec("INSERT INTO hasil_tes_detail (id, hasil_tes_id, question_id) VALUES (8888, 88888, 'q1')")
+	if err != nil {
+		rawConn.Close()
+		t.Fatalf("insert fk orphan: %v", err)
+	}
+	rawConn.Close()
+
+	cmdFK := exec.Command("go", "run", "./checkpoint.go", "-db", fkPath, "-verify-only")
+	cmdFK.Dir = "."
+	outFK, errFK := cmdFK.CombinedOutput()
+	if errFK == nil {
+		t.Fatalf("expected checkpoint.go -verify-only to fail on FK violation, but passed! Output: %s", string(outFK))
+	}
+	if !strings.Contains(string(outFK), "pelanggaran foreign key") {
+		t.Errorf("expected 'pelanggaran foreign key' in output, got: %s", string(outFK))
 	}
 }
 
