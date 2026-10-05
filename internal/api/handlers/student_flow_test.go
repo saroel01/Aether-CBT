@@ -136,7 +136,7 @@ func TestStartExamSession_EligibleSetsAttemptTokenAndCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -169,7 +169,7 @@ func TestStartExamSession_NotEligibleForbidden(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 (not eligible)", resp.StatusCode)
 	}
@@ -194,7 +194,7 @@ func TestUpdateStudentProgress_SessionBased(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Start the session first so a progress row exists to update.
-	startResp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	startResp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 	if startResp.StatusCode != http.StatusOK {
 		t.Fatalf("start status = %d, want 200 (body=%v)", startResp.StatusCode, decodeJSON(t, startResp))
 	}
@@ -224,7 +224,7 @@ func TestGetRemainingTime_SessionBasedClamp(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO exam_session_kelas (session_id, kelas_id) VALUES (1, 1)`); err != nil {
 		t.Fatal(err)
 	}
-	doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 
 	resp := doJSON(t, app, "GET", "/api/student/remaining-time?session_id=1", nil)
 	if resp.StatusCode != http.StatusOK {

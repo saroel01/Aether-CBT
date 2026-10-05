@@ -3,7 +3,7 @@
 ## Architecture
 Aether-CBT is an enterprise Computer-Based Testing (CBT) platform combining a Go Fiber backend (`cmd/server/main.go`) and a SvelteKit SPA frontend (`web/`).
 The redesign establishes the **'Precision Cobalt & Institutional Slate'** aesthetic system across all user-facing portals:
-- **Design Tokens & Foundation**: Centralized tokens in `web/tailwind.config.js` and `web/src/app.css` defining Cobalt primary accents (`#1D4ED8` / `#2563EB`), Slate neutral palette, and functional status colors (Emerald, Amber, Ruby).
+- **Design Tokens & Foundation**: Centralized tokens in the `@theme` block of `web/src/app.css` (Tailwind 4) defining Cobalt primary accents (`#1D4ED8` / `#2563EB`), Slate neutral palette, and functional status colors (Emerald, Amber, Ruby).
 - **Atomic Components**: Reusable UI primitives in `web/src/lib/components/ui/` with border-based elevation, micro-shadows (`shadow-sm`), keyboard focus-rings (`focus-visible:ring-2`), and `tabular-nums`.
 - **Student CBT Portal** (`/student/*`): Focused, anxiety-reducing, distraction-free examination environment with stable timers, authoritative anti-cheat overlays, and scaled iSpring player preservation.
 - **Proctor Workspace** (`/supervisor`): High-density live monitoring cockpit with compact tabular data, accessible modal confirmations, and a classroom projector presentation modal.
@@ -70,7 +70,7 @@ The redesign establishes the **'Precision Cobalt & Institutional Slate'** aesthe
   - Formatting: strict `tabular-nums font-mono`.
 
 ## Code Layout
-- `web/tailwind.config.js`: Central color palette tokens and font configurations.
+- `web/src/app.css` `@theme`: Central color palette tokens and font configurations (Tailwind 4; `tailwind.config.js` removed).
 - `web/src/app.css`: Global base styles, selection colors, scrollbar polish.
 - `web/src/lib/components/ui/`: Atomic component primitives.
 - `web/src/routes/`: Root landing page.

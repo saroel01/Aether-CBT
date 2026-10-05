@@ -59,12 +59,19 @@ func CheckPasswordHash(password, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-// GenerateToken generates a JWT token
+// GenerateToken generates a JWT token with token version 0.
 func GenerateToken(userID int, tenantID int, role string) (string, error) {
+	return GenerateTokenWithVersion(userID, tenantID, role, 0)
+}
+
+// GenerateTokenWithVersion generates a JWT carrying the account's token_version as
+// claim "tv"; AuthMiddleware rejects it once the stored version moves on (M5).
+func GenerateTokenWithVersion(userID int, tenantID int, role string, tv int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":   userID,
 		"tenant_id": tenantID,
 		"role":      role,
+		"tv":        tv,
 		"exp":       time.Now().Add(time.Hour * 24).Unix(),
 		"iat":       time.Now().Unix(),
 	}

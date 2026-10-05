@@ -83,37 +83,45 @@ func CreateStudent(c *fiber.Ctx) error {
 	req.NoID = SanitizeFormulaField(req.NoID)
 	req.NamaPeserta = SanitizeFormulaField(req.NamaPeserta)
 
+	// L7: a failed lookup is a server error, not "not found".
 	var dup int
-	_ = db.DB.QueryRowContext(c.Context(),
+	if err := db.DB.QueryRowContext(c.Context(),
 		`SELECT COUNT(*) FROM peserta WHERE tenant_id = ? AND no_id = ? AND deleted_at IS NULL`,
 		tenantID, req.NoID,
-	).Scan(&dup)
+	).Scan(&dup); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to validate student")
+	}
 	if dup > 0 {
 		return utils.ErrorResponse(c, fiber.StatusConflict, "no_id already exists in this tenant")
 	}
 	if kelasRef.Valid {
 		var k int
-		_ = db.DB.QueryRowContext(c.Context(),
+		if err := db.DB.QueryRowContext(c.Context(),
 			`SELECT COUNT(*) FROM kelas WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 			kelasRef.Int64, tenantID,
-		).Scan(&k)
+		).Scan(&k); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to validate class")
+		}
 		if k == 0 {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, "class not found in tenant")
 		}
 	}
 	if ruangRef.Valid {
 		var r int
-		_ = db.DB.QueryRowContext(c.Context(),
+		if err := db.DB.QueryRowContext(c.Context(),
 			`SELECT COUNT(*) FROM ruang WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 			ruangRef.Int64, tenantID,
-		).Scan(&r)
+		).Scan(&r); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to validate room")
+		}
 		if r == 0 {
 			return utils.ErrorResponse(c, fiber.StatusBadRequest, "room not found in tenant")
 		}
 	}
 
-	if req.Password == "" {
-		req.Password = "siswa123"
+	// L5: no default password; every student gets an explicit one.
+	if len(req.Password) < 6 {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password wajib diisi (minimal 6 karakter)")
 	}
 
 	passwordHash, err := utils.HashPassword(req.Password)

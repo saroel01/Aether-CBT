@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toast } from '$lib/stores/toast';
+  import { toast } from '#lib/stores/toast.js';
   import { flip } from 'svelte/animate';
   import { fade, fly } from 'svelte/transition';
 
@@ -34,7 +34,7 @@
   };
 </script>
 
-<div class="fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:top-6 z-[100] flex flex-col gap-2.5 w-auto sm:w-full max-w-sm pointer-events-none" aria-live="assertive">
+<div class="fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:top-6 z-100 flex flex-col gap-2.5 w-auto sm:w-full max-w-sm pointer-events-none" aria-live="assertive">
   {#each $toast as t (t.id)}
     {@const style = typeStyles[t.type] || typeStyles.info}
     <div
@@ -50,13 +50,13 @@
             <path stroke-linecap="round" stroke-linejoin="round" d={iconPaths[t.type] || iconPaths.info} />
           </svg>
         </div>
-        <span class="text-sm font-medium leading-snug break-words">{t.message}</span>
+        <span class="text-sm font-medium leading-snug wrap-break-word">{t.message}</span>
       </div>
 
       <button
         type="button"
         aria-label="Tutup notifikasi"
-        class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 shrink-0"
+        class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-cobalt-500 shrink-0"
         on:click={() => toast.remove(t.id)}
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

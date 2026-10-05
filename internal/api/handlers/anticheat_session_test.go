@@ -118,10 +118,9 @@ func TestUpdateStudentProgress_AllowedWhenUnlocked(t *testing.T) {
 	}
 }
 
-// TestStartLegacySessionRejectsLocked: the LEGACY mapel-based path (session_id == 0) must
-// also refuse to register a new attempt when an existing (tenant, peserta, mapel) cek_login
-// row is server-locked. Without this guard a locked student could start fresh via the legacy
-// path and bypass the lock (review H1, Task 13).
+// TestStartLegacySessionRejectsLocked: the legacy mapel-only start path was removed (audit M6),
+// so a request without session_id gets 400 and never registers or overwrites a cek_login row
+// (previously a locked student could try to bypass the lock this way, review H1, Task 13).
 func TestStartLegacySessionRejectsLocked(t *testing.T) {
 	app, _, database, cleanup := newAdminTestApp(t, "student")
 	defer cleanup()
@@ -140,10 +139,18 @@ func TestStartLegacySessionRejectsLocked(t *testing.T) {
 		t.Fatalf("seed locked legacy cek_login: %v", err)
 	}
 
-	// Start via the legacy path: session_id omitted, only mapel_id.
+	// Start via the removed legacy path: session_id omitted, only mapel_id.
 	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"mapel_id":1}`))
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("locked legacy start: status = %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("mapel-only start: status = %d, want 400", resp.StatusCode)
+	}
+	var rows int
+	var token string
+	if err := database.QueryRow(`SELECT COUNT(*), MAX(attempt_token) FROM cek_login WHERE tenant_id = 1 AND peserta_id = 1`).Scan(&rows, &token); err != nil {
+		t.Fatalf("count cek_login: %v", err)
+	}
+	if rows != 1 || token != "prev-legacy-token" {
+		t.Fatalf("cek_login rows = %d token = %q, want the seeded row untouched", rows, token)
 	}
 }
 
@@ -177,7 +184,7 @@ func TestStartExamSession_LockedRejected(t *testing.T) {
 		t.Fatalf("lock: %v", err)
 	}
 
-	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 (locked)", resp.StatusCode)
 	}
@@ -203,10 +210,10 @@ func TestStartLegacySessionRejectsAlreadySubmitted(t *testing.T) {
 		t.Fatalf("seed submitted hasil_tes: %v", err)
 	}
 
-	// Start via legacy path should be rejected
+	// The legacy mapel-only path no longer exists (audit M6): 400, not a new attempt.
 	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"mapel_id":1}`))
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("already submitted legacy start: status = %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("mapel-only start: status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -238,7 +245,7 @@ func TestStartSessionRejectsAlreadySubmitted(t *testing.T) {
 	}
 
 	// Attempting to restart an already submitted session must return 403 Forbidden
-	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+	resp := doJSON(t, app, "POST", "/api/student/start", strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOK"}`))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("already submitted session start: status = %d, want 403", resp.StatusCode)
 	}

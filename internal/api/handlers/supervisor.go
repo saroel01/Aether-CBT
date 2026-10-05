@@ -35,11 +35,12 @@ func SupervisorLogin(c *fiber.Ctx) error {
 	var id int
 	var passwordHash string
 	var namaRuang string
+	var tokenVersion int
 	err := db.DB.QueryRow(`
-		SELECT id, password_hash, nama_ruang 
+		SELECT id, password_hash, nama_ruang, token_version
 		FROM ruang 
 		WHERE username = ? AND tenant_id = ? AND deleted_at IS NULL
-	`, req.Username, tenantID).Scan(&id, &passwordHash, &namaRuang)
+	`, req.Username, tenantID).Scan(&id, &passwordHash, &namaRuang, &tokenVersion)
 
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
@@ -50,7 +51,7 @@ func SupervisorLogin(c *fiber.Ctx) error {
 	}
 
 	// Generate JWT token with supervisor role
-	token, err := utils.GenerateToken(id, tenantID, "supervisor")
+	token, err := utils.GenerateTokenWithVersion(id, tenantID, "supervisor", tokenVersion)
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to generate token")
 	}
@@ -63,19 +64,21 @@ func SupervisorLogin(c *fiber.Ctx) error {
 }
 
 type LiveStudentStatus struct {
-	ID             int        `json:"id"`
-	NoID           string     `json:"no_id"`
-	NamaPeserta    string     `json:"nama_peserta"`
-	KelasID        int        `json:"kelas_id"`
-	NamaKelas      string     `json:"nama_kelas"`
-	IsLoggedIn     bool       `json:"is_logged_in"`
-	LoginTime      *time.Time `json:"login_time,omitempty"`
-	SessionID      *int       `json:"session_id,omitempty"`
-	MapelID        *int       `json:"mapel_id,omitempty"`
-	NamaMapel      *string    `json:"nama_mapel,omitempty"`
-	Skor           *float64   `json:"skor,omitempty"`
-	SkorMaks       *float64   `json:"skor_maks,omitempty"`
-	HasilStatus    *string    `json:"hasil_status,omitempty"`
+	ID          int        `json:"id"`
+	NoID        string     `json:"no_id"`
+	NamaPeserta string     `json:"nama_peserta"`
+	KelasID     int        `json:"kelas_id"`
+	NamaKelas   string     `json:"nama_kelas"`
+	IsLoggedIn  bool       `json:"is_logged_in"`
+	LoginTime   *time.Time `json:"login_time,omitempty"`
+	SessionID   *int       `json:"session_id,omitempty"`
+	MapelID     *int       `json:"mapel_id,omitempty"`
+	NamaMapel   *string    `json:"nama_mapel,omitempty"`
+	Skor        *float64   `json:"skor,omitempty"`
+	SkorMaks    *float64   `json:"skor_maks,omitempty"`
+	HasilStatus *string    `json:"hasil_status,omitempty"`
+	// ScoreSource is hasil_tes.score_source: server | mixed | client | unmatched (audit C1, D5).
+	ScoreSource    *string    `json:"score_source,omitempty"`
 	WaktuSelesai   *time.Time `json:"waktu_selesai,omitempty"`
 	TabSwitches    int        `json:"tab_switches"`
 	AnsweredCount  int        `json:"answered_count"`
@@ -148,7 +151,7 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		       (SELECT cl.session_id FROM cek_login cl WHERE ` + sub + `) AS session_id,
 		       COALESCE((SELECT cl.locked FROM cek_login cl WHERE ` + sub + `), 0) AS locked,
 		       (SELECT m.nama_mapel FROM mapel m WHERE m.id = (SELECT cl.mapel_id FROM cek_login cl WHERE ` + sub + `)) AS nama_mapel,
-		       ht.skor, ht.skor_maks, ht.status, ht.waktu_selesai,
+		       ht.skor, ht.skor_maks, ht.status, ht.score_source, ht.waktu_selesai,
 		       COALESCE((SELECT cl.tab_switch_count FROM cek_login cl WHERE ` + sub + `), 0) AS tab_switches,
 		       COALESCE((SELECT cl.answered_count FROM cek_login cl WHERE ` + sub + `), 0) AS answered_count,
 		       COALESCE((SELECT cl.total_questions FROM cek_login cl WHERE ` + sub + `), 0) AS total_questions
@@ -192,12 +195,12 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		var lockedInt int
 		var namaMapelNull sql.NullString
 		var skorNull, skorMaksNull sql.NullFloat64
-		var hasilStatusNull sql.NullString
+		var hasilStatusNull, scoreSourceNull sql.NullString
 
 		if err := rows.Scan(
 			&s.ID, &s.NoID, &s.NamaPeserta, &s.KelasID, &s.NamaKelas,
 			&s.IsLoggedIn, &loginTimeNull, &mapelIDNull, &sessionIDNull, &lockedInt, &namaMapelNull,
-			&skorNull, &skorMaksNull, &hasilStatusNull, &waktuSelesaiNull,
+			&skorNull, &skorMaksNull, &hasilStatusNull, &scoreSourceNull, &waktuSelesaiNull,
 			&s.TabSwitches, &s.AnsweredCount, &s.TotalQuestions,
 		); err != nil {
 			return nil, err
@@ -225,6 +228,10 @@ func fetchRoomStatus(tenantID, ruangID, sessionID int) ([]LiveStudentStatus, err
 		if hasilStatusNull.Valid {
 			hs := hasilStatusNull.String
 			s.HasilStatus = &hs
+		}
+		if scoreSourceNull.Valid {
+			src := scoreSourceNull.String
+			s.ScoreSource = &src
 		}
 		if waktuSelesaiNull.Valid {
 			s.WaktuSelesai = &waktuSelesaiNull.Time

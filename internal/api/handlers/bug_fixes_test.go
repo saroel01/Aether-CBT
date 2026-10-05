@@ -225,7 +225,7 @@ func TestValidation_DeletedAtForRuang(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, _ := writer.CreateFormFile("file", "students.csv")
-	_, _ = part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n2026098,Siswa CSV,1,1,L\n"))
+	_, _ = part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n2026098,Siswa CSV,1,1,L,rahasia1\n"))
 	_ = writer.Close()
 
 	req := httptest.NewRequest("POST", "/admin/students/import-csv", &body)
@@ -250,9 +250,9 @@ func TestImportStudentsCSV_BulkPerformance(t *testing.T) {
 
 	// Generate 50 students with default password
 	var csvData strings.Builder
-	csvData.WriteString("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n")
+	csvData.WriteString("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n")
 	for i := 1; i <= 50; i++ {
-		csvData.WriteString(fmt.Sprintf("STUDENT_%03d,Student Name %d,1,1,L\n", i, i))
+		csvData.WriteString(fmt.Sprintf("STUDENT_%03d,Student Name %d,1,1,L,rahasia1\n", i, i))
 	}
 
 	var body bytes.Buffer

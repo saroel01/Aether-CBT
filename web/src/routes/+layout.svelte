@@ -1,6 +1,6 @@
 <script>
   import '../app.css';
-  import Toast from '$lib/components/ui/Toast.svelte';
+  import Toast from '#lib/components/ui/Toast.svelte';
 </script>
 
 <slot />

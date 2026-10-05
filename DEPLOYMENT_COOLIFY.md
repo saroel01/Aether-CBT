@@ -37,11 +37,15 @@ Coolify akan menangani konfigurasi *reverse proxy* dan sertifikat SSL secara oto
 
 ### Langkah 4: Konfigurasi Variabel Lingkungan (Environment Variables)
 1.  Buka tab **Environment Variables** di dasbor resource Coolify Anda.
-2.  Tambahkan tiga variabel penting berikut:
-    *   **`PORT`**: Isi dengan nilai `3000`.
-    *   **`DATABASE_URL`**: Isi dengan nilai `data/cbt_aether.db`.
-    *   **`JWT_SECRET`**: **WAJIB**. Isi dengan kunci token rahasia acak yang sangat kuat (minimal 32 karakter).
-    *   **`CORS_ALLOWED_ORIGINS`**: **Sangat direkomendasikan di produksi**. Contoh: `https://cbt.sekolah.sch.id,https://admin.sekolah.sch.id`
+2.  Tambahkan variabel berikut:
+    *   **`PORT`**: `3000`.
+    *   **`DATABASE_URL`**: `data/cbt_aether.db`.
+    *   **`ENV`**: `production` (sudah default di image).
+    *   **`JWT_SECRET`**: **WAJIB**. Hasil `openssl rand -hex 32` (minimal 32 karakter; nilai lemah yang dikenal ditolak).
+    *   **`CORS_ALLOWED_ORIGINS`**: **WAJIB** di produksi; tanpa ini container berhenti saat start. Contoh: `https://cbt.sekolah.sch.id`
+    *   **`SETUP_ADMIN_PASSWORD`**: password admin pertama (minimal 8 karakter, bukan password default). Dipakai hanya bila belum ada admin; hapus setelah login pertama dan ganti password lewat menu Pengaturan.
+    *   **`TRUSTED_PROXIES`**: rentang IP proxy Coolify/Traefik (mis. `10.0.0.0/8`), agar rate limit login (`AUTH_RATE_LIMIT_PER_MIN`, `AUTH_IP_RATE_LIMIT_PER_MIN`) memakai IP klien asli.
+    *   **`DEFAULT_TENANT_ID`**: isi `1` bila hanya satu sekolah memakai domain ini.
 3.  Klik tombol **Save** di bagian bawah kolom variabel.
 
 ### Langkah 5: Konfigurasi Volume Persisten (SANGAT PENTING!)
@@ -53,6 +57,14 @@ Platform Aether CBT menggunakan database **SQLite 3** yang menyimpan seluruh dat
     *   **Volume Name / Source**: `aether-cbt-database-storage`
     *   **Mount Path / Destination (di dalam Container)**: `/app/data`
 4.  Klik **Save**. Volume ini menjamin berkas database `cbt_aether.db` tersimpan secara permanen pada disk fisik server VPS Anda.
+5.  Image berjalan sebagai user non-root `app` (uid 10001) dan mendeklarasikan `VOLUME /app/data`. Bila memakai bind mount ke folder host, pastikan folder itu dapat ditulis uid 10001 (`chown -R 10001:10001 <folder>`). Image juga punya `HEALTHCHECK` ke `/api/health`.
+6.  **Upgrade dari image lama (root) — wajib sekali jalan.** Volume yang sudah ada berisi file milik root (`cbt_aether.db`, `-wal`/`-shm`, `queue/`, `soal/`); Docker tidak mengubah kepemilikan volume yang sudah terisi, sehingga uid 10001 gagal menulis DB/WAL/antrean. Sebelum deploy image baru, hentikan aplikasi di Coolify, lalu di VPS jalankan:
+    ```bash
+    docker volume ls | grep aether-cbt-database-storage   # Coolify bisa menambah prefiks pada nama volume
+    docker run --rm -v <nama-volume>:/data alpine:3.22 chown -R 10001:10001 /data
+    ```
+    Lalu deploy. Untuk bind mount, jalankan `sudo chown -R 10001:10001 <folder>` di host.
+7.  Batas waktu tulis respons server adalah 10 menit per respons (`WriteTimeout`). Transfer yang lebih lama (media paket sangat besar di jaringan lab yang padat) akan terputus; kecilkan media paket atau perbaiki bandwidth lab.
 
 ### Langkah 6: Jalankan Kompilasi dan Deployment
 1.  Setelah seluruh konfigurasi di atas disimpan, klik tombol **Deploy** di pojok kanan atas.
@@ -65,7 +77,9 @@ Platform Aether CBT menggunakan database **SQLite 3** yang menyimpan seluruh dat
 ---
 
 ## 🔗 PERUTEAN MULTI-TENANT SUBDOMAIN WILDCARD DI CLOUD
-Jika Anda memasang domain wildcard (misalnya `https://*.domainanda.com`), fitur isolasi multi-tenant otomatis di Aether CBT akan langsung beroperasi secara penuh:
-*   Browser siswa yang memanggil `sekolaha.domainanda.com` secara instan menyajikan halaman kuis milik **Sekolah A**.
-*   Browser siswa yang memanggil `sekolahb.domainanda.com` secara instan menyajikan halaman kuis milik **Sekolah B**.
-*   Dasbor Coolify secara cerdas bertindak sebagai *wildcard router* yang meneruskan dan mengamankan seluruh lalu lintas data HTTPS subdomain tersebut langsung ke port internal container `3000` secara mulus.
+Dengan domain wildcard (misalnya `https://*.domainanda.com`) semua subdomain diteruskan ke container yang sama. Server menentukan tenant per request dengan urutan berikut (`internal/api/middleware/tenant.go`):
+1.  Setelah login: klaim `tenant_id` di JWT (selalu menang).
+2.  Sebelum login: header/parameter `X-Tenant-ID`, lalu `X-Tenant-Slug`, lalu subdomain pertama host (`sekolaha.domainanda.com` → slug `sekolaha`, kecuali `www`/`api`).
+3.  Bila tidak ada satu pun: `DEFAULT_TENANT_ID`; tanpa itu request ditolak 400 di produksi.
+
+Slug subdomain harus sama dengan `tenants.slug`. Tenant baru dibuat oleh superadmin lewat `POST /api/tenants` (slug huruf kecil/angka/tanda hubung); tidak ada UI untuk ini. `CORS_ALLOWED_ORIGINS` harus memuat setiap origin subdomain yang dipakai.

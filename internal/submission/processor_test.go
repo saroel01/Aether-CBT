@@ -3,10 +3,12 @@ package submission
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	ispringparser "github.com/saroel01/aether-cbt/internal/ispring"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,7 +22,7 @@ func setupProcessorDB(t *testing.T) *sql.DB {
 		`CREATE TABLE peserta (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, no_id TEXT NOT NULL, password TEXT, nama_peserta TEXT, kelas_id INTEGER, ruang_id INTEGER);`,
 		`CREATE TABLE mapel (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, nama_mapel TEXT, durasi_menit INTEGER DEFAULT 90);`,
 		`CREATE TABLE cek_login (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, session_id INTEGER, attempt_token TEXT, login_time DATETIME DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE hasil_tes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, exam_session_id INTEGER, skor REAL, skor_maks REAL, detail_xml TEXT, status TEXT, validasi TEXT NOT NULL, waktu_selesai DATETIME, UNIQUE(tenant_id, validasi));`,
+		`CREATE TABLE hasil_tes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, exam_session_id INTEGER, skor REAL, skor_maks REAL, score_source TEXT NOT NULL DEFAULT 'client', detail_xml TEXT, status TEXT, validasi TEXT NOT NULL, waktu_selesai DATETIME, UNIQUE(tenant_id, validasi));`,
 		`CREATE TABLE hasil_tes_detail (id INTEGER PRIMARY KEY AUTOINCREMENT, hasil_tes_id INTEGER NOT NULL, question_id TEXT NOT NULL, question_text TEXT, question_type TEXT, status TEXT, awarded_points REAL, max_points REAL, user_answer TEXT, correct_answer TEXT);`,
 	}
 	for _, schema := range schemas {
@@ -126,8 +128,9 @@ func TestProcessorProcessBatchIsIdempotentForDuplicateValidasi(t *testing.T) {
 		t.Fatalf("detail rows = %d, want 2", detailCount)
 	}
 
-	// Overwrite attempt: different score or payload must be rejected with an error (P0-2)
-	overwriteJob := processorJob("100", detailXMLWithQuestions())
+	// Overwrite attempt: a different payload must be rejected with an error (P0-2). The replay
+	// check compares detail_xml only, since the score is derived from it (audit C1).
+	overwriteJob := processorJob("20", strings.Replace(detailXMLWithQuestions(), `awardedPoints="0"`, `awardedPoints="10"`, 1))
 	if err := processor.Process(context.Background(), overwriteJob); err == nil {
 		t.Fatal("expected error on overwrite attempt of submitted hasil_tes, got nil")
 	}
@@ -227,8 +230,8 @@ func TestProcessorPreservesEssayGradingOnDuplicateAttempt(t *testing.T) {
 		t.Fatalf("update hasil_tes score: %v", err)
 	}
 
-	// Subsequent student attempt arrives with same Validasi and claimed Score: 100
-	jobB := processorJob("100", detailXMLWithQuestions())
+	// Subsequent student attempt arrives with same Validasi and a different detail XML
+	jobB := processorJob("20", strings.Replace(detailXMLWithQuestions(), `awardedPoints="0"`, `awardedPoints="10"`, 1))
 	err := p.Process(context.Background(), jobB)
 	if err == nil {
 		t.Fatal("jobB expected error on duplicate overwrite attempt, got nil")
@@ -311,6 +314,113 @@ func TestProcessorRejectsInflatedClientScore(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "score mismatch") {
 		t.Fatalf("expected 'score mismatch' error, got: %v", err)
+	}
+}
+
+// TestProcessorGradesFromAnswerKey: when the exam's soal_package has an answer key, the score
+// comes from the key, not from the client's sp or awardedPoints (audit C1).
+func TestProcessorGradesFromAnswerKey(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+	for _, s := range []string{
+		`CREATE TABLE exam_session (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, exam_id INTEGER NOT NULL);`,
+		`CREATE TABLE exam (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, mapel_id INTEGER, durasi_menit INTEGER, soal_package_id INTEGER);`,
+		`CREATE TABLE soal_package (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, answer_key TEXT);`,
+		`INSERT INTO exam_session (id, tenant_id, exam_id) VALUES (3, 1, 4);`,
+		`INSERT INTO exam (id, tenant_id, mapel_id, durasi_menit, soal_package_id) VALUES (4, 1, 7, 90, 5);`,
+		`UPDATE cek_login SET session_id = 3 WHERE attempt_token = 'tok';`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("schema: %v", err)
+		}
+	}
+	key := ispringparser.AnswerKey{Version: 1, Status: ispringparser.AnswerKeyFull, MaxScore: 20, MaxScoreKnown: true,
+		Questions: []ispringparser.KeyQuestion{
+			{ID: "q1", Type: ispringparser.KeyTypeMultipleChoice, Text: "Question one?", Points: 10, Gradable: true, Choices: []string{"A", "Z"}, Correct: []string{"A"}},
+			{ID: "q2", Type: ispringparser.KeyTypeMultipleChoice, Text: "Question two?", Points: 10, Gradable: true, Choices: []string{"B", "Z"}, Correct: []string{"Z"}},
+		}}
+	raw, _ := json.Marshal(key)
+	if _, err := db.Exec(`INSERT INTO soal_package (id, tenant_id, answer_key) VALUES (5, 1, ?)`, string(raw)); err != nil {
+		t.Fatalf("seed soal_package: %v", err)
+	}
+
+	// Client inflates both sp and awardedPoints: it claims 20/20, but q2's answer "B" is wrong.
+	xml := strings.ReplaceAll(detailXMLWithQuestions(), `awardedPoints="0"`, `awardedPoints="10"`)
+	job := processorJob("20", xml)
+	job.Validasi = ""
+	if err := NewProcessor(db).Process(context.Background(), job); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	var skor, maks float64
+	var source string
+	if err := db.QueryRow(`SELECT skor, skor_maks, score_source FROM hasil_tes WHERE validasi = '1_S-001_3'`).Scan(&skor, &maks, &source); err != nil {
+		t.Fatalf("select hasil_tes: %v", err)
+	}
+	if skor != 10 || maks != 20 || source != "server" {
+		t.Fatalf("hasil_tes = %v/%v %s, want 10/20 server", skor, maks, source)
+	}
+	var q2 float64
+	if err := db.QueryRow(`SELECT awarded_points FROM hasil_tes_detail WHERE question_id = 'q2'`).Scan(&q2); err != nil {
+		t.Fatalf("select detail: %v", err)
+	}
+	if q2 != 0 {
+		t.Fatalf("q2 awarded_points = %v, want 0", q2)
+	}
+}
+
+// TestProcessorStoresUnmatchedScoreSource (review b): a key whose questions match none of
+// the dr questions is persisted as score_source = unmatched.
+func TestProcessorStoresUnmatchedScoreSource(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+	for _, s := range []string{
+		`CREATE TABLE exam_session (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, exam_id INTEGER NOT NULL);`,
+		`CREATE TABLE exam (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, mapel_id INTEGER, durasi_menit INTEGER, soal_package_id INTEGER);`,
+		`CREATE TABLE soal_package (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, answer_key TEXT);`,
+		`INSERT INTO exam_session (id, tenant_id, exam_id) VALUES (3, 1, 4);`,
+		`INSERT INTO exam (id, tenant_id, mapel_id, durasi_menit, soal_package_id) VALUES (4, 1, 7, 90, 5);`,
+		`UPDATE cek_login SET session_id = 3 WHERE attempt_token = 'tok';`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("schema: %v", err)
+		}
+	}
+	key := ispringparser.AnswerKey{Version: 1, Status: ispringparser.AnswerKeyFull, MaxScore: 10, MaxScoreKnown: true,
+		Questions: []ispringparser.KeyQuestion{
+			{ID: "other", Type: ispringparser.KeyTypeMultipleChoice, Text: "Pertanyaan paket lain?", Points: 10, Gradable: true, Choices: []string{"A", "B"}, Correct: []string{"A"}},
+		}}
+	raw, _ := json.Marshal(key)
+	if _, err := db.Exec(`INSERT INTO soal_package (id, tenant_id, answer_key) VALUES (5, 1, ?)`, string(raw)); err != nil {
+		t.Fatalf("seed soal_package: %v", err)
+	}
+	job := processorJob("10", detailXMLWithQuestions())
+	job.Validasi = ""
+	if err := NewProcessor(db).Process(context.Background(), job); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	var skor float64
+	var source string
+	if err := db.QueryRow(`SELECT skor, score_source FROM hasil_tes WHERE validasi = '1_S-001_3'`).Scan(&skor, &source); err != nil {
+		t.Fatalf("select hasil_tes: %v", err)
+	}
+	if source != ispringparser.ScoreSourceUnmatched || skor != 0 {
+		t.Fatalf("hasil_tes = %v %s, want 0 unmatched", skor, source)
+	}
+}
+
+// TestProcessorWithoutKeyIsClientSource: no session/package -> legacy path, labelled client.
+func TestProcessorWithoutKeyIsClientSource(t *testing.T) {
+	db := setupProcessorDB(t)
+	defer db.Close()
+	if err := NewProcessor(db).Process(context.Background(), processorJob("10", detailXMLWithQuestions())); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	var source string
+	if err := db.QueryRow(`SELECT score_source FROM hasil_tes WHERE validasi = '1_S-001_7'`).Scan(&source); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if source != "client" {
+		t.Fatalf("score_source = %q, want client", source)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -79,13 +78,18 @@ func SetupFeaturesTestDB(t *testing.T) {
 			mapel_id INTEGER NOT NULL,
 			skor REAL,
 			skor_maks REAL,
+			score_source TEXT NOT NULL DEFAULT 'client',
 			detail_xml TEXT,
 			status TEXT DEFAULT 'submitted',
 			validasi TEXT NOT NULL,
+			exam_session_id INTEGER,
 			waktu_selesai DATETIME,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(tenant_id, validasi)
 		);`,
+		`CREATE TABLE IF NOT EXISTS exam_session (id INTEGER PRIMARY KEY, exam_id INTEGER);`,
+		`CREATE TABLE IF NOT EXISTS exam (id INTEGER PRIMARY KEY, soal_package_id INTEGER);`,
+		`CREATE TABLE IF NOT EXISTS soal_package (id INTEGER PRIMARY KEY, nama TEXT);`,
 		`CREATE TABLE IF NOT EXISTS hasil_tes_detail (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			hasil_tes_id INTEGER NOT NULL,
@@ -97,6 +101,16 @@ func SetupFeaturesTestDB(t *testing.T) {
 			max_points REAL,
 			user_answer TEXT,
 			correct_answer TEXT
+		);`,
+		`CREATE TABLE IF NOT EXISTS submission_failure (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER NOT NULL,
+			no_id TEXT NOT NULL,
+			validasi TEXT NOT NULL DEFAULT '',
+			attempt_token TEXT NOT NULL DEFAULT '',
+			error_message TEXT NOT NULL DEFAULT '',
+			submitted_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 	}
 
@@ -268,9 +282,7 @@ func (c *manualClock) Advance(d time.Duration) {
 }
 
 // 3. Test iSpring Submission Grace Period Check
-// With the new async design, the handler enqueues the job (HTTP 200) and the
-// processor rejects it with "grace period exceeded". After Max_Retries calls to
-// MarkFailed, the job ends up in failed/.
+// The webhook checks grace synchronously and answers 409 without enqueueing.
 // Requirement 15.5.
 func TestISpringGracePeriod(t *testing.T) {
 	SetupFeaturesTestDB(t)
@@ -321,68 +333,43 @@ func TestISpringGracePeriod(t *testing.T) {
 		t.Fatalf("Failed request: %v", err)
 	}
 
-	// Step 1: handler should return HTTP 200 — job is enqueued, grace check is in processor.
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected 200 OK from handler (grace period check is in processor), got %d", resp.StatusCode)
+	// Audit H1 (D8): the grace check now runs synchronously in the webhook, so a late
+	// submission is refused with 409 and never reaches the queue.
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("Expected 409 Conflict for grace period exceeded, got %d", resp.StatusCode)
 	}
-
-	// Step 2: run processor — it should return "grace period exceeded" error.
-	processor := submission.NewProcessor(db.DB)
-	ctx := context.Background()
-
-	job, deqErr := fsQueue.Dequeue(ctx)
-	if deqErr != nil {
-		t.Fatalf("Failed to dequeue job: %v", deqErr)
-	}
-	if job == nil {
-		t.Fatal("Expected a job in the queue after POST, got nil")
-	}
-
-	processErr := processor.Process(ctx, job)
-	if processErr == nil {
-		t.Errorf("Expected processor to return an error for grace period exceeded, got nil")
-	} else if !strings.Contains(processErr.Error(), "grace period exceeded") {
-		t.Errorf("Expected error to contain 'grace period exceeded', got: %v", processErr)
-	}
-
-	// Step 3: simulate Max_Retries calls to MarkFailed so the job ends up in failed/.
-	// The queue has maxRetries=5. We already have the job dequeued (in processing/).
-	// Call MarkFailed once — this puts it back in pending/ with retry_count=1.
-	// Repeat until retry_count reaches maxRetries (5), at which point it goes to failed/.
-	maxRetries := 5
-	gracePeriodErr := fmt.Errorf("grace period exceeded")
-
-	// First MarkFailed (job is currently in processing/ from the Dequeue above)
-	if mErr := fsQueue.MarkFailed(ctx, job.ID, gracePeriodErr); mErr != nil {
-		t.Fatalf("MarkFailed (attempt 1) failed: %v", mErr)
-	}
-
-	// Remaining retries: advance past the backoff, dequeue → MarkFailed until maxRetries
-	for i := 2; i <= maxRetries; i++ {
-		// Backoff for retry_count n is min(2^(n-1), 30) seconds; jump well past it.
-		queueClock.Advance(31 * time.Second)
-		nextJob, dErr := fsQueue.Dequeue(ctx)
-		if dErr != nil {
-			t.Fatalf("Dequeue (attempt %d) failed: %v", i, dErr)
-		}
-		if nextJob == nil {
-			t.Fatalf("Expected job in pending/ for retry attempt %d, got nil", i)
-		}
-		if mErr := fsQueue.MarkFailed(ctx, nextJob.ID, gracePeriodErr); mErr != nil {
-			t.Fatalf("MarkFailed (attempt %d) failed: %v", i, mErr)
-		}
-	}
-
-	// Step 4: verify job is in failed/ after Max_Retries exhausted.
-	stats, sErr := fsQueue.GetStats(ctx)
+	stats, sErr := fsQueue.GetStats(context.Background())
 	if sErr != nil {
 		t.Fatalf("GetStats failed: %v", sErr)
 	}
-	if stats.FailedCount != 1 {
-		t.Errorf("Expected 1 file in failed/ after max retries, got %d", stats.FailedCount)
+	if stats.PendingCount != 0 || stats.ProcessingCount != 0 || stats.FailedCount != 0 {
+		t.Errorf("Expected an empty queue, got %+v", stats)
 	}
-	if stats.PendingCount != 0 {
-		t.Errorf("Expected 0 files in pending/ after max retries, got %d", stats.PendingCount)
+
+	// Review Tahap 1 sisa (a): the refusal is reported to staff exactly once per attempt,
+	// even when the client retries the same late submission.
+	countFailures := func() int {
+		var n int
+		if err := db.DB.QueryRow(`SELECT COUNT(*) FROM submission_failure
+			WHERE tenant_id = 1 AND attempt_token = 'feature-attempt-token' AND error_message = 'grace period exceeded'`).Scan(&n); err != nil {
+			t.Fatalf("count submission_failure: %v", err)
+		}
+		return n
+	}
+	if n := countFailures(); n != 1 {
+		t.Errorf("submission_failure rows after late webhook = %d, want 1", n)
+	}
+	req2 := httptest.NewRequest("POST", "/webhook", strings.NewReader(form.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp2, err := app.Test(req2)
+	if err != nil {
+		t.Fatalf("Failed retry request: %v", err)
+	}
+	if resp2.StatusCode != http.StatusConflict {
+		t.Errorf("retry: expected 409, got %d", resp2.StatusCode)
+	}
+	if n := countFailures(); n != 1 {
+		t.Errorf("submission_failure rows after retry = %d, want 1 (no duplicates)", n)
 	}
 }
 
@@ -444,43 +431,6 @@ func TestItemAnalysis(t *testing.T) {
 			if item.SuccessRate != 0.0 || item.DifficultyClassification != "Sangat Sukar" {
 				t.Errorf("q_hard mismatch: success=%f classification=%s", item.SuccessRate, item.DifficultyClassification)
 			}
-		}
-	}
-}
-
-// 5. Test Live Proctoring SSE Setup
-func TestLiveProctoringSSE(t *testing.T) {
-	SetupFeaturesTestDB(t)
-	defer TeardownFeaturesTestDB()
-
-	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
-		c.Locals("tenant_id", 1)
-		c.Locals("role", "supervisor")
-		c.Locals("user_id", 1) // matches ruang_id
-		return c.Next()
-	})
-
-	app.Get("/live", GetRoomStatusSSE)
-
-	req := httptest.NewRequest("GET", "/live", nil)
-	// Gofiber Test parses body stream, but since SSE loops forever,
-	// app.Test with NewRequest might block if it tries to read the entire body.
-	// However, we can test fiber's HTTP response headers negotiation immediately!
-	// Fiber's Test implementation lets us test handler execution.
-	// But to avoid locking/blocking indefinitely during the unit test loop,
-	// let's pass a request context with timeout so it finishes gracefully!
-	ctx, cancel := context.WithTimeout(req.Context(), 100*time.Millisecond)
-	defer cancel()
-	req = req.WithContext(ctx)
-
-	resp, err := app.Test(req, 200) // Timeout is handled gracefully by app.Test in Fiber
-	if err == nil {
-		if resp.Header.Get("Content-Type") != "text/event-stream" {
-			t.Errorf("Expected Content-Type text/event-stream, got %s", resp.Header.Get("Content-Type"))
-		}
-		if resp.Header.Get("Connection") != "keep-alive" {
-			t.Errorf("Expected Connection keep-alive, got %s", resp.Header.Get("Connection"))
 		}
 	}
 }

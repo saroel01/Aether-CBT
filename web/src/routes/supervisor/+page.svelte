@@ -1,16 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { api, qrCodeUrl, studentLoginQrUrl } from '$lib/api';
-  import { authStore } from '$lib/stores/auth';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import { toast } from '$lib/stores/toast';
+  import { api, qrCodeUrl, studentLoginQrUrl } from '#lib/api.js';
+  import { authStore } from '#lib/stores/auth.js';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import SubmissionFailures from '#lib/components/SubmissionFailures.svelte';
+  import PasswordGenerator from '#lib/components/PasswordGenerator.svelte';
+  import { goto } from '$app/navigation';
+  import { toast } from '#lib/stores/toast.js';
 
   let roomName = '';
   let supervisorName = '';
@@ -168,6 +171,37 @@
     window.location.href = '/supervisor/login';
   }
 
+  // Pengawas changes the room password (audit M4). The server bumps token_version, so the
+  // current session is revoked and the user must log in again.
+  let showPasswordModal = false;
+  let pwCurrent = '';
+  let pwNew = '';
+  let pwLoading = false;
+
+  async function changePassword() {
+    if (!pwCurrent || pwNew.length < 8) {
+      toast.warning('Isi password lama dan password baru minimal 8 karakter.');
+      return;
+    }
+    pwLoading = true;
+    try {
+      await api('/me', {
+        method: 'PUT',
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew })
+      });
+      toast.success('Password berhasil diubah. Silakan login kembali.');
+      showPasswordModal = false;
+      setTimeout(() => {
+        authStore.logout();
+        goto('/supervisor/login');
+      }, 1200);
+    } catch (e: any) {
+      toast.error('Gagal mengganti password: ' + e.message);
+    } finally {
+      pwLoading = false;
+    }
+  }
+
   function formatTime(timeStr: string | undefined): string {
     if (!timeStr) return '—';
     try {
@@ -186,7 +220,7 @@
 
 <div class="min-h-dvh bg-slate-50 flex flex-col justify-between select-none">
   <!-- Nav header -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 sm:px-6 py-3.5 shadow-sm">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 sm:px-6 py-3.5 shadow-xs">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
       <div class="flex items-center gap-3">
         <span class="text-lg font-bold tracking-tight text-cobalt-600 font-display">AETHER CBT</span>
@@ -198,6 +232,9 @@
           <div class="font-bold text-slate-800">{roomName}</div>
           <div class="text-xs text-slate-500 font-medium">@{supervisorName}</div>
         </div>
+        <Button variant="ghost" size="sm" theme="light" on:click={() => (showPasswordModal = true)}>
+          Ganti Password
+        </Button>
         <Button variant="ghost" size="sm" theme="light" class="text-ruby-600 hover:text-ruby-700 hover:bg-ruby-50" on:click={logout}>
           Keluar
         </Button>
@@ -207,6 +244,9 @@
 
   <!-- Main Workspace -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6 z-10">
+    <!-- Dead-lettered submissions (audit H1) -->
+    <SubmissionFailures />
+
     <!-- Header Summary -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
@@ -224,7 +264,7 @@
 
     <!-- Statistics Panel Grid (Compact metric cards with tabular-nums font-mono) -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-sm">
+      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-xs">
         <div>
           <span class="text-xs text-slate-500 font-bold uppercase tracking-wider font-mono">Total Siswa</span>
           <div class="text-3xl font-extrabold text-slate-900 mt-1 font-mono tabular-nums tracking-tight">{totalCount}</div>
@@ -232,7 +272,7 @@
         <div class="h-10 w-10 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center font-bold text-sm">∑</div>
       </Card>
 
-      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-sm">
+      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-xs">
         <div>
           <span class="text-xs text-cobalt-600 font-bold uppercase tracking-wider font-mono">Sedang Ujian</span>
           <div class="text-3xl font-extrabold text-cobalt-600 mt-1 font-mono tabular-nums tracking-tight">{activeCount}</div>
@@ -240,7 +280,7 @@
         <div class="h-10 w-10 bg-cobalt-50 text-cobalt-600 rounded-xl flex items-center justify-center font-bold text-sm">✎</div>
       </Card>
 
-      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-sm">
+      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-xs">
         <div>
           <span class="text-xs text-emerald-600 font-bold uppercase tracking-wider font-mono">Selesai Ujian</span>
           <div class="text-3xl font-extrabold text-emerald-600 mt-1 font-mono tabular-nums tracking-tight">{finishedCount}</div>
@@ -248,7 +288,7 @@
         <div class="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold text-sm">✓</div>
       </Card>
 
-      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-sm">
+      <Card padding="sm" class="border-slate-200 bg-white flex items-center justify-between shadow-xs">
         <div>
           <span class="text-xs text-amber-600 font-bold uppercase tracking-wider font-mono">Belum Mulai</span>
           <div class="text-3xl font-extrabold text-amber-600 mt-1 font-mono tabular-nums tracking-tight">{idleCount}</div>
@@ -276,7 +316,7 @@
           </div>
         {:else}
           <!-- Instant Search Toolbar for Cockpit Monitor -->
-          <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
             <div class="relative flex-1 max-w-sm">
               <Input 
                 type="search"
@@ -381,6 +421,13 @@
                     {#if isSubmitted && s.skor !== undefined}
                       <span class="font-bold font-mono text-slate-900 tabular-nums text-sm">{s.skor}</span>
                       <span class="text-xs font-mono text-slate-500 tabular-nums"> / {s.skor_maks}</span>
+                      {#if s.score_source === 'client'}
+                        <span class="ml-1 inline-block rounded-sm bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Skor berasal dari laporan peserta, tidak dinilai ulang server">Skor dilaporkan klien</span>
+                      {:else if s.score_source === 'unmatched'}
+                        <span class="ml-1 inline-block rounded-sm bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700" title="Kunci jawaban paket tidak cocok dengan laporan iSpring; periksa/unggah ulang paket">Kunci tidak cocok</span>
+                      {:else if s.score_source === 'mixed'}
+                        <span class="ml-1 inline-block rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Sebagian soal tidak dapat dinilai server">Sebagian dilaporkan klien</span>
+                      {/if}
                     {:else}
                       <span class="text-slate-400 font-mono text-xs tabular-nums">—</span>
                     {/if}
@@ -448,7 +495,7 @@
       <div class="lg:col-span-1 flex flex-col gap-3 sticky top-24">
         <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 font-mono">Token Ruangan</h2>
 
-        <Card padding="md" class="border-slate-200 bg-white text-center shadow-sm relative overflow-hidden">
+        <Card padding="md" class="border-slate-200 bg-white text-center shadow-xs relative overflow-hidden">
           <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 font-mono">Token Ujian Aktif</div>
           <div class="text-3xl font-extrabold text-cobalt-600 font-mono tracking-widest mb-4 bg-cobalt-50/70 py-3 rounded-xl border border-cobalt-200/80 tabular-nums select-all">
             {activeToken || '—'}
@@ -457,7 +504,7 @@
           <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 font-mono">QR Code Verifikasi</div>
           
           {#if activeToken}
-            <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-4 shadow-sm">
+            <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-4 shadow-xs">
               <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-44 w-44 mx-auto object-contain" />
             </div>
           {/if}
@@ -471,7 +518,7 @@
             variant="primary" 
             size="md" 
             theme="light" 
-            class="w-full flex items-center justify-center gap-2 font-semibold shadow-sm" 
+            class="w-full flex items-center justify-center gap-2 font-semibold shadow-xs" 
             on:click={() => showProjectorModal = true}
           >
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -551,5 +598,17 @@
     >
       Tutup
     </Button>
+  </div>
+</Modal>
+
+<!-- Ganti password ruang (audit M4) -->
+<Modal bind:show={showPasswordModal} size="md" theme="light" title="Ganti Password Pengawas">
+  <form class="space-y-4" on:submit|preventDefault={changePassword}>
+    <Input id="pw-current" label="Password Lama" type="password" bind:value={pwCurrent} autocomplete="current-password" theme="light" required />
+    <PasswordGenerator id="pw-new" label="Password Baru (min. 8 karakter)" length={12} bind:value={pwNew} />
+  </form>
+  <div slot="footer" class="w-full flex justify-end gap-2">
+    <Button variant="secondary" size="sm" theme="light" on:click={() => (showPasswordModal = false)}>Batal</Button>
+    <Button variant="primary" size="sm" theme="light" loading={pwLoading} disabled={pwLoading} on:click={changePassword}>Simpan</Button>
   </div>
 </Modal>

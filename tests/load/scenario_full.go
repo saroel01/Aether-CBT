@@ -12,6 +12,7 @@ func runFullExamCycle(client *LoadClient, dp *DataPrep, concurrency int, duratio
 	fmt.Printf("\n>>> Preparing: %s\n", scenarioName)
 
 	examToken := dp.GetExamToken()
+	client.ExamToken = examToken // M1: /student/start requires the session token
 	prefix := fmt.Sprintf("FC%d_", concurrency)
 
 	fmt.Printf("  Creating %d test students...\n", concurrency)

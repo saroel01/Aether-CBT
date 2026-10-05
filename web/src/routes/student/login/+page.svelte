@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api } from '$lib/api';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import { toast } from '$lib/stores/toast';
+  import { api } from '#lib/api.js';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   // Dev-only credential prefill (Requirement: convenience for local development only).
   // `import.meta.env.DEV` is a compile-time constant that Vite statically replaces with `false`
@@ -104,7 +104,7 @@
     <!-- Academic Emblem -->
     <div class="text-center mb-8">
       <div class="mb-5 flex justify-center">
-        <div class="h-14 w-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-sm">
+        <div class="h-14 w-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-xs">
           <svg class="h-7 w-7 text-cobalt-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
@@ -115,7 +115,7 @@
     </div>
 
     <!-- Institutional Slate Login Card -->
-    <Card theme="dark" padding="lg" class="shadow-sm border-slate-800 bg-slate-900/90 rounded-2xl">
+    <Card theme="dark" padding="lg" class="shadow-xs border-slate-800 bg-slate-900/90 rounded-2xl">
       <h2 class="text-xl font-bold text-center text-slate-100 mb-6 font-display">Login Peserta Ujian</h2>
 
       <form on:submit|preventDefault={login} class="space-y-4">

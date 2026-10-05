@@ -10,7 +10,12 @@ func SecurityHeaders() fiber.Handler {
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("X-Frame-Options", "SAMEORIGIN")
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Set("Content-Security-Policy", "frame-ancestors 'self'")
+		// L2: script-src is deliberately not restricted: the SvelteKit static adapter emits
+		// inline bootstrap scripts and the iSpring player relies on inline script/eval.
+		c.Set("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+		if c.Protocol() == "https" {
+			c.Set("Strict-Transport-Security", "max-age=15552000; includeSubDomains")
+		}
 		return c.Next()
 	}
 }

@@ -34,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
+	if err := db.RunMigrations(db.DB, os.Getenv("MIGRATIONS_DIR")); err != nil {
 		log.Fatal(err)
 	}
 

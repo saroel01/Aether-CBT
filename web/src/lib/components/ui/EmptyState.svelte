@@ -28,7 +28,7 @@
   {#if icon !== 'none'}
     <div 
       class="{compact ? 'w-10 h-10 rounded-xl mb-3' : 'w-14 h-14 rounded-2xl mb-4'} flex items-center justify-center border transition-colors
-      {isDark ? 'bg-slate-900/90 border-slate-800 text-slate-400' : 'bg-slate-100/80 border-slate-200/80 text-slate-400 shadow-sm'}"
+      {isDark ? 'bg-slate-900/90 border-slate-800 text-slate-400' : 'bg-slate-100/80 border-slate-200/80 text-slate-400 shadow-xs'}"
     >
       <slot name="icon">
         {#if icon === 'search'}
@@ -78,7 +78,7 @@
       <slot name="action">
         {#if actionHref}
           <a href={actionHref}>
-            <Button variant={actionVariant} size="sm" {theme} class="shadow-sm font-semibold">
+            <Button variant={actionVariant} size="sm" {theme} class="shadow-xs font-semibold">
               {actionText}
             </Button>
           </a>
@@ -87,7 +87,7 @@
             variant={actionVariant} 
             size="sm" 
             {theme} 
-            class="shadow-sm font-semibold"
+            class="shadow-xs font-semibold"
             on:click={handleActionClick}
           >
             {actionText}

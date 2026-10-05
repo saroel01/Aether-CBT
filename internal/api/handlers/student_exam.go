@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -46,6 +48,10 @@ func GetActiveExamInfo(c *fiber.Ctx) error {
 func GetAvailableMapels(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 	pesertaID := c.QueryInt("peserta_id", 0)
+	if role, _ := c.Locals("role").(string); role == "student" {
+		// L6: a student only ever sees their own class mapping; the query is ignored.
+		pesertaID, _ = c.Locals("user_id").(int)
+	}
 
 	var rows *sql.Rows
 	var err error
@@ -112,17 +118,16 @@ func GetAvailableMapels(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, list, "Subjects list retrieved successfully")
 }
 
-// StartExamSession registers a student's active exam session. When session_id is provided it
-// takes the session-based path (eligibility + lock + content cookie, Requirements 7.1-7.4);
-// otherwise it falls back to the legacy mapel-based upsert during the transition (Req 6.6).
+// StartExamSession registers a student's active exam session for a session_id (eligibility +
+// lock + content cookie, Requirements 7.1-7.4). session_id is required (audit M6).
 func StartExamSession(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 	role := c.Locals("role").(string)
 
 	var req struct {
-		PesertaID int `json:"peserta_id"`
-		SessionID int `json:"session_id"`
-		MapelID   int `json:"mapel_id"` // legacy path
+		PesertaID int    `json:"peserta_id"`
+		SessionID int    `json:"session_id"`
+		Token     string `json:"token"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body")
@@ -143,108 +148,68 @@ func StartExamSession(c *fiber.Ctx) error {
 
 	cekRepo := repository.NewCekLoginRepository(db.DB)
 
-	if req.SessionID > 0 {
-		// Session-based path.
-		svc := newSchedulingService()
-		sessionRepo := repository.NewExamSessionRepository(db.DB)
-
-		session, err := sessionRepo.GetByID(tenantID, req.SessionID)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return utils.ErrorResponse(c, fiber.StatusNotFound, "Session not found")
-			}
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load session")
-		}
-		if reason := svc.NotEnterableReason(session); reason != "" {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, reason)
-		}
-		eligible, err := svc.IsParticipantEligible(tenantID, req.PesertaID, req.SessionID)
-		if err != nil {
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to verify eligibility")
-		}
-		if !eligible {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, "You are not eligible for this session")
-		}
-		if locked, _ := cekRepo.IsLocked(tenantID, req.PesertaID, req.SessionID); locked {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
-		}
-		// Check if student has already submitted this exam session (P0-2)
-		var sessionAlreadySubmitted bool
-		err = db.DB.QueryRowContext(c.Context(), `
-			SELECT 1 FROM hasil_tes
-			WHERE tenant_id = ? AND peserta_id = ? AND exam_session_id = ? AND status = 'submitted'
-			LIMIT 1
-		`, tenantID, req.PesertaID, req.SessionID).Scan(&sessionAlreadySubmitted)
-		if err == nil && sessionAlreadySubmitted {
-			return utils.ErrorResponse(c, fiber.StatusForbidden, "Exam session has already been submitted")
-		}
-
-		if err := cekRepo.Start(tenantID, req.PesertaID, req.SessionID, attemptToken); err != nil {
-			if errors.Is(err, repository.ErrConflict) {
-				return utils.ErrorResponse(c, fiber.StatusConflict, "You already have an active exam session; submit or have it reset first")
-			}
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register exam session")
-		}
-
-		// Issue the content-serving cookie (Requirement 8.1, AD-2).
-		if contentToken, err := utils.GenerateSecureToken(32); err == nil {
-			_ = cekRepo.SetContentToken(tenantID, req.PesertaID, req.SessionID, contentToken)
-			setContentCookie(c, contentToken)
-		}
-		return utils.SuccessResponse(c, fiber.Map{
-			"attempt_token": attemptToken,
-			"session_id":    req.SessionID,
-		}, "Exam session registered successfully")
+	if req.SessionID <= 0 {
+		// The legacy mapel_id path was removed (audit M6): it bypassed session eligibility,
+		// the window check and the content cookie.
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id is required")
 	}
 
-	// Legacy mapel-based path (transition, Requirement 6.6).
-	if req.MapelID <= 0 {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "session_id or mapel_id is required")
-	}
-	// P0-2: Check if student has already submitted this mapel
-	var legacySubmitted bool
-	err = db.DB.QueryRowContext(c.Context(), `
-		SELECT 1 FROM hasil_tes
-		WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ? AND status = 'submitted'
-		LIMIT 1
-	`, tenantID, req.PesertaID, req.MapelID).Scan(&legacySubmitted)
-	if err == nil && legacySubmitted {
-		return utils.ErrorResponse(c, fiber.StatusForbidden, "Exam has already been submitted")
-	}
+	svc := newSchedulingService()
+	sessionRepo := repository.NewExamSessionRepository(db.DB)
 
-	// Verify mapel exists
-	var mapelExists bool
-	err = db.DB.QueryRowContext(c.Context(),
-		`SELECT 1 FROM mapel WHERE tenant_id = ? AND id = ?`,
-		tenantID, req.MapelID,
-	).Scan(&mapelExists)
-	if err != nil || !mapelExists {
-		return utils.ErrorResponse(c, fiber.StatusNotFound, "Mapel not found")
+	session, err := sessionRepo.GetByID(tenantID, req.SessionID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "Session not found")
+		}
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load session")
 	}
-
-	// Lock guard: if an existing (tenant, peserta, mapel) cek_login row is server-locked,
-	// refuse to register a fresh attempt. Without this a locked student could bypass the lock
-	// via the legacy path (review H1, Task 13).
-	var legacyLocked bool
-	_ = db.DB.QueryRowContext(c.Context(),
-		`SELECT COALESCE(locked, 0) FROM cek_login WHERE tenant_id = ? AND peserta_id = ? AND mapel_id = ?`,
-		tenantID, req.PesertaID, req.MapelID,
-	).Scan(&legacyLocked)
-	if legacyLocked {
+	// M1: the caller must present this session's own token, so a token for one session
+	// cannot be used to enter another session the student is also eligible for.
+	if strings.TrimSpace(req.Token) == "" ||
+		subtle.ConstantTimeCompare([]byte(req.Token), []byte(session.Token)) != 1 {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Token sesi tidak valid untuk sesi ini")
+	}
+	if reason := svc.NotEnterableReason(session); reason != "" {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, reason)
+	}
+	eligible, err := svc.IsParticipantEligible(tenantID, req.PesertaID, req.SessionID)
+	if err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to verify eligibility")
+	}
+	if !eligible {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "You are not eligible for this session")
+	}
+	if locked, _ := cekRepo.IsLocked(tenantID, req.PesertaID, req.SessionID); locked {
 		return utils.ErrorResponse(c, fiber.StatusForbidden, "Session is locked; contact your supervisor")
 	}
-	_, err = db.DB.Exec(`
-		INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(tenant_id, peserta_id, mapel_id) DO UPDATE SET
-			attempt_token = excluded.attempt_token,
-			login_time = CURRENT_TIMESTAMP,
-			last_activity = CURRENT_TIMESTAMP
-	`, tenantID, req.PesertaID, req.MapelID, attemptToken)
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register active exam session")
+	// Check if student has already submitted this exam session (P0-2)
+	var sessionAlreadySubmitted bool
+	err = db.DB.QueryRowContext(c.Context(), `
+		SELECT 1 FROM hasil_tes
+		WHERE tenant_id = ? AND peserta_id = ? AND exam_session_id = ? AND status = 'submitted'
+		LIMIT 1
+	`, tenantID, req.PesertaID, req.SessionID).Scan(&sessionAlreadySubmitted)
+	if err == nil && sessionAlreadySubmitted {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Exam session has already been submitted")
 	}
-	return utils.SuccessResponse(c, fiber.Map{"attempt_token": attemptToken}, "Exam session registered successfully")
+
+	if err := cekRepo.Start(tenantID, req.PesertaID, req.SessionID, attemptToken); err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			return utils.ErrorResponse(c, fiber.StatusConflict, "You already have an active exam session; submit or have it reset first")
+		}
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to register exam session")
+	}
+
+	// Issue the content-serving cookie (Requirement 8.1, AD-2).
+	if contentToken, err := utils.GenerateSecureToken(32); err == nil {
+		_ = cekRepo.SetContentToken(tenantID, req.PesertaID, req.SessionID, contentToken)
+		setContentCookie(c, contentToken)
+	}
+	return utils.SuccessResponse(c, fiber.Map{
+		"attempt_token": attemptToken,
+		"session_id":    req.SessionID,
+	}, "Exam session registered successfully")
 }
 
 // GetRemainingTime computes remaining seconds. For session-based sessions it is

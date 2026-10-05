@@ -19,11 +19,13 @@ function getToken(): string | null {
   return localStorage.getItem('aether_token');
 }
 
-function getTenantID(): string {
+// H4: only an explicitly configured tenant is sent. Without one the backend resolves
+// the tenant from subdomain/slug, and the JWT claim always overrides after login.
+function getTenantID(): string | null {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('aether_tenant_id') || import.meta.env.VITE_TENANT_ID || '1';
+    return localStorage.getItem('aether_tenant_id') || import.meta.env.VITE_TENANT_ID || null;
   }
-  return import.meta.env.VITE_TENANT_ID || '1';
+  return import.meta.env.VITE_TENANT_ID || null;
 }
 
 export function apiUrl(path: string): string {
@@ -32,8 +34,9 @@ export function apiUrl(path: string): string {
 
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = getToken();
+  const tenantID = getTenantID();
   const headers: Record<string, string> = {
-    'X-Tenant-ID': getTenantID(),
+    ...(tenantID ? { 'X-Tenant-ID': tenantID } : {}),
     ...extra
   };
   if (token) {

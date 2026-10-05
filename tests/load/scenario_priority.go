@@ -12,6 +12,7 @@ func runLoginBurst(client *LoadClient, dp *DataPrep, concurrency int, duration t
 	fmt.Printf("\n>>> Preparing: %s\n", scenarioName)
 
 	examToken := dp.GetExamToken()
+	client.ExamToken = examToken // M1: /student/start requires the session token
 	prefix := fmt.Sprintf("LB%d_", concurrency)
 
 	fmt.Printf("  Creating %d test students...\n", concurrency)
@@ -76,6 +77,7 @@ func runExamStartBurst(client *LoadClient, dp *DataPrep, concurrency int, durati
 	fmt.Printf("\n>>> Preparing: %s\n", scenarioName)
 
 	examToken := dp.GetExamToken()
+	client.ExamToken = examToken // M1: /student/start requires the session token
 	prefix := fmt.Sprintf("SB%d_", concurrency)
 
 	fmt.Printf("  Creating %d test students...\n", concurrency)

@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, qrCodeUrl, studentLoginQrUrl } from '$lib/api';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import { authStore } from '$lib/stores/auth';
+  import { api, qrCodeUrl, studentLoginQrUrl } from '#lib/api.js';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import PasswordGenerator from '#lib/components/PasswordGenerator.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import { authStore } from '#lib/stores/auth.js';
   import { goto } from '$app/navigation';
-  import { toast } from '$lib/stores/toast';
+  import { toast } from '#lib/stores/toast.js';
 
   let examTitle = '';
   let proctorName = '';
@@ -94,8 +94,8 @@
       return;
     }
 
-    if (newPassword && newPassword.length < 6) {
-      toast.warning('Password baru minimal 6 karakter');
+    if (newPassword && newPassword.length < 8) {
+      toast.warning('Password baru minimal 8 karakter');
       return;
     }
 
@@ -166,8 +166,8 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
       <!-- General configuration (2/3 Grid) -->
       <div class="lg:col-span-2 flex flex-col gap-6">
-        <Card padding="lg" class="border-slate-200/60 bg-white shadow-sm relative overflow-hidden">
-          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+        <Card padding="lg" class="border-slate-200/60 bg-white shadow-xs relative overflow-hidden">
+          <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
           <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-6 pb-2 border-b border-slate-100">Konfigurasi Umum</h3>
           
@@ -210,7 +210,7 @@
               <button 
                 type="button" 
                 aria-label={isExamActive ? 'Nonaktifkan server ujian' : 'Aktifkan server ujian'}
-                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:outline-none
+                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:outline-hidden
                   {isExamActive ? 'bg-blue-600' : 'bg-slate-200'}"
                 on:click={() => isExamActive = !isExamActive}
               >
@@ -236,8 +236,8 @@
 
       <!-- Token Manager & QR (1/3 Grid) -->
       <div class="lg:col-span-1 flex flex-col gap-6">
-        <Card padding="md" class="border-slate-200/50 bg-white text-center shadow-sm relative overflow-hidden">
-          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+        <Card padding="md" class="border-slate-200/50 bg-white text-center shadow-xs relative overflow-hidden">
+          <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
           <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Token Ujian Aktif</div>
           
@@ -247,7 +247,7 @@
               type="text" 
               bind:value={activeToken} 
               disabled={saveLoading} 
-              class="w-full text-center text-xl font-extrabold text-blue-600 font-mono border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-slate-50/50 uppercase tracking-widest transition-all duration-300"
+              class="w-full text-center text-xl font-extrabold text-blue-600 font-mono border border-slate-200 rounded-2xl outline-hidden focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-slate-50/50 uppercase tracking-widest transition-all duration-300"
             />
             <Button 
               variant="secondary" 
@@ -266,7 +266,7 @@
 
           <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 font-mono">Live QR Code Token</div>
           {#if activeToken}
-            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 shadow-sm">
+            <div class="bg-slate-50 p-4 border border-slate-100 rounded-3xl inline-block mx-auto mb-3 shadow-xs">
               <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
             </div>
           {/if}
@@ -280,8 +280,8 @@
 
     <!-- === AKUN SAYA (Self Profile Update) === -->
     <div class="mt-8">
-      <Card padding="lg" class="border-slate-200 bg-white shadow-sm max-w-2xl relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+      <Card padding="lg" class="border-slate-200 bg-white shadow-xs max-w-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
         <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-1">Akun Saya</h3>
         <p class="text-xs text-slate-400 mb-6">Ubah username atau password Anda sendiri. Masukkan password saat ini untuk verifikasi keamanan.</p>

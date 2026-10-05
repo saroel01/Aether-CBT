@@ -40,7 +40,7 @@ func setupIsolationDB(t *rapid.T, dir string, n int) *sql.DB {
 		`CREATE TABLE peserta (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, no_id TEXT NOT NULL, password TEXT, nama_peserta TEXT, kelas_id INTEGER, ruang_id INTEGER);`,
 		`CREATE TABLE mapel (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, nama_mapel TEXT, durasi_menit INTEGER DEFAULT 90);`,
 		`CREATE TABLE cek_login (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, session_id INTEGER, attempt_token TEXT, login_time DATETIME DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE hasil_tes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, exam_session_id INTEGER, skor REAL, skor_maks REAL, detail_xml TEXT, status TEXT, validasi TEXT NOT NULL, waktu_selesai DATETIME, UNIQUE(tenant_id, validasi));`,
+		`CREATE TABLE hasil_tes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, peserta_id INTEGER NOT NULL, mapel_id INTEGER NOT NULL, exam_session_id INTEGER, skor REAL, skor_maks REAL, score_source TEXT NOT NULL DEFAULT 'client', detail_xml TEXT, status TEXT, validasi TEXT NOT NULL, waktu_selesai DATETIME, UNIQUE(tenant_id, validasi));`,
 		`CREATE TABLE hasil_tes_detail (id INTEGER PRIMARY KEY AUTOINCREMENT, hasil_tes_id INTEGER NOT NULL, question_id TEXT NOT NULL, question_text TEXT, question_type TEXT, status TEXT, awarded_points REAL, max_points REAL, user_answer TEXT, correct_answer TEXT);`,
 	}
 	for _, schema := range schemas {
@@ -144,15 +144,19 @@ func TestPropertyBatchFailureIsolation(t *testing.T) {
 		worker.processBatchSafe(ctx, batch)
 
 		gotDone := namesByNoID(rt, q.doneDir)
-		// A failed job with retry_count=1 < maxRetries goes back to pending/.
-		gotRetrying := namesByNoID(rt, q.pendingDir)
+		// "peserta not found" is a permanent error (audit H1), so the failing job is
+		// dead-lettered to failed/ on its first failure instead of being retried.
+		gotRetrying := namesByNoID(rt, q.failedDir)
+		if pending := namesByNoID(rt, q.pendingDir); len(pending) != 0 {
+			rt.Fatalf("pending/ = %v, want empty (permanent errors are not retried)", keys(pending))
+		}
 
 		if !sameSet(gotDone, wantDone) {
 			rt.Fatalf("done/ = %v, want exactly the valid jobs %v (failure was not isolated: "+
 				"valid submissions in the same batch were rolled back)", keys(gotDone), keys(wantDone))
 		}
 		if !sameSet(gotRetrying, wantFailed) {
-			rt.Fatalf("pending/ (retrying) = %v, want exactly the failing jobs %v "+
+			rt.Fatalf("failed/ = %v, want exactly the failing jobs %v "+
 				"(MarkFailed was applied to jobs that did not fail)", keys(gotRetrying), keys(wantFailed))
 		}
 

@@ -116,6 +116,8 @@ type FilesystemQueue struct {
 	// MarkFailed, due-time check in Dequeue). Injectable so tests can advance time
 	// without sleeping through a 30-second backoff. Defaults to time.Now.
 	nowFn func() time.Time
+
+	onDeadLetter func(job *SubmissionJob)
 }
 
 // ErrQueueClosed is returned when attempting to Enqueue on a closed queue (Clause 2.9).
@@ -127,6 +129,10 @@ type FilesystemQueueConfig struct {
 	DoneRetention  time.Duration
 	// Now overrides the clock used for retry scheduling. Leave nil in production.
 	Now func() time.Time
+	// OnDeadLetter, when set, is called once for every job MarkFailed moves to failed/
+	// (permanent error or retries exhausted) so the failure becomes visible to staff instead
+	// of only living on disk (audit H1, D7).
+	OnDeadLetter func(job *SubmissionJob)
 }
 
 type enqueueRequest struct {
@@ -169,6 +175,7 @@ func NewFilesystemQueueWithConfig(root string, cfg FilesystemQueueConfig) (*File
 		inFlight:       make(map[int64]string),
 		enqueueCh:      make(chan enqueueRequest, 2048),
 		nowFn:          cfg.Now,
+		onDeadLetter:   cfg.OnDeadLetter,
 	}
 
 	dirs := []string{
@@ -256,6 +263,10 @@ func (q *FilesystemQueue) enqueueDirect(ctx context.Context, job *SubmissionJob)
 	// Step 1-2: stamp EnqueuedAt
 	now := time.Now().UTC()
 	job.EnqueuedAt = now
+	if job.SubmittedAt.IsZero() {
+		// Stamped once; MarkFailed never rewrites it (audit H1, D7).
+		job.SubmittedAt = now
+	}
 
 	// Step 3-5: build filename
 	suffix, err := randomHex(4) // 4 bytes → 8 hex chars
@@ -428,7 +439,8 @@ func (q *FilesystemQueue) MarkCompleted(ctx context.Context, jobID int64) error 
 
 // MarkFailed menambah retry_count, mengisi last_error, lalu:
 //   - jika retry_count < maxRetries: rewrite file via tmp/, rename ke pending/.
-//   - jika retry_count >= maxRetries: rewrite + rename ke failed/.
+//   - jika retry_count >= maxRetries ATAU IsPermanent(processErr): rewrite + rename ke
+//     failed/ lalu panggil OnDeadLetter.
 //
 // Backoff exponential: due = now + min(2^(retryCount-1), 30) detik. Jadwal itu ditulis ke
 // NAMA FILE tujuan (segmen `-due<unix_nano>`) karena hanya nama file yang dibaca Dequeue saat
@@ -469,6 +481,11 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	}
 	dueAt := q.now().Add(time.Duration(backoffSec) * time.Second)
 	job.EnqueuedAt = dueAt
+	// SubmittedAt is deliberately left untouched: the grace check keys off it (audit H1, D7).
+
+	// A permanent error (grace exceeded, invalid XML, rejected overwrite, ...) can never
+	// succeed on retry, so it is dead-lettered on the first failure.
+	deadLetter := job.RetryCount >= q.maxRetries || IsPermanent(processErr)
 
 	// Step 7-9: marshal and write to tmp/
 	newData, err := MarshalJob(job)
@@ -489,7 +506,7 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	// scheduling has no meaning.
 	baseName, _, _ := splitDueTime(fileName)
 	var dstDir, dstName string
-	if job.RetryCount >= q.maxRetries {
+	if deadLetter {
 		dstDir, dstName = q.failedDir, baseName
 	} else {
 		dstDir, dstName = q.pendingDir, withDueTime(baseName, dueAt)
@@ -505,7 +522,7 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	_ = syncDir(dstPath)
 
 	// Clause 2.10: write companion .error.txt when moving to failed/
-	if job.RetryCount >= q.maxRetries {
+	if deadLetter {
 		errTxtPath := filepath.Join(q.failedDir, strings.TrimSuffix(dstName, ".json")+".error.txt")
 		_ = os.WriteFile(errTxtPath, []byte(job.LastError), 0644)
 	}
@@ -522,6 +539,10 @@ func (q *FilesystemQueue) MarkFailed(ctx context.Context, jobID int64, processEr
 	q.mu.Lock()
 	delete(q.inFlight, jobID)
 	q.mu.Unlock()
+
+	if deadLetter && q.onDeadLetter != nil {
+		q.onDeadLetter(job)
+	}
 
 	return nil
 }

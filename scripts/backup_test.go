@@ -132,7 +132,7 @@ func TestResetQueueScript_RequiresConfirmationOrForce(t *testing.T) {
 	db.Close()
 
 	// Running without --yes or --force on non-interactive stdin should fail (exit non-zero)
-	cmd := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath)
+	cmd := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "-tenant", "1")
 	cmd.Dir = "."
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -140,7 +140,7 @@ func TestResetQueueScript_RequiresConfirmationOrForce(t *testing.T) {
 	}
 
 	// Running with --force should succeed
-	cmdForce := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "--force")
+	cmdForce := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "-tenant", "1", "--force")
 	cmdForce.Dir = "."
 	outForce, errForce := cmdForce.CombinedOutput()
 	if errForce != nil {
@@ -150,8 +150,15 @@ func TestResetQueueScript_RequiresConfirmationOrForce(t *testing.T) {
 		t.Errorf("expected 'Reset complete.', got: %s", string(outForce))
 	}
 
+	// L8: without -tenant the script must refuse to run, even with --force.
+	cmdNoTenant := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "--force")
+	cmdNoTenant.Dir = "."
+	if outNT, errNT := cmdNoTenant.CombinedOutput(); errNT == nil {
+		t.Fatalf("reset_queue.go without -tenant succeeded: %s", string(outNT))
+	}
+
 	// Running with -y shorthand should also succeed
-	cmdY := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "-y")
+	cmdY := exec.Command("go", "run", "./reset_queue.go", "-db", sourceDBPath, "-tenant", "1", "-y")
 	cmdY.Dir = "."
 	outY, errY := cmdY.CombinedOutput()
 	if errY != nil {

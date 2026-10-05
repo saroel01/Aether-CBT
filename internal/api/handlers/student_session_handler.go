@@ -120,7 +120,10 @@ func MySessions(c *fiber.Ctx) error {
 	}
 	out := make([]sessionItem, 0, len(sessions))
 	for i := range sessions {
-		out = append(out, sessionItem{ExamSession: sessions[i], Enterable: svc.EffectiveEnterable(&sessions[i])})
+		enterable := svc.EffectiveEnterable(&sessions[i])
+		// M1: never disclose session tokens to students; the token is the entry secret.
+		sessions[i].Token = ""
+		out = append(out, sessionItem{ExamSession: sessions[i], Enterable: enterable})
 	}
 	return utils.SuccessResponse(c, out, "Sessions retrieved")
 }

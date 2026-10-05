@@ -37,6 +37,7 @@ func setupStudentAuthFlowDB(t *testing.T) {
 			kelas_id INTEGER NOT NULL,
 			ruang_id INTEGER NOT NULL,
 			jenis_kelamin TEXT,
+			token_version INTEGER NOT NULL DEFAULT 0,
 			deleted_at DATETIME,
 			UNIQUE(tenant_id, no_id)
 		);`,
@@ -59,6 +60,7 @@ func setupStudentAuthFlowDB(t *testing.T) {
 			nama_ruang TEXT NOT NULL,
 			username TEXT,
 			password_hash TEXT,
+			token_version INTEGER NOT NULL DEFAULT 0,
 			deleted_at DATETIME
 		);`,
 		`CREATE TABLE cek_login (
@@ -128,6 +130,8 @@ func TestStudentLoginReturnsJWTUsableForProtectedExamStart(t *testing.T) {
 		t.Fatalf("login response should contain token and peserta_id, got %+v", loginBody.Data)
 	}
 
+	// The JWT passes AuthMiddleware and reaches StartExamSession, which now requires a
+	// session_id (legacy mapel_id path removed, audit M6): 400 here, not 401/403.
 	startReq := httptest.NewRequest("POST", "/student/start", bytes.NewBufferString(`{"peserta_id":42,"mapel_id":5}`))
 	startReq.Header.Set("Content-Type", "application/json")
 	startReq.Header.Set("Authorization", "Bearer "+loginBody.Data.Token)
@@ -135,20 +139,15 @@ func TestStudentLoginReturnsJWTUsableForProtectedExamStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start exam request failed: %v", err)
 	}
-	if startResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected start status 200, got %d", startResp.StatusCode)
+	if startResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected start status 400 (session_id is required), got %d", startResp.StatusCode)
 	}
-
-	var startBody struct {
-		Data struct {
-			AttemptToken string `json:"attempt_token"`
-		} `json:"data"`
+	var count int
+	if err := db.DB.QueryRow(`SELECT COUNT(*) FROM cek_login`).Scan(&count); err != nil {
+		t.Fatalf("count cek_login: %v", err)
 	}
-	if err := json.NewDecoder(startResp.Body).Decode(&startBody); err != nil {
-		t.Fatalf("decode start response: %v", err)
-	}
-	if startBody.Data.AttemptToken == "" {
-		t.Fatalf("start response should include attempt_token")
+	if count != 0 {
+		t.Fatalf("cek_login rows = %d, want 0 (mapel-only start must not register an attempt)", count)
 	}
 }
 

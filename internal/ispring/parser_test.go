@@ -137,6 +137,43 @@ func TestParseDetailedResultsHandlesRichISpringQuestionTypes(t *testing.T) {
 	assertQuestion(2, "1. Dua; 2. Satu", "1. Satu; 2. Dua")
 	assertQuestion(3, "merdeka", "merdeka; kemerdekaan")
 	assertQuestion(4, "air; ______", "air, H2O; oksigen")
+
+	// Structured fields for server-side grading (audit C1, D2).
+	if got := report.Questions[0].UserChoices; strings.Join(got, "|") != "2|5" {
+		t.Fatalf("MR UserChoices = %v", got)
+	}
+	if got := report.Questions[1].UserPairs; len(got) != 2 || got[0] != [2]string{"Indonesia", "Jakarta"} || got[1] != [2]string{"Jepang", "Tokyo"} {
+		t.Fatalf("matching UserPairs = %v", got)
+	}
+	if got := report.Questions[2].UserOrder; strings.Join(got, "|") != "Dua|Satu" {
+		t.Fatalf("sequence UserOrder = %v", got)
+	}
+	if report.Questions[3].UserChoices != nil || report.Questions[3].UserPairs != nil || report.Questions[3].UserOrder != nil {
+		t.Fatalf("type-in question must not carry structured answers")
+	}
+}
+
+func TestParseDetailedResultsStructuredChoiceForMultipleChoice(t *testing.T) {
+	xml := `<quizReport version="9"><questions>
+    <multipleChoiceQuestion id="mc" maxPoints="5" awardedPoints="0" status="incorrect">
+      <direction><text>Pilih.</text></direction>
+      <answers correctAnswerIndex="0" userAnswerIndex="1"><answer><text>A</text></answer><answer><text>B</text></answer></answers>
+    </multipleChoiceQuestion>
+    <trueFalseQuestion id="tf" maxPoints="5" awardedPoints="0" status="incorrect">
+      <direction><text>Benar?</text></direction>
+      <answers correctAnswerIndex="0"><answer><text>True</text></answer><answer><text>False</text></answer></answers>
+    </trueFalseQuestion>
+  </questions></quizReport>`
+	report, err := ParseDetailedResults(xml)
+	if err != nil {
+		t.Fatalf("ParseDetailedResults returned error: %v", err)
+	}
+	if got := report.Questions[0].UserChoices; len(got) != 1 || got[0] != "B" {
+		t.Fatalf("MC UserChoices = %v", got)
+	}
+	if got := report.Questions[1].UserChoices; got != nil {
+		t.Fatalf("unanswered TF UserChoices = %v, want nil", got)
+	}
 }
 
 func TestParseDetailedResultsUsesISpringDefaultEvaluationWhenAttributeIsMissing(t *testing.T) {

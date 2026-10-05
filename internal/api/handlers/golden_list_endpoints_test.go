@@ -19,7 +19,9 @@ import (
 // yields for this schema and data, not a guaranteed contract. See the ordering note in
 // TestGoldenListEndpointOrderingIsNotPinnedBySQL.
 func TestGoldenGetAvailableMapels(t *testing.T) {
-	app, _ := newGoldenApp(t, "student")
+	// Non-student caller: students are pinned to their own peserta_id (L6), so the query
+	// parameter and the all-subjects branch are only reachable for staff roles.
+	app, _ := newGoldenApp(t, "admin")
 	app.Get("/api/student/mapels", GetAvailableMapels)
 
 	// peserta 100 is in kelas 11 -> Matematika + Bahasa Indonesia active, Kimia inactive.

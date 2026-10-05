@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   // Requirement 4.1-4.8: session CRUD + token + classes/rooms + effective status.
   let items: any[] = [];
@@ -316,7 +316,7 @@
     <div class="flex flex-col gap-2">
       <label for="sess_exam" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ujian *</label>
       <select id="sess_exam" bind:value={fExamID} disabled={saving}
-        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
         <option value={0}>Pilih Ujian...</option>
         {#each examList as e}
           <option value={e.id}>{e.nama || 'Ujian #' + e.id} (mapel {e.mapel_id})</option>
@@ -330,12 +330,12 @@
       <div class="flex flex-col gap-2">
         <label for="sess_mulai" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Waktu Mulai *</label>
         <input id="sess_mulai" type="datetime-local" bind:value={fMulai} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold" />
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold" />
       </div>
       <div class="flex flex-col gap-2">
         <label for="sess_selesai" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Waktu Selesai *</label>
         <input id="sess_selesai" type="datetime-local" bind:value={fSelesai} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold" />
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold" />
       </div>
     </div>
 
@@ -344,14 +344,14 @@
         <label for="sess_token" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Token Sesi *</label>
         <div class="flex gap-2">
           <input id="sess_token" bind:value={fToken} disabled={saving}
-            class="flex-1 h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-mono font-bold" />
+            class="flex-1 h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-mono font-bold" />
           <Button variant="secondary" size="sm" theme="light" on:click={() => (fToken = generateToken())} disabled={saving}>Acak</Button>
         </div>
       </div>
       <div class="flex flex-col gap-2">
         <label for="sess_status" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
         <select id="sess_status" bind:value={fStatus} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-indigo-600/10 focus:border-indigo-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
           {#each STATUS_OPTIONS as o}
             <option value={o.value}>{o.label}</option>
           {/each}
@@ -377,7 +377,7 @@
       <div class="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto p-2 border border-slate-100 rounded-2xl bg-slate-50/40">
         {#each classList as c}
           <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer p-1">
-            <input type="checkbox" value={c.id} bind:group={selectedClasses} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
+            <input type="checkbox" value={c.id} bind:group={selectedClasses} class="h-4 w-4 rounded-sm border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
             <span class="font-semibold">{c.nama_kelas}</span>
             {#if c.tingkat}<span class="text-[10px] text-slate-400">{c.tingkat}</span>{/if}
           </label>
@@ -391,7 +391,7 @@
       <div class="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto p-2 border border-slate-100 rounded-2xl bg-slate-50/40">
         {#each roomList as r}
           <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer p-1">
-            <input type="checkbox" value={r.id} bind:group={selectedRooms} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
+            <input type="checkbox" value={r.id} bind:group={selectedRooms} class="h-4 w-4 rounded-sm border-slate-300 text-indigo-600 focus:ring-indigo-600/20" />
             <span class="font-semibold">{r.nama_ruang}</span>
           </label>
         {:else}
@@ -411,8 +411,8 @@
   show={showDeleteModal}
   title="Hapus Sesi Ujian"
   message={`Hapus sesi ujian "${sessionToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
-  confirmText="Hapus Sesi"
-  cancelText="Batal"
+  confirmLabel="Hapus Sesi"
+  cancelLabel="Batal"
   variant="danger"
   loading={deleteLoading}
   on:confirm={confirmDeleteSession}

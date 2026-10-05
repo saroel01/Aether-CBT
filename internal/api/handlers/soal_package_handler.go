@@ -48,6 +48,11 @@ func UploadSoalPackage(c *fiber.Ctx) error {
 	if !strings.HasSuffix(strings.ToLower(file.Filename), ".zip") {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Only .zip packages are accepted")
 	}
+	// The body is streamed past the global buffer limit (M2), so the file size is checked
+	// here as well as by the route guard's Content-Length check.
+	if soalUploadLimits.MaxBytes > 0 && file.Size > soalUploadLimits.MaxBytes {
+		return utils.ErrorResponse(c, fiber.StatusRequestEntityTooLarge, "Package exceeds the configured size limit")
+	}
 
 	slug, err := tenantSlug(tenantID)
 	if err != nil {
@@ -82,13 +87,15 @@ func UploadSoalPackage(c *fiber.Ctx) error {
 	}
 	checksum := res.Checksum
 	pkg, err := repository.NewSoalPackageRepository(db.DB).Create(tenantID, repository.SoalPackageInput{
-		Nama:           nama,
-		PackageUUID:    res.PackageUUID,
-		EntryPath:      res.EntryPath,
-		IspringVersion: res.IspringVersion,
-		TotalSize:      res.TotalSize,
-		Checksum:       &checksum,
-		UploadedBy:     &uploadedBy,
+		Nama:            nama,
+		PackageUUID:     res.PackageUUID,
+		EntryPath:       res.EntryPath,
+		IspringVersion:  res.IspringVersion,
+		TotalSize:       res.TotalSize,
+		Checksum:        &checksum,
+		UploadedBy:      &uploadedBy,
+		AnswerKeyJSON:   res.AnswerKeyJSON,
+		AnswerKeyStatus: res.AnswerKeyStatus,
 	})
 	if err != nil {
 		// Best-effort cleanup of orphaned files if metadata insert fails (Property 3).

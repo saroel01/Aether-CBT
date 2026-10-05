@@ -84,12 +84,18 @@ func setupTestDB(t *testing.T) func() {
 			exam_session_id INTEGER,
 			skor REAL,
 			skor_maks REAL,
+			score_source TEXT NOT NULL DEFAULT 'client',
 			detail_xml TEXT,
 			status TEXT,
 			validasi TEXT NOT NULL,
 			waktu_selesai DATETIME,
 			UNIQUE(tenant_id, validasi)
 		);`,
+		// Minimal tables for the processor's answer-key lookup (audit C1); session 7 has no
+		// row, so these tests keep the client-score path.
+		`CREATE TABLE IF NOT EXISTS exam_session (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, exam_id INTEGER NOT NULL);`,
+		`CREATE TABLE IF NOT EXISTS exam (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, durasi_menit INTEGER, soal_package_id INTEGER);`,
+		`CREATE TABLE IF NOT EXISTS soal_package (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, answer_key TEXT);`,
 		`CREATE TABLE IF NOT EXISTS hasil_tes_detail (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			hasil_tes_id INTEGER NOT NULL,

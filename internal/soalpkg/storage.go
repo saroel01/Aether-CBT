@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/saroel01/aether-cbt/internal/ispring"
 )
 
 // StoreOptions controls package extraction limits and tenant placement.
@@ -30,6 +33,10 @@ type StoreResult struct {
 	IspringVersion *string // best-effort iSpring version from index.html (Req 3.6a), nil if unknown
 	TotalSize      int64   // uploaded archive size in bytes
 	Checksum       string  // sha256 hex of the uploaded archive (audit/dedup)
+	// AnswerKeyJSON is the serialized ispring.AnswerKey extracted from index.html ("" when
+	// none); AnswerKeyStatus is full|partial|none (audit C1, D1). Server-only data.
+	AnswerKeyJSON   string
+	AnswerKeyStatus string
 }
 
 // Extraction errors. Handlers map them to the HTTP statuses described in the design's
@@ -98,18 +105,52 @@ func Store(r io.Reader, baseDir string, opts StoreOptions) (*StoreResult, error)
 		return nil, err
 	}
 
+	keyJSON, keyStatus := extractAnswerKey(destDir)
 	return &StoreResult{
-		PackageUUID:    packageUUID,
-		EntryPath:      "index.html",
-		IspringVersion: version,
-		TotalSize:      int64(len(archiveBytes)),
-		Checksum:       checksum,
+		PackageUUID:     packageUUID,
+		EntryPath:       "index.html",
+		IspringVersion:  version,
+		TotalSize:       int64(len(archiveBytes)),
+		Checksum:        checksum,
+		AnswerKeyJSON:   keyJSON,
+		AnswerKeyStatus: keyStatus,
 	}, nil
+}
+
+// extractAnswerKey reads the extracted index.html and serializes its iSpring answer key
+// (audit C1, D1). Extraction is best-effort: any failure yields ("", "none") and never fails
+// the upload, so packages without player data still upload and are scored client-side.
+func extractAnswerKey(destDir string) (string, string) {
+	html, err := os.ReadFile(filepath.Join(destDir, "index.html"))
+	if err != nil {
+		return "", ispring.AnswerKeyNone
+	}
+	key, err := ispring.ExtractAnswerKey(html)
+	if err != nil || key.Status == ispring.AnswerKeyNone {
+		return "", ispring.AnswerKeyNone
+	}
+	raw, err := json.Marshal(key)
+	if err != nil {
+		return "", ispring.AnswerKeyNone
+	}
+	return string(raw), key.Status
+}
+
+// entryName returns the archive entry name with backslashes normalised to forward
+// slashes (Windows Compress-Archive writes "data\player.js", audit H2).
+func entryName(f *zip.File) string {
+	return strings.ReplaceAll(f.Name, "\\", "/")
+}
+
+// isRootIndex reports whether the entry is the package's root index.html.
+func isRootIndex(f *zip.File) bool {
+	name := entryName(f)
+	return name == "index.html" || name == "./index.html"
 }
 
 func hasRootIndex(zr *zip.Reader) bool {
 	for _, f := range zr.File {
-		if f.Name == "index.html" || f.Name == "./index.html" {
+		if isRootIndex(f) {
 			return true
 		}
 	}
@@ -119,7 +160,7 @@ func hasRootIndex(zr *zip.Reader) bool {
 func decompressedSize(zr *zip.Reader) int64 {
 	var total int64
 	for _, f := range zr.File {
-		if !f.FileInfo().IsDir() {
+		if !f.FileInfo().IsDir() && !strings.HasSuffix(entryName(f), "/") {
 			total += int64(f.UncompressedSize64)
 		}
 	}
@@ -130,7 +171,7 @@ func decompressedSize(zr *zip.Reader) int64 {
 // marker comment is present, else nil. Never errors (best-effort, Req 3.6a).
 func detectVersion(zr *zip.Reader) *string {
 	for _, f := range zr.File {
-		if f.Name != "index.html" && f.Name != "./index.html" {
+		if !isRootIndex(f) {
 			continue
 		}
 		rc, err := f.Open()
@@ -155,21 +196,31 @@ func detectVersion(zr *zip.Reader) *string {
 func extractZip(zr *zip.Reader, destDir string) error {
 	cleanDest := filepath.Clean(destDir)
 	for _, f := range zr.File {
-		// Reject non-regular entries (symlinks, devices) so an archive cannot plant a link
-		// that escapes the package dir on extraction (review iSpring F6, Task 30).
+		// Windows Compress-Archive (PowerShell 5.1) writes "data\player.js"; on Linux that
+		// would become a flat file literally named "data\player.js" and break index.html
+		// (audit H2). Normalise to forward slashes before any path handling.
+		name := entryName(f)
 		mode := f.FileInfo().Mode()
-		if mode&os.ModeSymlink != 0 || !mode.IsRegular() {
+		// Reject symlinks so an archive cannot plant a link that escapes the package dir on
+		// extraction (review iSpring F6, Task 30).
+		if mode&os.ModeSymlink != 0 {
 			return fmt.Errorf("refusing to extract non-regular entry: %s", f.Name)
 		}
-		target := filepath.Join(destDir, f.Name)
+		target := filepath.Join(destDir, filepath.FromSlash(name))
 		if !isWithin(cleanDest, target) {
 			return fmt.Errorf("%w: %s", ErrZipSlip, f.Name)
 		}
-		if f.FileInfo().IsDir() {
+		// Directory entries ("data/") are legitimate in most ZIP tools; they used to be
+		// rejected by the IsRegular check below (audit H2).
+		if f.FileInfo().IsDir() || strings.HasSuffix(name, "/") {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 			continue
+		}
+		// Reject remaining non-regular entries (devices, pipes, sockets).
+		if !mode.IsRegular() {
+			return fmt.Errorf("refusing to extract non-regular entry: %s", f.Name)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err

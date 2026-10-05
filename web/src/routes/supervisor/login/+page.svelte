@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { api } from '$lib/api';
-  import { authStore } from '$lib/stores/auth';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import { toast } from '$lib/stores/toast';
+  import { api } from '#lib/api.js';
+  import { authStore } from '#lib/stores/auth.js';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   let username = import.meta.env.DEV ? 'ruang_a' : '';
   let password = import.meta.env.DEV ? 'ruang123' : '';
@@ -59,7 +59,7 @@
     <!-- Academic Emblem -->
     <div class="text-center mb-8">
       <div class="mb-5 flex justify-center">
-        <div class="h-14 w-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-sm">
+        <div class="h-14 w-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-xs">
           <svg class="h-7 w-7 text-cobalt-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -71,7 +71,7 @@
     </div>
 
     <!-- Elevated Slate Card -->
-    <Card theme="dark" padding="lg" class="shadow-sm border-slate-800 bg-slate-900/90 rounded-2xl">
+    <Card theme="dark" padding="lg" class="shadow-xs border-slate-800 bg-slate-900/90 rounded-2xl">
       <div class="mb-6 text-center">
         <h2 class="text-xl font-bold text-slate-100 font-display">Masuk Pengawas</h2>
         <p class="text-xs text-slate-400 mt-1">Gunakan username dan sandi ruangan Anda</p>

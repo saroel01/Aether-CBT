@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import Button from '#lib/components/ui/Button.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   interface QuestionMetric {
     question_id: string;
@@ -13,9 +13,23 @@
     question_type: string;
     correct_count: number;
     total_count: number;
+    soal_package_id: number;
+    package_nama: string;
+    mapel_id: number;
   }
 
+  // Statistics are grouped per soal package (M9); results without a session are grouped per mapel.
+  const groupKey = (q: QuestionMetric) => `${q.soal_package_id}:${q.mapel_id}`;
+  const groupLabel = (q: QuestionMetric) =>
+    q.package_nama || (q.soal_package_id ? `Paket #${q.soal_package_id}` : `Tanpa sesi (mapel #${q.mapel_id})`);
+
+  let allMetrics: QuestionMetric[] = [];
   let metrics: QuestionMetric[] = [];
+  let packageFilter = 'all';
+  $: packageOptions = Array.from(new Map(allMetrics.map(q => [groupKey(q), groupLabel(q)])).entries());
+  $: metrics = packageFilter === 'all' ? allMetrics : allMetrics.filter(q => groupKey(q) === packageFilter);
+  $: metrics, calculateDerivedMetrics();
+
   let loading = true;
   let error = '';
 
@@ -33,8 +47,7 @@
     try {
       const res = await api('/admin/results/analysis');
       if (res.success && res.data) {
-        metrics = res.data || [];
-        calculateDerivedMetrics();
+        allMetrics = res.data || [];
       } else {
         throw new Error(res.error || 'Terjadi kesalahan sistem');
       }
@@ -46,7 +59,12 @@
   }
 
   function calculateDerivedMetrics() {
-    if (metrics.length === 0) return;
+    if (metrics.length === 0) {
+      averagePassingRate = 0;
+      hardestQuestions = [];
+      easiestQuestions = [];
+      return;
+    }
 
     let totalCorrect = 0;
     let totalAttempts = 0;
@@ -86,7 +104,7 @@
       variant="secondary" 
       size="sm"
       theme="light"
-      class="font-semibold shadow-sm flex items-center gap-2"
+      class="font-semibold shadow-xs flex items-center gap-2"
       on:click={loadAnalytics}
     >
       <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -109,12 +127,12 @@
       Gagal memuat analisis butir soal: {error}
     </div>
   {:else if metrics.length === 0}
-    <div class="py-16 text-center bg-white border border-slate-100 rounded-3xl text-slate-400 font-medium shadow-sm">
+    <div class="py-16 text-center bg-white border border-slate-100 rounded-3xl text-slate-400 font-medium shadow-xs">
       Belum ada data lembar hasil ujian yang diserahkan oleh peserta.<br>Analisis soal otomatis akan terbuat jika siswa menyelesaikan ujian.
     </div>
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card padding="md" class="border-blue-100/70 bg-blue-50/20 hover:bg-blue-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
+      <Card padding="md" class="border-blue-100/70 bg-blue-50/20 hover:bg-blue-50/30 transition-all duration-300 flex items-center justify-between shadow-xs rounded-2xl relative overflow-hidden">
         <div>
           <span class="text-xs text-blue-600 font-bold uppercase tracking-wider font-mono">Akurasi Rata-Rata</span>
           <div class="text-4xl font-extrabold text-blue-700 mt-1.5 font-display">{averagePassingRate}%</div>
@@ -122,7 +140,7 @@
         <div class="h-12 w-12 bg-blue-100/50 text-blue-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">📊</div>
       </Card>
 
-      <Card padding="md" class="border-red-100/70 bg-red-50/20 hover:bg-red-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
+      <Card padding="md" class="border-red-100/70 bg-red-50/20 hover:bg-red-50/30 transition-all duration-300 flex items-center justify-between shadow-xs rounded-2xl relative overflow-hidden">
         <div>
           <span class="text-xs text-red-600 font-bold uppercase tracking-wider font-mono">Soal Kategori Sulit</span>
           <div class="text-4xl font-extrabold text-red-700 mt-1.5 font-display">
@@ -132,7 +150,7 @@
         <div class="h-12 w-12 bg-red-100/50 text-red-700 rounded-xl flex items-center justify-center font-bold text-lg select-none">🔥</div>
       </Card>
 
-      <Card padding="md" class="border-emerald-100/70 bg-emerald-50/20 hover:bg-emerald-50/30 transition-all duration-300 flex items-center justify-between shadow-sm rounded-2xl relative overflow-hidden">
+      <Card padding="md" class="border-emerald-100/70 bg-emerald-50/20 hover:bg-emerald-50/30 transition-all duration-300 flex items-center justify-between shadow-xs rounded-2xl relative overflow-hidden">
         <div>
           <span class="text-xs text-emerald-600 font-bold uppercase tracking-wider font-mono">Soal Kategori Mudah</span>
           <div class="text-4xl font-extrabold text-emerald-700 mt-1.5 font-display">
@@ -154,7 +172,7 @@
         <div class="flex flex-col gap-4">
           {#each hardestQuestions as q}
             {@const rate = Math.round((q.correct_count / q.total_count) * 100)}
-            <Card padding="md" class="bg-white border-slate-200/60 shadow-sm flex flex-col gap-3">
+            <Card padding="md" class="bg-white border-slate-200/60 shadow-xs flex flex-col gap-3">
               <div class="flex justify-between items-start gap-2">
                 <Badge theme="light" variant="danger" class="font-mono">{q.question_id}</Badge>
                 <span class="text-xs font-bold text-red-500">
@@ -185,7 +203,7 @@
         <div class="flex flex-col gap-4">
           {#each easiestQuestions as q}
             {@const rate = Math.round((q.correct_count / q.total_count) * 100)}
-            <Card padding="md" class="bg-white border-slate-200/60 shadow-sm flex flex-col gap-3">
+            <Card padding="md" class="bg-white border-slate-200/60 shadow-xs flex flex-col gap-3">
               <div class="flex justify-between items-start gap-2">
                 <Badge theme="light" variant="success" class="font-mono">{q.question_id}</Badge>
                 <span class="text-xs font-bold text-emerald-600">
@@ -210,10 +228,22 @@
 
     <!-- Complete Grid -->
     <div class="flex flex-col gap-4 mt-4">
-      <h3 class="text-lg font-bold text-slate-800">Daftar Agregasi Seluruh Pertanyaan</h3>
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <h3 class="text-lg font-bold text-slate-800">Daftar Agregasi Seluruh Pertanyaan</h3>
+        <label class="text-sm text-slate-600 flex items-center gap-2">
+          Paket
+          <select bind:value={packageFilter} class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white">
+            <option value="all">Semua paket</option>
+            {#each packageOptions as [key, label]}
+              <option value={key}>{label}</option>
+            {/each}
+          </select>
+        </label>
+      </div>
       <Table>
         <thead>
           <tr>
+            <th class="w-40">Paket</th>
             <th class="w-24">ID Soal</th>
             <th>Teks Pertanyaan</th>
             <th class="w-32">Tipe</th>
@@ -225,6 +255,7 @@
           {#each metrics as q}
             {@const rate = q.total_count > 0 ? Math.round((q.correct_count / q.total_count) * 100) : 0}
             <tr>
+              <td class="text-sm text-slate-600">{groupLabel(q)}</td>
               <td class="font-mono font-bold text-slate-500">{q.question_id}</td>
               <td class="font-medium text-slate-800 line-clamp-1 max-w-lg leading-relaxed pt-3.5">
                 {q.question_text || '—'}

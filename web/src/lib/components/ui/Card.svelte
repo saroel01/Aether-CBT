@@ -26,7 +26,7 @@
 
 <div
   class="border transition-colors duration-150 {roundedClass} 
-  {elevated ? 'shadow-md' : 'shadow-sm'} 
+  {elevated ? 'shadow-md' : 'shadow-xs'} 
   {paddingClasses[effectivePadding] || paddingClasses.md} 
   {bgClass} 
   {borderClass} 

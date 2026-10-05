@@ -19,26 +19,26 @@
 
     const all = lower + upper + digits + symbols;
 
-    // Pastikan minimal ada 1 dari setiap kategori
-    let password = '';
-    password += lower[Math.floor(Math.random() * lower.length)];
-    password += upper[Math.floor(Math.random() * upper.length)];
-    password += digits[Math.floor(Math.random() * digits.length)];
-    password += symbols[Math.floor(Math.random() * symbols.length)];
+    // Unbiased CSPRNG index in [0, n): rejection sampling over Uint32 (L5).
+    const randIndex = (n: number): number => {
+      const limit = Math.floor(0x100000000 / n) * n;
+      const buf = new Uint32Array(1);
+      do {
+        crypto.getRandomValues(buf);
+      } while (buf[0] >= limit);
+      return buf[0] % n;
+    };
 
-    // Isi sisanya
-    const array = new Uint8Array(len - 4);
-    crypto.getRandomValues(array);
+    // Pastikan minimal ada 1 dari setiap kategori, lalu isi sisanya
+    const chars = [lower, upper, digits, symbols].map(set => set[randIndex(set.length)]);
+    while (chars.length < len) chars.push(all[randIndex(all.length)]);
 
-    for (let i = 0; i < array.length; i++) {
-      password += all[array[i] % all.length];
+    // Fisher-Yates shuffle
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = randIndex(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
     }
-
-    // Shuffle
-    return password
-      .split('')
-      .sort(() => Math.random() - 0.5)
-      .join('');
+    return chars.join('');
   }
 
   function generate() {
@@ -76,7 +76,7 @@
         type="password"
         bind:value
         {placeholder}
-        class="w-full h-12 px-4 pr-10 border rounded-2xl outline-none transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:ring-4 {themeClasses[theme]}"
+        class="w-full h-12 px-4 pr-10 border rounded-2xl outline-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus:ring-4 {themeClasses[theme]}"
       />
       {#if value}
         <button

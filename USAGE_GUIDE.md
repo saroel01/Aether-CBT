@@ -32,13 +32,13 @@ Gunakan mode ini jika Anda ingin berkontribusi pada pengembangan aplikasi atau m
         npm run seed
         ```
 
-### Akun Uji Coba Default:
-*   **Super Admin / Admin**: Username: `admin` | Password: `admin123`
-*   **Pengawas Ruang**: Username: `ruang_a` | Password: `ruang123`
-*   **Siswa/Peserta**: Username: `2024001` | Password: `siswa123` (Token Ujian: `ujian2026`)
+### Akun Awal
+*   **Admin**: tidak ada akun bawaan. Admin pertama (`admin`) dibuat dari env `SETUP_ADMIN_PASSWORD` saat server pertama kali start, atau dengan `go run ./cmd/createadmin -password '<password>'`.
+*   **Data contoh dari `npm run seed`** (hanya untuk development): pengawas `ruang_a` / `ruang123`, siswa `2024001` / `siswa123`, token ujian acak yang dicetak seeder.
 
 **PERINGATAN PENTING:**
-Semua akun di atas menggunakan password default yang sangat lemah. **WAJIB** diganti sebelum digunakan untuk ujian nyata.
+Password data contoh lemah dan **wajib** diganti sebelum ujian nyata. Pengawas dapat mengganti password ruangnya sendiri lewat tombol "Ganti Password" di dashboard pengawas (minimal 8 karakter); setelah diganti, sesi lama otomatis dicabut.
+Data lama yang passwordnya masih plaintext tidak bisa login sampai dimigrasi dengan `go run ./cmd/migratepasswords`.
 
 ### Untuk Admin Sekolah (Hanya Pakai Hasil Build)
 Jika Anda hanya menerima file aplikasi (bukan source code), gunakan:
@@ -64,15 +64,20 @@ Untuk menjalankan Aether CBT di lingkungan produksi, beberapa variabel berikut *
 
 | Nama Variabel            | Status          | Penjelasan |
 |--------------------------|------------------|----------|
-| `JWT_SECRET`             | **Wajib**        | Rahasia penandatanganan JWT. Aplikasi **akan crash** jika tidak diisi. Gunakan string panjang minimal 32 karakter acak. |
-| `CORS_ALLOWED_ORIGINS`   | **Wajib di produksi** | Daftar domain yang diizinkan mengakses API (dipisah koma). Contoh: `https://cbt.sekolah.sch.id,https://admin.sekolah.sch.id` |
+| `JWT_SECRET`             | **Wajib**        | Rahasia penandatanganan JWT, minimal 32 karakter acak (`openssl rand -hex 32`). Server menolak start bila kosong atau nilai lemah yang dikenal. |
+| `CORS_ALLOWED_ORIGINS`   | **Wajib di produksi** | Daftar domain yang diizinkan mengakses API (dipisah koma). Tanpa ini server berhenti saat start di produksi. Contoh: `https://cbt.sekolah.sch.id,https://admin.sekolah.sch.id` |
+| `SETUP_ADMIN_PASSWORD`   | Start pertama    | Membuat akun `admin` bila belum ada admin. |
+| `DEFAULT_TENANT_ID`      | Server satu sekolah | Tenant untuk request tanpa identitas tenant (akses via IP LAN). |
+| `TRUSTED_PROXIES`        | Di balik proxy   | IP/CIDR proxy tepercaya agar rate limit login memakai IP klien asli. |
+| `MIGRATIONS_DIR`         | Opsional         | Kosong = migrasi yang di-embed di binary. Migrasi tercatat di `schema_migrations` dan hanya berjalan sekali. |
 | `PORT`                   | Opsional         | Port aplikasi (default: 3000) |
 | `DATABASE_URL`           | Opsional         | Lokasi file SQLite (default: `data/cbt_aether.db`) |
 | `ENV`                    | Opsional         | `development` atau `production`. Mempengaruhi perilaku default tenant dan error message. |
 
 **Contoh .env di produksi:**
 ```bash
-JWT_SECRET=KunciSangatPanjangDanAcak2026Min32Karakter
+JWT_SECRET=<hasil: openssl rand -hex 32>
+SETUP_ADMIN_PASSWORD=<password admin pertama, min 8 karakter>
 CORS_ALLOWED_ORIGINS=https://cbt.sekolah.sch.id
 PORT=3000
 ENV=production
@@ -89,15 +94,17 @@ Untuk memasukkan ratusan siswa secara sekaligus ke dalam kelas dan ruangan:
 1.  Siapkan file CSV dengan format kolom sebagai berikut (tanpa spasi setelah koma):
     `no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password`
     *Contoh baris data:*
-    `2026001,Syahrul Hamdi,10,1,L,siswa123`
+    `2026001,Syahrul Hamdi,10,1,L,Rahasia2026`
+    Kolom ke-6 `password` **wajib untuk siswa baru** (baris tanpa password untuk siswa baru ditolak dan seluruh impor dibatalkan). Untuk siswa yang sudah ada, kosongkan kolom agar password lama tetap dipakai; bila diisi, password diganti dan sesi lama siswa itu dicabut.
 2.  Unggah berkas melalui API `POST /api/admin/students/import-csv` (atau menu Impor Siswa di dashboard admin).
 3.  Sistem secara otomatis mengisolasi siswa baru ke dalam database Tenant bersangkutan.
 
 ### B. Memulai Sesi Ujian Aktif
 Sebelum siswa dapat menempuh ujian:
 1.  Admin/Pengawas harus memastikan mata pelajaran (mapel) telah ditautkan dengan kelas yang diuji.
-2.  Siswa melakukan login di portal. Sesi aktif akan tercatat secara *real-time* di monitor pengawas (`cek_login`). Sesi ini berfungsi sebagai tiket resmi masuk ke kuis iSpring.
-3.  Saat sesi dimulai, server menerbitkan `attempt_token` per siswa/mapel. Token ini harus ikut terkirim saat hasil iSpring dikirim ke webhook.
+2.  Siswa login dengan No. ID, password, dan **token sesi**. Untuk masuk ke sesi, token itu harus sama dengan token sesi yang dipilih (frontend mengirimkannya otomatis); token sesi lain ditolak. Sesi aktif tercatat *real-time* di monitor pengawas (`cek_login`).
+3.  Saat sesi dimulai, server menerbitkan `attempt_token` per siswa/sesi. Token ini harus ikut terkirim saat hasil iSpring dikirim ke webhook.
+4.  Pengawas hanya melihat dan mengekspor hasil (CSV, esai, analisis butir) peserta ruangnya sendiri; admin melihat seluruh tenant.
 
 ---
 
@@ -118,12 +125,8 @@ Guna menghindari kesalahan ketik (*typo*) nomor ujian oleh siswa, kita menggunak
 iSpring akan mengirimkan data hasil secara dinamis ke server Aether CBT saat siswa mengklik tombol "Selesai/Submit":
 1.  Buka **Properties** -> **Reporting** di iSpring QuizMaker.
 2.  Centang pilihan **Send quiz result to server**.
-3.  Masukkan URL Webhook kustom sesuai identitas sekolah (tenant) Anda:
-    *   Menggunakan Slug Sekolah:
-        `http://[IP_CBT]:3000/api/ispring/webhook?tenant_slug=sman1kluet`
-    *   Menggunakan ID Tenant:
-        `http://[IP_CBT]:3000/api/ispring/webhook?tenant_id=1`
-4.  Simpan, lalu publikasikan (*Publish*) kuis iSpring Anda ke format **HTML5**.
+3.  URL boleh diisi apa saja: saat paket disajikan, shim Aether CBT mengalihkan pengiriman ke `/api/ispring/webhook`. Tenant dan sesi ditentukan server dari `attempt_token`, bukan dari parameter URL.
+4.  Simpan, lalu publikasikan (*Publish*) kuis iSpring Anda ke format **HTML5**, zip hasilnya, dan unggah di menu Paket Soal.
 
 ### C. Validasi Attempt Token
 Aether CBT menolak hasil yang tidak berasal dari sesi aktif. Pastikan hasil iSpring membawa salah satu field berikut:
@@ -131,7 +134,10 @@ Aether CBT menolak hasil yang tidak berasal dari sesi aktif. Pastikan hasil iSpr
 * `attempt_token`
 * `AETHER_ATTEMPT_TOKEN`
 
-Nilainya diterbitkan oleh Aether CBT saat siswa memulai mata pelajaran. Simulator bawaan frontend sudah mengirim field ini otomatis. Untuk paket iSpring asli, tambahkan field/variabel user info tersembunyi yang nilainya diisi dari parameter launch URL.
+Nilainya diterbitkan oleh Aether CBT saat siswa memulai sesi. Untuk paket yang diunggah ke Aether CBT, shim yang disuntikkan server menambahkan field ini otomatis.
+
+### D. Kunci Jawaban dan Penilaian Server
+Saat paket diunggah, server mengekstrak kunci jawaban dari paket dan menilai ulang setiap laporan; skor yang dikirim browser tidak dipercaya. Daftar paket menampilkan "Tanpa kunci — unggah ulang" untuk paket yang diunggah sebelum fitur ini ada: **unggah ulang paket tersebut**, karena tanpa kunci skor hanya berlabel "dilaporkan klien". Label "Kunci tidak cocok" di dashboard pengawas berarti kunci paket tidak cocok dengan laporan iSpring (periksa/unggah ulang paket). Hasil yang dikirim lebih dari 5 menit setelah durasi ujian ditolak dan muncul di daftar kegagalan pengiriman pengawas.
 
 ---
 

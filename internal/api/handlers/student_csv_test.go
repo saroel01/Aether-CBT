@@ -136,31 +136,62 @@ func TestImportStudentsCSV_PasswordPreservation(t *testing.T) {
 	if !utils.CheckPasswordHash(newPass, storedHash) {
 		t.Errorf("expected new explicit password to update the student hash")
 	}
+	// M5: an explicit password change revokes old JWTs (only step 4 changed the password).
+	var tv int
+	if err := database.QueryRow(`SELECT token_version FROM peserta WHERE tenant_id = 1 AND no_id = 'STU001'`).Scan(&tv); err != nil {
+		t.Fatal(err)
+	}
+	if tv != 1 {
+		t.Errorf("token_version = %d after one explicit password change, want 1", tv)
+	}
 
-	// 5. Brand new student in CSV without password column gets default password
-	csvBrandNew := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\nSTU_NEW,Brand New Student,1,1,P\n"
+	// 5. L5: a brand new student without a password is rejected and nothing is stored.
+	csvBrandNew := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\nSTU_OK,Siswa Lain,1,1,L,rahasia1\nSTU_NEW,Brand New Student,1,1,P,\n"
 	status, body = postCSVData(t, app, "/admin/students/import-csv", csvBrandNew)
-	if status != fiber.StatusOK {
-		t.Fatalf("import brand new student returned %d: %s", status, string(body))
+	if status != fiber.StatusBadRequest || !strings.Contains(string(body), "password wajib untuk siswa baru") {
+		t.Fatalf("import brand new student without password: %d %s, want 400 password wajib", status, string(body))
+	}
+	var n int
+	_ = database.QueryRow(`SELECT COUNT(*) FROM peserta WHERE tenant_id = 1 AND no_id IN ('STU_NEW', 'STU_OK')`).Scan(&n)
+	if n != 0 {
+		t.Errorf("rejected import stored %d rows, want 0 (all-or-nothing)", n)
 	}
 
-	var brandNewHash string
-	err = database.QueryRow(`SELECT password FROM peserta WHERE tenant_id = 1 AND no_id = 'STU_NEW'`).Scan(&brandNewHash)
-	if err != nil {
-		t.Fatalf("query brand new student password: %v", err)
+	csvShort := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\nSTU_SHORT,Siswa Pendek,1,1,L,abc\n"
+	status, body = postCSVData(t, app, "/admin/students/import-csv", csvShort)
+	if status != fiber.StatusBadRequest || !strings.Contains(string(body), "minimal 6 karakter") {
+		t.Fatalf("import with short password: %d %s, want 400 minimal 6 karakter", status, string(body))
 	}
-	if !utils.CheckPasswordHash("siswa123", brandNewHash) {
-		t.Errorf("expected brand new student without explicit password to receive default 'siswa123' hash")
+}
+
+// M10: phase 1 hashes every password without a database or transaction.
+func TestPrepareCSVImportHashesOutsideTransaction(t *testing.T) {
+	raw := []byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\nA1,Satu,1,1,L,rahasia1\nA2,Dua,,,P,rahasia1\nOLD,Lama,1,1,L,\n")
+	rows, ierr := prepareCSVImport(raw, map[string]bool{"OLD": true})
+	if ierr != nil {
+		t.Fatalf("prepareCSVImport: %v", ierr.msg)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3", len(rows))
+	}
+	if !utils.CheckPasswordHash("rahasia1", rows[0].passwordHash) || rows[0].passwordHash != rows[1].passwordHash {
+		t.Error("expected one shared valid bcrypt hash for the repeated password")
+	}
+	if rows[2].passwordHash != "" {
+		t.Error("existing student without password must keep theirs (empty hash)")
+	}
+	if _, ierr := prepareCSVImport(raw, map[string]bool{}); ierr == nil || ierr.status != fiber.StatusBadRequest {
+		t.Error("new student without password must be rejected")
 	}
 }
 
 func TestImportStudentsCSV_DuplicateNoIDInCSV(t *testing.T) {
 	app, _ := newStudentApp(t)
 
-	csvDup := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n" +
-		"DUP001,Student First,1,1,L\n" +
-		"DUP002,Student Second,1,1,P\n" +
-		"DUP001,Student Duplicate,1,1,L\n"
+	csvDup := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n" +
+		"DUP001,Student First,1,1,L,rahasia1\n" +
+		"DUP002,Student Second,1,1,P,rahasia1\n" +
+		"DUP001,Student Duplicate,1,1,L,rahasia1\n"
 
 	status, body := postCSVData(t, app, "/admin/students/import-csv", csvDup)
 	if status != fiber.StatusBadRequest {
@@ -176,10 +207,10 @@ func TestImportStudentsCSV_MaxRowLimit(t *testing.T) {
 	app, _ := newStudentApp(t)
 
 	var sb strings.Builder
-	sb.WriteString("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n")
+	sb.WriteString("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n")
 	// 5001 data rows
 	for i := 1; i <= 5001; i++ {
-		sb.WriteString(fmt.Sprintf("ROW%05d,Student %d,1,1,L\n", i, i))
+		sb.WriteString(fmt.Sprintf("ROW%05d,Student %d,1,1,L,rahasia1\n", i, i))
 	}
 
 	status, body := postCSVData(t, app, "/admin/students/import-csv", sb.String())
@@ -195,10 +226,10 @@ func TestImportStudentsCSV_MaxRowLimit(t *testing.T) {
 func TestImportStudentsCSV_FormulaSanitization(t *testing.T) {
 	app, database := newStudentApp(t)
 
-	csvFormula := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n" +
-		"=INJ001,=cmd|' /C calc'!A0,1,1,L\n" +
-		"+INJ002,+malicious_name,1,1,P\n" +
-		"@INJ003,@SUM(A1:A10),1,1,L\n"
+	csvFormula := "no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n" +
+		"=INJ001,=cmd|' /C calc'!A0,1,1,L,rahasia1\n" +
+		"+INJ002,+malicious_name,1,1,P,rahasia1\n" +
+		"@INJ003,@SUM(A1:A10),1,1,L,rahasia1\n"
 
 	status, body := postCSVData(t, app, "/admin/students/import-csv", csvFormula)
 	if status != fiber.StatusOK {

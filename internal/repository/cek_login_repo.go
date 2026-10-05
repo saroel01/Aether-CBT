@@ -105,10 +105,11 @@ func (r *CekLoginRepository) Lock(tenantID, pesertaID, sessionID int) error {
 	return requireAffected(res)
 }
 
-// Unlock clears the server lock (Requirement 10.4).
+// Unlock clears the server lock and the infraction counter (Requirement 10.4, L1), so a
+// single further infraction after an unlock does not re-lock the student immediately.
 func (r *CekLoginRepository) Unlock(tenantID, pesertaID, sessionID int) error {
 	res, err := r.db.Exec(
-		`UPDATE cek_login SET locked = 0 WHERE tenant_id = ? AND peserta_id = ? AND session_id = ?`,
+		`UPDATE cek_login SET locked = 0, tab_switch_count = 0 WHERE tenant_id = ? AND peserta_id = ? AND session_id = ?`,
 		tenantID, pesertaID, sessionID,
 	)
 	if err != nil {

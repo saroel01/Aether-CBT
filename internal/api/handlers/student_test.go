@@ -109,28 +109,28 @@ func TestCreateStudentNormalizesSentinelFKToNull(t *testing.T) {
 		{
 			name:      "both absent normalizes to NULL",
 			noID:      "C2-absent",
-			body:      `{"no_id":"C2-absent","nama_peserta":"Tanpa Kelas","jenis_kelamin":"L"}`,
+			body:      `{"no_id":"C2-absent","nama_peserta":"Tanpa Kelas","jenis_kelamin":"L","password":"rahasia1"}`,
 			wantKelas: sql.NullInt64{},
 			wantRuang: sql.NullInt64{},
 		},
 		{
 			name:      "explicit zero normalizes to NULL",
 			noID:      "C2-zero",
-			body:      `{"no_id":"C2-zero","nama_peserta":"Nol Sentinel","kelas_id":0,"ruang_id":0,"jenis_kelamin":"L"}`,
+			body:      `{"no_id":"C2-zero","nama_peserta":"Nol Sentinel","kelas_id":0,"ruang_id":0,"jenis_kelamin":"L","password":"rahasia1"}`,
 			wantKelas: sql.NullInt64{},
 			wantRuang: sql.NullInt64{},
 		},
 		{
 			name:      "kelas absent while ruang valid normalizes only kelas",
 			noID:      "C2-mixed",
-			body:      `{"no_id":"C2-mixed","nama_peserta":"Setengah","ruang_id":1,"jenis_kelamin":"P"}`,
+			body:      `{"no_id":"C2-mixed","nama_peserta":"Setengah","ruang_id":1,"jenis_kelamin":"P","password":"rahasia1"}`,
 			wantKelas: sql.NullInt64{},
 			wantRuang: sql.NullInt64{Int64: 1, Valid: true},
 		},
 		{
 			name:      "valid references are stored as-is",
 			noID:      "C2-valid",
-			body:      `{"no_id":"C2-valid","nama_peserta":"Lengkap","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L"}`,
+			body:      `{"no_id":"C2-valid","nama_peserta":"Lengkap","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L","password":"rahasia1"}`,
 			wantKelas: sql.NullInt64{Int64: 1, Valid: true},
 			wantRuang: sql.NullInt64{Int64: 1, Valid: true},
 		},
@@ -165,7 +165,7 @@ func TestCreateStudentRowSurvivesForeignKeyCheck(t *testing.T) {
 	app, database := newStudentApp(t)
 
 	status, body := postJSON(t, app, "/api/students",
-		`{"no_id":"C2-fkcheck","nama_peserta":"Tanpa Kelas","jenis_kelamin":"L"}`)
+		`{"no_id":"C2-fkcheck","nama_peserta":"Tanpa Kelas","jenis_kelamin":"L","password":"rahasia1"}`)
 	if status != fiber.StatusOK {
 		t.Fatalf("CreateStudent status = %d, want 200 (body: %s)", status, body)
 	}
@@ -242,21 +242,21 @@ func TestImportStudentsCSVNormalizesSentinelFKToNull(t *testing.T) {
 	}{
 		{
 			name:      "blank cells normalize to NULL",
-			row:       "CSV-blank,Siswa Kosong,,,L\n",
+			row:       "CSV-blank,Siswa Kosong,,,L,rahasia1\n",
 			noID:      "CSV-blank",
 			wantKelas: sql.NullInt64{},
 			wantRuang: sql.NullInt64{},
 		},
 		{
 			name:      "zero cells normalize to NULL",
-			row:       "CSV-zero,Siswa Nol,0,0,L\n",
+			row:       "CSV-zero,Siswa Nol,0,0,L,rahasia1\n",
 			noID:      "CSV-zero",
 			wantKelas: sql.NullInt64{},
 			wantRuang: sql.NullInt64{},
 		},
 		{
 			name:      "valid references are stored as-is",
-			row:       "CSV-valid,Siswa Lengkap,1,1,P\n",
+			row:       "CSV-valid,Siswa Lengkap,1,1,P,rahasia1\n",
 			noID:      "CSV-valid",
 			wantKelas: sql.NullInt64{Int64: 1, Valid: true},
 			wantRuang: sql.NullInt64{Int64: 1, Valid: true},
@@ -273,7 +273,7 @@ func TestImportStudentsCSVNormalizesSentinelFKToNull(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create csv part: %v", err)
 			}
-			if _, err := part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n" + tc.row)); err != nil {
+			if _, err := part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n" + tc.row)); err != nil {
 				t.Fatalf("write csv part: %v", err)
 			}
 			if err := writer.Close(); err != nil {
@@ -349,7 +349,7 @@ func TestCreateStudentPreservesValidReferencesAndResponses(t *testing.T) {
 
 	// Success: unchanged body, unchanged stored relation.
 	status, body := postJSON(t, app, "/api/students",
-		`{"no_id":"P32-valid","nama_peserta":"Siswa Sah","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L"}`)
+		`{"no_id":"P32-valid","nama_peserta":"Siswa Sah","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L","password":"rahasia1"}`)
 	if status != fiber.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", status, body)
 	}
@@ -375,17 +375,17 @@ func TestCreateStudentPreservesValidReferencesAndResponses(t *testing.T) {
 	}{
 		{
 			name:     "cross-tenant kelas",
-			body:     `{"no_id":"P32-kelas","nama_peserta":"X","kelas_id":77,"ruang_id":1,"jenis_kelamin":"L"}`,
+			body:     `{"no_id":"P32-kelas","nama_peserta":"X","kelas_id":77,"ruang_id":1,"jenis_kelamin":"L","password":"rahasia1"}`,
 			wantBody: `{"success":false,"error":"class not found in tenant"}`,
 		},
 		{
 			name:     "cross-tenant ruang",
-			body:     `{"no_id":"P32-ruang","nama_peserta":"X","kelas_id":1,"ruang_id":78,"jenis_kelamin":"L"}`,
+			body:     `{"no_id":"P32-ruang","nama_peserta":"X","kelas_id":1,"ruang_id":78,"jenis_kelamin":"L","password":"rahasia1"}`,
 			wantBody: `{"success":false,"error":"room not found in tenant"}`,
 		},
 		{
 			name:     "missing no_id",
-			body:     `{"nama_peserta":"X","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L"}`,
+			body:     `{"nama_peserta":"X","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L","password":"rahasia1"}`,
 			wantBody: `{"success":false,"error":"no_id is required"}`,
 		},
 	} {
@@ -402,7 +402,7 @@ func TestCreateStudentPreservesValidReferencesAndResponses(t *testing.T) {
 
 	// Duplicate no_id keeps its 409 and message.
 	status, body = postJSON(t, app, "/api/students",
-		`{"no_id":"P32-valid","nama_peserta":"Duplikat","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L"}`)
+		`{"no_id":"P32-valid","nama_peserta":"Duplikat","kelas_id":1,"ruang_id":1,"jenis_kelamin":"L","password":"rahasia1"}`)
 	if status != fiber.StatusConflict {
 		t.Errorf("duplicate status = %d, want 409", status)
 	}
@@ -424,7 +424,7 @@ func TestImportStudentsCSVPreservesValidReferencesAndResponses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create csv part: %v", err)
 		}
-		if _, err := part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin\n" + rows)); err != nil {
+		if _, err := part.Write([]byte("no_id,nama_peserta,kelas_id,ruang_id,jenis_kelamin,password\n" + rows)); err != nil {
 			t.Fatalf("write csv part: %v", err)
 		}
 		if err := writer.Close(); err != nil {
@@ -446,7 +446,7 @@ func TestImportStudentsCSVPreservesValidReferencesAndResponses(t *testing.T) {
 
 	t.Run("valid rows are unchanged", func(t *testing.T) {
 		app, database := newStudentApp(t)
-		status, body := postCSV(t, app, "CSV-P1,Siswa Satu,1,1,L\nCSV-P2,Siswa Dua,1,1,P\n")
+		status, body := postCSV(t, app, "CSV-P1,Siswa Satu,1,1,L,rahasia1\nCSV-P2,Siswa Dua,1,1,P,rahasia1\n")
 		if status != fiber.StatusOK {
 			t.Fatalf("status = %d, want 200 (body: %s)", status, body)
 		}
@@ -470,27 +470,27 @@ func TestImportStudentsCSVPreservesValidReferencesAndResponses(t *testing.T) {
 		}{
 			{
 				name:     "non numeric kelas_id",
-				rows:     "CSV-bad,Siswa,abc,1,L\n",
+				rows:     "CSV-bad,Siswa,abc,1,L,rahasia1\n",
 				wantBody: `{"success":false,"error":"Row 2: missing/invalid no_id, nama, kelas_id, or ruang_id"}`,
 			},
 			{
 				name:     "negative kelas_id",
-				rows:     "CSV-neg,Siswa,-3,1,L\n",
+				rows:     "CSV-neg,Siswa,-3,1,L,rahasia1\n",
 				wantBody: `{"success":false,"error":"Row 2: missing/invalid no_id, nama, kelas_id, or ruang_id"}`,
 			},
 			{
 				name:     "blank nama",
-				rows:     "CSV-noname,,1,1,L\n",
+				rows:     "CSV-noname,,1,1,L,rahasia1\n",
 				wantBody: `{"success":false,"error":"Row 2: missing/invalid no_id, nama, kelas_id, or ruang_id"}`,
 			},
 			{
 				name:     "unknown kelas_id",
-				rows:     "CSV-unknown,Siswa,999,1,L\n",
+				rows:     "CSV-unknown,Siswa,999,1,L,rahasia1\n",
 				wantBody: `{"success":false,"error":"Row 2: kelas_id 999 not found in tenant"}`,
 			},
 			{
 				name:     "unknown ruang_id",
-				rows:     "CSV-unknownruang,Siswa,1,999,L\n",
+				rows:     "CSV-unknownruang,Siswa,1,999,L,rahasia1\n",
 				wantBody: `{"success":false,"error":"Row 2: ruang_id 999 not found in tenant"}`,
 			},
 		} {

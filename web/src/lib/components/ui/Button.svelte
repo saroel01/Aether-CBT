@@ -8,18 +8,18 @@
 
   const classes = {
     dark: {
-      primary: 'bg-cobalt-600 hover:bg-cobalt-700 active:bg-cobalt-800 text-white shadow-sm border border-cobalt-500/30 focus-visible:ring-cobalt-500 focus-visible:ring-offset-slate-950',
-      secondary: 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 shadow-sm focus-visible:ring-slate-500 focus-visible:ring-offset-slate-950',
+      primary: 'bg-cobalt-600 hover:bg-cobalt-700 active:bg-cobalt-800 text-white shadow-xs border border-cobalt-500/30 focus-visible:ring-cobalt-500 focus-visible:ring-offset-slate-950',
+      secondary: 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 shadow-xs focus-visible:ring-slate-500 focus-visible:ring-offset-slate-950',
       ghost: 'bg-transparent hover:bg-slate-800/60 active:bg-slate-800 text-slate-300 hover:text-slate-100 focus-visible:ring-slate-600 focus-visible:ring-offset-slate-950',
-      danger: 'bg-ruby-600 hover:bg-ruby-700 active:bg-ruby-800 text-white shadow-sm border border-ruby-500/30 focus-visible:ring-ruby-500 focus-visible:ring-offset-slate-950',
-      warning: 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-semibold shadow-sm border border-amber-400 focus-visible:ring-amber-500 focus-visible:ring-offset-slate-950'
+      danger: 'bg-ruby-600 hover:bg-ruby-700 active:bg-ruby-800 text-white shadow-xs border border-ruby-500/30 focus-visible:ring-ruby-500 focus-visible:ring-offset-slate-950',
+      warning: 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-semibold shadow-xs border border-amber-400 focus-visible:ring-amber-500 focus-visible:ring-offset-slate-950'
     },
     light: {
-      primary: 'bg-cobalt-600 hover:bg-cobalt-700 active:bg-cobalt-800 text-white shadow-sm border border-cobalt-600/30 focus-visible:ring-cobalt-600 focus-visible:ring-offset-white',
-      secondary: 'bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 border border-slate-200 shadow-sm focus-visible:ring-slate-400 focus-visible:ring-offset-white',
+      primary: 'bg-cobalt-600 hover:bg-cobalt-700 active:bg-cobalt-800 text-white shadow-xs border border-cobalt-600/30 focus-visible:ring-cobalt-600 focus-visible:ring-offset-white',
+      secondary: 'bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 border border-slate-200 shadow-xs focus-visible:ring-slate-400 focus-visible:ring-offset-white',
       ghost: 'bg-transparent hover:bg-slate-100 active:bg-slate-200 text-slate-700 hover:text-slate-900 focus-visible:ring-slate-400 focus-visible:ring-offset-white',
-      danger: 'bg-ruby-600 hover:bg-ruby-700 active:bg-ruby-800 text-white shadow-sm border border-ruby-600/30 focus-visible:ring-ruby-600 focus-visible:ring-offset-white',
-      warning: 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-semibold shadow-sm border border-amber-400 focus-visible:ring-amber-500 focus-visible:ring-offset-white'
+      danger: 'bg-ruby-600 hover:bg-ruby-700 active:bg-ruby-800 text-white shadow-xs border border-ruby-600/30 focus-visible:ring-ruby-600 focus-visible:ring-offset-white',
+      warning: 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-semibold shadow-xs border border-amber-400 focus-visible:ring-amber-500 focus-visible:ring-offset-white'
     }
   };
 
@@ -46,7 +46,7 @@
   disabled={disabled || loading}
   aria-busy={loading ? true : undefined}
   aria-disabled={disabled || loading ? true : undefined}
-  class="inline-flex items-center justify-center font-medium transition-colors duration-150 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none {activeVariant} {activeSize} {$$props.class || ''}"
+  class="inline-flex items-center justify-center font-medium transition-colors duration-150 ease-in-out focus:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none {activeVariant} {activeSize} {$$props.class || ''}"
   {...$$restProps}
   on:click
 >

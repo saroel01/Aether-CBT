@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -78,7 +79,7 @@ func main() {
 	defer db.Close()
 
 	// Run migrations (idempotent)
-	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
+	if err := db.RunMigrations(db.DB, os.Getenv("MIGRATIONS_DIR")); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -128,6 +129,8 @@ func main() {
 		MaxRetries:     getEnvInt("QUEUE_MAX_RETRIES", 5),
 		StuckThreshold: time.Duration(getEnvInt("QUEUE_STUCK_THRESHOLD_MIN", 5)) * time.Minute,
 		DoneRetention:  time.Duration(getEnvInt("QUEUE_DONE_RETENTION_DAYS", 7)) * 24 * time.Hour,
+		// Dead-lettered submissions become visible to admin/pengawas (audit H1).
+		OnDeadLetter: submission.DeadLetterRecorder(db.DB),
 	}
 	subQueue, err := submission.NewFilesystemQueueWithConfig(queueDir, queueCfg)
 	if err != nil {
@@ -158,70 +161,20 @@ func main() {
 	go worker.Run(ctx)
 	defer worker.Stop()
 
-	app := fiber.New(fiber.Config{
-		AppName: "Aether CBT v1.0",
-		// Transport-level BodyLimit configured to cfg.SoalUploadMaxBytes (100 MB)
-		// to allow legitimate package uploads. A global middleware enforces a strict 2 MB
-		// limit on all other endpoints (P1-9).
-		BodyLimit:   int(cfg.SoalUploadMaxBytes),
-		ReadTimeout: 60 * time.Second,
-		IdleTimeout: 120 * time.Second,
-	})
+	app := fiber.New(newFiberConfig())
 
 	// Panic recovery middleware (P1-13) - prevents unhandled panics from crashing the server
 	app.Use(recover.New())
 
-	// Global BodyLimit guard (P1-9): general routes are restricted to 2 MB (1 MB for webhook).
-	// Only /api/admin/soal-packages/upload and /api/soal-packages/upload are allowed up to cfg.SoalUploadMaxBytes.
-	defaultBodyLimit := 2 * 1024 * 1024 // 2 MB
-	app.Use(func(c *fiber.Ctx) error {
-		// Non-body methods pass through immediately without buffering checks
-		method := c.Method()
-		if method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodOptions {
-			return c.Next()
-		}
+	// L11: gzip/brotli responses except iSpring content, which is served as-is (already
+	// compressed media, and the shim injection rewrites index.html).
+	app.Use(compress.New(compress.Config{Next: func(c *fiber.Ctx) bool {
+		return strings.HasPrefix(c.Path(), "/api/exam/content/")
+	}}))
 
-		p := strings.ToLower(c.Path())
-
-		// Upload routes are permitted up to SoalUploadMaxBytes (default 100 MB)
-		if strings.HasPrefix(p, "/api/admin/soal-packages/upload") || strings.HasPrefix(p, "/api/soal-packages/upload") {
-			maxUpload := int(cfg.SoalUploadMaxBytes)
-			if c.Request().Header.ContentLength() > maxUpload || len(c.Body()) > maxUpload {
-				return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
-					"status":  "error",
-					"message": fmt.Sprintf("Ukuran file paket soal melebihi batas maksimum (%d MB)", maxUpload/(1024*1024)),
-				})
-			}
-			return c.Next()
-		}
-
-		// Webhook route has a dedicated 1 MB limit to prevent memory exhaustion DoS
-		if strings.HasPrefix(p, "/api/ispring/webhook") {
-			webhookLimit := 1 * 1024 * 1024 // 1 MB
-			if c.Request().Header.ContentLength() > webhookLimit || len(c.Body()) > webhookLimit {
-				return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
-					"status":  "error",
-					"message": "Webhook payload exceeds maximum allowed size (1 MB)",
-				})
-			}
-			return c.Next()
-		}
-
-		cl := c.Request().Header.ContentLength()
-		if cl > defaultBodyLimit {
-			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Payload too large. Maximum body size is 2 MB.",
-			})
-		}
-		if len(c.Body()) > defaultBodyLimit {
-			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
-				"status":  "error",
-				"message": "Payload too large. Maximum body size is 2 MB.",
-			})
-		}
-		return c.Next()
-	})
+	// Per-route body limits (P1-9, M2): 2 MB general, 1 MB webhook, uploads streamed up to
+	// SoalUploadMaxBytes.
+	app.Use(bodyLimitGuard(cfg.SoalUploadMaxBytes))
 
 	// CORS - menggunakan allow-list (bukan wildcard)
 	corsOrigins := cfg.CORSAllowedOrigins
@@ -263,13 +216,9 @@ func main() {
 	loginLimiter := limiter.New(limiter.Config{
 		Max:        loginMax,
 		Expiration: 1 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			tenant := ""
-			if t := c.Locals("tenant_id"); t != nil {
-				tenant = fmt.Sprint(t)
-			}
-			return c.IP() + "|" + tenant
-		},
+		// H3: key per tenant + account + client IP so one lab NAT IP does not lock out
+		// every student, while still bounding brute force against a single account.
+		KeyGenerator: middleware.LoginRateLimitKey,
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 				"status":  "error",
@@ -278,9 +227,28 @@ func main() {
 		},
 	})
 
-	auth.Post("/login", loginLimiter, handlers.Login)
-	auth.Post("/student-login", loginLimiter, handlers.StudentLogin)
-	auth.Post("/supervisor-login", loginLimiter, handlers.SupervisorLogin)
+	// Second, looser limiter per tenant + IP across all accounts bounds password spraying.
+	loginIPMax := loginMax * 10
+	if v := os.Getenv("AUTH_IP_RATE_LIMIT_PER_MIN"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			loginIPMax = parsed
+		}
+	}
+	loginIPLimiter := limiter.New(limiter.Config{
+		Max:          loginIPMax,
+		Expiration:   1 * time.Minute,
+		KeyGenerator: middleware.LoginIPRateLimitKey,
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Terlalu banyak percobaan login. Silakan coba beberapa saat lagi.",
+			})
+		},
+	})
+
+	auth.Post("/login", loginIPLimiter, loginLimiter, handlers.Login)
+	auth.Post("/student-login", loginIPLimiter, loginLimiter, handlers.StudentLogin)
+	auth.Post("/supervisor-login", loginIPLimiter, loginLimiter, handlers.SupervisorLogin)
 
 	// Public QR Code generator
 	api.Get("/qrcode", handlers.GetTokenQRCode)
@@ -332,10 +300,10 @@ func main() {
 
 	// Room Supervisor routes
 	protected.Get("/supervisor/room-status", supervisorOnly, handlers.GetRoomStatus)
-	protected.Get("/supervisor/room-status/live", supervisorOnly, handlers.GetRoomStatusSSE)
 	protected.Get("/supervisor/settings", supervisorOnly, handlers.GetSupervisorSettings)
 	protected.Post("/supervisor/reset", supervisorOnly, handlers.ResetStudentSession)
 	protected.Post("/supervisor/unlock", supervisorOnly, handlers.UnlockStudentSession)
+	protected.Get("/supervisor/submission-failures", supervisorOnly, handlers.GetSubmissionFailures)
 
 	// Debug routes — admin-only so internal queue diagnostics never leak to room supervisors
 	// (review F13, Task 28).
@@ -385,7 +353,7 @@ func main() {
 
 	// Current user
 	protected.Get("/me", handlers.Me)
-	protected.Put("/me", adminOnly, handlers.UpdateMyProfile)
+	protected.Put("/me", middleware.RequireRoles("admin", "superadmin", "supervisor"), handlers.UpdateMyProfile)
 
 	// Student routes
 	protected.Get("/students", adminOnly, handlers.GetStudents)
@@ -431,7 +399,9 @@ func main() {
 		webBuildDir = abs
 	}
 
-	// Serve static frontend from built assets in production
+	// Serve static frontend from built assets in production. Hashed bundles are cached
+	// forever, HTML/other files are revalidated (L11).
+	app.Use(staticCacheControl())
 	app.Static("/", webBuildDir)
 
 	// SPA Routing support: serve index.html for unmatched client-side routes
@@ -486,6 +456,18 @@ func getEnvString(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// proxyConfig parses TRUSTED_PROXIES (comma-separated IPs/CIDRs) into a clean list.
+// An empty result means no proxy is trusted and X-Forwarded-For is ignored (H3).
+func proxyConfig(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnvInt(key string, fallback int) int {

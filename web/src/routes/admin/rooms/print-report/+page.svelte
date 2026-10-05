@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
+  import Button from '#lib/components/ui/Button.svelte';
 
   let roomId = 0;
   let roomName = '';
@@ -69,7 +69,7 @@
 
 <div class="min-h-screen bg-white text-black p-6 font-sans antialiased">
   <!-- floating print controller (hidden on print) -->
-  <div class="no-print mb-6 p-4 bg-slate-100 border rounded-2xl flex justify-between items-center max-w-3xl mx-auto shadow-sm">
+  <div class="no-print mb-6 p-4 bg-slate-100 border rounded-2xl flex justify-between items-center max-w-3xl mx-auto shadow-xs">
     <div>
       <h3 class="text-sm font-bold text-slate-800">Berita Acara Ujian - {roomName || 'Semua Ruangan'}</h3>
       <p class="text-xs text-slate-500">Gunakan pintasan browser Ctrl+P jika printer dialog tidak terbuka secara otomatis.</p>
@@ -78,7 +78,7 @@
       variant="primary" 
       size="sm"
       theme="light"
-      class="font-semibold shadow-sm"
+      class="font-semibold shadow-xs"
       on:click={() => window.print()}
     >
       Cetak Halaman
@@ -95,7 +95,7 @@
     </div>
   {:else}
     <!-- Printable Sheet -->
-    <div class="max-w-3xl mx-auto p-8 border border-slate-300 rounded shadow-sm bg-white printable-container leading-relaxed text-sm">
+    <div class="max-w-3xl mx-auto p-8 border border-slate-300 rounded-sm shadow-xs bg-white printable-container leading-relaxed text-sm">
       
       <!-- Document Header -->
       <div class="text-center border-b-2 border-double pb-4 mb-6">

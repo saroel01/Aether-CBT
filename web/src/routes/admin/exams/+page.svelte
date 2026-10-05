@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   // Requirement 2.1-2.6: exam definition CRUD + link soal package.
   let items: any[] = [];
@@ -233,7 +233,7 @@
     <div class="flex flex-col gap-2">
       <label for="exam_mapel" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mata Pelajaran *</label>
       <select id="exam_mapel" bind:value={fMapelID} disabled={saving}
-        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+        class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
         <option value={0}>Pilih Mapel...</option>
         {#each mapelList as m}
           <option value={m.id}>{m.nama_mapel} ({m.kode_mapel || '—'})</option>
@@ -245,7 +245,7 @@
       <div class="flex flex-col gap-2">
         <label for="exam_tingkat" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tingkat</label>
         <select id="exam_tingkat" bind:value={fTingkat} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
           <option value="">—</option>
           <option value="X">X</option>
           <option value="XI">XI</option>
@@ -255,7 +255,7 @@
       <div class="flex flex-col gap-2">
         <label for="exam_pkg" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Paket Soal</label>
         <select id="exam_pkg" bind:value={fPackageID} disabled={saving}
-          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-none hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
+          class="w-full h-12 px-4 border border-slate-200 rounded-2xl outline-hidden hover:border-slate-300 focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 bg-white transition-all duration-300 text-slate-800 text-sm font-semibold">
           <option value={0}>— belum ditaut (draft) —</option>
           {#each packageList as p}
             <option value={p.id}>{p.nama}</option>
@@ -271,11 +271,11 @@
 
     <div class="flex items-center gap-6 pt-2">
       <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" bind:checked={fShuffleQ} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600/20" />
+        <input type="checkbox" bind:checked={fShuffleQ} disabled={saving} class="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-600/20" />
         <span class="text-sm font-semibold text-slate-600">Acak Soal</span>
       </label>
       <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" bind:checked={fShuffleA} disabled={saving} class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600/20" />
+        <input type="checkbox" bind:checked={fShuffleA} disabled={saving} class="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-600/20" />
         <span class="text-sm font-semibold text-slate-600">Acak Jawaban</span>
       </label>
     </div>
@@ -291,8 +291,8 @@
   show={showDeleteModal}
   title="Hapus Definisi Ujian"
   message={`Hapus definisi ujian "${examToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
-  confirmText="Hapus Ujian"
-  cancelText="Batal"
+  confirmLabel="Hapus Ujian"
+  cancelLabel="Batal"
   variant="danger"
   loading={deleteLoading}
   on:confirm={confirmDeleteExam}

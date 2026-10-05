@@ -4,34 +4,39 @@
 
 Aether CBT adalah platform Computer-Based Testing (CBT) multi-tenant yang sedang dipersiapkan untuk penggunaan sekolah. Platform ini memakai Go (Fiber) di sisi backend, SQLite (WAL mode) untuk penyimpanan lokal, dan SvelteKit di sisi frontend. 
 
-**Status saat ini:** Hardened MVP dengan peningkatan keamanan signifikan (JWT dengan validasi algoritma ketat, secret wajib dari environment, CORS allow-list, rate limiting + body limit pada webhook, serta validasi tenant yang lebih ketat di produksi). 
+**Status saat ini:** Hardened MVP. JWT dengan validasi algoritma dan revokasi (`token_version`), secret wajib dari environment, CORS allow-list wajib di produksi, rate limit login per akun + IP, batas body per route, dan penilaian skor di server dari kunci jawaban paket.
 
-Namun, deployment ujian nyata tetap membutuhkan fixture iSpring sekolah asli, backup/restore rehearsal, load test, dan rotasi kredensial default.
+Deployment ujian nyata tetap membutuhkan uji dengan paket iSpring sekolah sendiri, latihan backup/restore, dan load test.
 
 ---
 
 ## 🚀 Fitur Utama (Core Features)
 
-*   **Multi-Tenant yang Ketat**: Isolasi data penuh antara sekolah (tenant) menggunakan pemfilteran dinamis `tenant_id` pada tingkat database dan middleware.
+*   **Multi-Tenant**: setiap query difilter `tenant_id`; tenant ditentukan dari klaim JWT (setelah login), atau sebelum login dari header `X-Tenant-ID`/`X-Tenant-Slug`, subdomain, lalu `DEFAULT_TENANT_ID`. Tenant baru dibuat oleh superadmin lewat API `GET/POST /api/tenants` (tidak ada UI; superadmin dibuat out-of-band langsung di database).
 *   **Integrasi Hasil iSpring QuizMaker**:
     *   Menerima hasil melalui endpoint `POST /api/ispring/webhook` dengan parameter standar seperti `sid`, `USER_NAME`, `sp`, `tp`, dan `dr`.
     *   Memparse XML detail `quizReport` dari `dr`, termasuk multiple choice, multiple response, matching, sequence, fill-in-the-blank, type-in, essay, word bank, numeric, dan drag-and-drop.
     *   Menyimpan XML mentah untuk audit serta menormalisasi jawaban per soal ke tabel `hasil_tes_detail`.
+    *   `sp`/`tp`/`dr` dianggap data tak tepercaya: skor **dinilai server** dari kunci jawaban yang diekstrak saat paket diunggah. Kolom `score_source` (SUMBER_SKOR di ekspor) bernilai `server`, `campuran`, `dilaporkan klien` (paket tanpa kunci), atau `kunci tidak cocok` (kunci tidak cocok dengan laporan). Paket lama yang diunggah sebelum fitur ini harus **diunggah ulang** agar kuncinya terekstrak.
+    *   Batasan: kunci jawaban tetap terbaca di browser siswa (sifat player iSpring yang menilai di klien). Server mencegah manipulasi skor, bukan kebocoran kunci.
 *   **Proteksi Keamanan Anti-Cheat**: Validasi sesi ujian secara langsung di monitor ruang pengawas (`cek_login`). Pengiriman hasil kuis di luar sesi aktif atau tanpa `attempt_token` yang sesuai otomatis ditolak dengan kode **`403 Forbidden`**.
 *   **Kontrol Akses Berbasis Role**: Route admin, supervisor, superadmin, dan siswa dipisahkan dengan JWT dan middleware role.
 *   **Keamanan yang Diperkuat**:
     - JWT divalidasi dengan pengecekan algoritma (mencegah algorithm confusion).
     - `JWT_SECRET` **wajib** dari environment (tidak ada fallback lemah).
-    - CORS menggunakan allow-list ketat (`CORS_ALLOWED_ORIGINS`), bukan wildcard.
-    - Webhook iSpring dilindungi rate limiting + body size limit.
-    - TenantMiddleware tidak lagi default ke tenant 1 di lingkungan produksi.
-*   **Kredensial Siswa Lebih Aman**: Siswa baru dan impor CSV disimpan dengan bcrypt, sementara data lama plaintext masih dapat login untuk migrasi bertahap.
+    - Token dicabut saat akun dinonaktifkan/dihapus atau password diganti (`token_version`, dicek per request).
+    - CORS menggunakan allow-list (`CORS_ALLOWED_ORIGINS`), wajib di produksi (server menolak start tanpa itu).
+    - Rate limit login per akun + IP (`AUTH_RATE_LIMIT_PER_MIN`, `AUTH_IP_RATE_LIMIT_PER_MIN`); di balik reverse proxy set `TRUSTED_PROXIES`.
+    - Batas body: 2 MB umum, 1 MB webhook, unggah paket di-stream hingga `SOAL_UPLOAD_MAX_BYTES`.
+    - Masuk sesi ujian (`POST /api/student/start`) wajib menyertakan token sesi yang sama dengan sesi yang diminta.
+    - Batasan yang disadari: JWT disimpan di `localStorage`, dan iframe paket memakai sandbox `allow-same-origin` (dibutuhkan shim iSpring); CSP tidak membatasi `script-src` karena player iSpring memakai inline script/eval.
+*   **Kredensial**: semua password disimpan bcrypt; hash plaintext lama **ditolak** saat login, jadi data lama wajib dimigrasi dengan `go run ./cmd/migratepasswords`. Siswa baru wajib diberi password (tidak ada password default). Pengawas dapat mengganti password ruangnya sendiri.
 *   **Ekspor Lembar Jawaban Esai Multi-Format (CSV, XLSX, PDF)**:
     *   *CSV*: Rekapan cepat grid data.
     *   *Excel (XLSX)*: Desain visual premium (Steel Blue header, auto-fit, grid borders, dan wrap text otomatis pada kolom esai siswa).
     *   *PDF Cetak Premium*: Dilengkapi Kop Surat Tenant Sekolah formal, pemisah visual soal (kotak abu-abu lembut `#F5F5F5`), jawaban esai siswa berwarna biru tua, kolom input nilai fisik korektor guru (`Skor: ____ / ____`), dan penomoran halaman dinamis.
 *   **Batas Ruang Pengawas**: Supervisor dapat memantau aktivitas ruang ujian secara real-time dan melakukan reset sesi siswa jika terdeteksi kecurangan atau kendala teknis.
-*   **Penjadwalan Ujian Detail (baru)**: tingkatan kelas (X/XI/XII), definisi ujian (mapel + paket + durasi + KKM), sesi/gelombang dengan jendela waktu & token per-sesi, dan penautan kelas/ruang peserta. Server menegakkan jendela waktu, sesi tunggal, dan kunci anti-cheat (Req 10, Property 11).
+*   **Penjadwalan Ujian Detail (baru)**: tingkatan kelas (X/XI/XII), definisi ujian (mapel + paket + durasi + KKM), sesi/gelombang dengan jendela waktu & token per-sesi, dan penautan kelas/ruang peserta. Server memeriksa jendela waktu (+5 menit grace untuk pengiriman hasil), sesi tunggal, dan kunci anti-cheat. Hasil yang terlambat ditolak 409 dan dicatat di daftar kegagalan pengiriman pengawas.
 *   **Pengiriman Konten iSpring Nyata (baru)**: admin mengunggah paket ekspor iSpring QuizMaker HTML5; siswa yang berhak mendapatkannya via iframe same-origin (cookie sesi konten, AD-2). Shim yang disuntikkan saat penyajian mengalihkan pengiriman hasil ke webhook internal tanpa URL hardcoded — guru cukup aktifkan "Send quiz result to server" saat export.
 
 ---
@@ -63,7 +68,7 @@ aether-cbt/
 │   │   ├── sqlite.go          # Pengaturan koneksi SQLite WAL
 │   │   ├── migrate.go         # Runner migrasi database otomatis
 │   │   └── migrations/        # Berkas migrasi database terurut (.sql)
-│   ├── models/                # Struktur database GORM/SQL
+│   ├── models/                # Struktur data (database/sql, tanpa ORM)
 │   └── utils/                 # Helper enkripsi, token JWT, QR Code, dan respons
 ├── web/                       # Aplikasi SvelteKit frontend
 ├── data/                      # Folder database SQLite & aset kuis iSpring per tenant
@@ -83,7 +88,7 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
 3.  Akses platform di alamat: `http://localhost:3000` (atau IP server Anda, misal `http://192.168.1.15:3000`).
 
 ### B. Mode Pengembangan (Untuk Developer)
-1.  **Prerequisites**: Pastikan Anda memiliki **Go 1.22+** dan **Node.js 18+** terinstal di sistem Anda.
+1.  **Prerequisites**: **Go 1.26+** (lihat `go.mod`) dan **Node.js 22.17+**.
 2.  **Jalankan Mode Dev** (Hot-reload frontend & backend):
     ```bash
     npm run dev
@@ -95,9 +100,11 @@ Sangat praktis! Anda tidak membutuhkan instalasi Go atau Node.js. Cukup gunakan 
 
 **Peringatan Keamanan Penting**:
 - `JWT_SECRET` **wajib** diisi melalui environment variable. Aplikasi akan menolak berjalan jika tidak ada.
-- Untuk deployment produksi, set juga `CORS_ALLOWED_ORIGINS` agar hanya domain yang diizinkan yang bisa mengakses.
-- **Migrasi password**: sebelum hari-H ujian, jalankan sekali untuk mengubah sandi siswa
-  yang masih plaintext menjadi hash bcrypt (idempoten — aman dijalankan berulang):
+- Di produksi `CORS_ALLOWED_ORIGINS` wajib; tanpa itu server berhenti saat start.
+- Admin pertama dibuat lewat `SETUP_ADMIN_PASSWORD` atau `go run ./cmd/createadmin` (tidak ada akun default).
+- Migrasi database berversi (`schema_migrations`), tiap file berjalan sekali dalam transaksi, dari berkas yang di-embed di binary (`MIGRATIONS_DIR` opsional untuk folder disk).
+- **Migrasi password (wajib untuk data lama)**: login dengan hash plaintext ditolak, jadi jalankan sekali
+  sebelum ujian (idempoten, aman dijalankan berulang):
   ```bash
   go run ./cmd/migratepasswords
   ```

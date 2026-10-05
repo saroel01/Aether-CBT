@@ -4,7 +4,7 @@ Dokumen ini adalah rujukan final untuk penerimaan hasil iSpring di Aether CBT.
 
 ## Status Implementasi
 
-Aether CBT menerima hasil kuis melalui `POST /api/ispring/webhook`. Endpoint ini menerima parameter standar iSpring, memvalidasi bahwa siswa masih memiliki sesi aktif di `cek_login`, menolak kiriman yang melewati masa toleransi waktu, menyimpan XML mentah dari `dr`, dan memecah jawaban per soal ke `hasil_tes_detail`.
+Aether CBT menerima hasil kuis melalui `POST /api/ispring/webhook` (body maksimal 1 MB). Endpoint ini menerima parameter standar iSpring, memvalidasi bahwa siswa masih memiliki sesi aktif di `cek_login`, menolak kiriman yang melewati masa toleransi waktu, menyimpan XML mentah dari `dr`, menilai ulang skor dari kunci jawaban paket, dan memecah jawaban per soal ke `hasil_tes_detail`.
 
 Parser detail iSpring berada di `internal/ispring`. Parser ini membaca bentuk `quizReport` iSpring, termasuk XML dengan namespace `http://www.ispringsolutions.com/ispring/quizbuilder/quizresults`.
 
@@ -14,9 +14,9 @@ Parser detail iSpring berada di `internal/ispring`. Parser ini membaca bentuk `q
 | --- | --- |
 | `sid` | Nomor peserta. Diprioritaskan untuk mencocokkan `peserta.no_id`. |
 | `USER_NAME` | Fallback nomor peserta jika `sid` tidak dikirim. |
-| `sp` | Skor yang diperoleh. |
-| `tp` | Skor maksimum/total poin. |
-| `dr` | XML detail hasil iSpring. Disimpan mentah dan diparse untuk analisis soal. |
+| `sp` | Skor yang dilaporkan klien (tak tepercaya; hanya dipakai untuk paket tanpa kunci). |
+| `tp` | Skor maksimum yang dilaporkan klien (tak tepercaya). |
+| `dr` | XML detail hasil iSpring (tak tepercaya). Disimpan mentah, diparse, lalu dinilai ulang server. |
 | `attempt_token` | Token per sesi ujian yang diterbitkan oleh `POST /api/student/start`. Wajib cocok dengan `cek_login.attempt_token`. |
 | `v`, `qt`, `t`, `ps`, `psp`, `ut`, `fut` | Diterima sebagai bagian format iSpring, tetapi belum semuanya disimpan sebagai kolom terpisah. |
 
@@ -69,6 +69,25 @@ Tipe yang belum dikenal tetap tidak boleh dianggap sebagai jawaban valid otomati
 - `cek_login(tenant_id, peserta_id, session_id)` memiliki unique index (migrasi 025, `idx_cek_login_unique_session`) agar sesi aktif tidak dobel; indeks lama berbasis `mapel_id` sudah di-drop.
 - `cek_login.attempt_token` menyimpan rahasia per sesi. Kiriman hasil tanpa token ini ditolak dengan HTTP `403`.
 - Setelah hasil diterima & diproses worker, baris `cek_login` untuk sesi yang tepat dihapus (scoped by `attempt_token` agar sesi saudara tidak terkena, Req 11.3).
+
+## Penilaian Server dan `score_source`
+
+Semua isi `sp`/`tp`/`dr` dikirim browser siswa, jadi dianggap data tak tepercaya. Saat paket diunggah, server mengekstrak kunci jawaban ke `soal_package.answer_key` (`answer_key_status`: `full`/`partial`/`none`). Worker menilai setiap soal di `dr` terhadap kunci itu (dicocokkan per id, lalu per teks soal) dan mengabaikan `awardedPoints` klien. Skor maksimum berasal dari kunci. Hasilnya diberi label `hasil_tes.score_source`:
+
+| Nilai | Label ekspor | Arti |
+| --- | --- | --- |
+| `server` | server | Semua soal dinilai dari kunci. |
+| `mixed` | campuran | Sebagian soal tidak dapat dinilai server (poin klien di-clamp ke batas soal; soal di luar kunci bernilai 0). |
+| `client` | dilaporkan klien | Paket tanpa kunci (mis. diunggah sebelum fitur ini). Skor klien dipakai setelah dicek konsisten dengan `dr`. |
+| `unmatched` | kunci tidak cocok | Kunci ada, tetapi tidak satu pun soal `dr` cocok; skor 0 dan server mencatat log `[GRADE]`. Periksa apakah paket sesi benar, lalu unggah ulang. |
+
+**Paket lama wajib diunggah ulang**: paket yang diunggah sebelum ekstraksi kunci berstatus `none` (tampil "Tanpa kunci — unggah ulang" di daftar paket) dan skornya hanya "dilaporkan klien" sampai diunggah ulang.
+
+Batasan: kunci jawaban tetap ada di file paket yang dimuat browser (player iSpring menilai di klien), sehingga siswa yang teknis dapat membacanya. Penilaian server mencegah manipulasi skor, bukan kebocoran kunci.
+
+## Batas Waktu (Grace)
+
+Webhook menolak hasil yang tiba lebih dari durasi ujian + 5 menit setelah login sesi dengan HTTP `409 grace period exceeded`, tanpa memasukkannya ke antrean. Penolakan dicatat sekali per `attempt_token` di tabel `submission_failure` (pesan `grace period exceeded`) sehingga tampil di daftar kegagalan pengiriman pengawas. Halaman ujian siswa berhenti mencoba ulang, menghapus payload tertunda, dan menampilkan pesan agar siswa menghubungi pengawas.
 
 ## Konfigurasi Export iSpring (wajib sebelum hari-H)
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { fade, scale } from 'svelte/transition';
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import Button from './Button.svelte';
 
   export let isOpen = false;
@@ -60,7 +60,7 @@
   $: activeIconColor = iconColors[variant] || iconColors.danger;
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown}></svelte:window>
 
 {#if visible}
   <div 
@@ -88,47 +88,81 @@
         <div class="flex items-start gap-4">
           <div class="p-2.5 rounded-xl border shrink-0 {activeIconColor}">
             {#if variant === 'danger'}
-              <svg class="h-6 w-6 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <svg
+                class="h-6 w-6 stroke-current"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                ></path>
               </svg>
             {:else if variant === 'warning'}
-              <svg class="h-6 w-6 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <svg
+                class="h-6 w-6 stroke-current"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                ></path>
               </svg>
             {:else}
-              <svg class="h-6 w-6 stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                class="h-6 w-6 stroke-current"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
               </svg>
             {/if}
           </div>
 
           <div class="flex-1 min-w-0">
-            <h3 id="confirm-modal-title" class="text-base font-bold font-display {theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}">
-              {title}
-            </h3>
-            <p id="confirm-modal-desc" class="text-sm mt-1.5 leading-relaxed {theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}">
-              {message}
-            </p>
-            <slot />
+            <h3
+              id="confirm-modal-title"
+              class="text-base font-bold font-display {theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}"
+            >{title}</h3>
+
+            <p
+              id="confirm-modal-desc"
+              class="text-sm mt-1.5 leading-relaxed {theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}"
+            >{message}</p>
+
+            <slot></slot>
           </div>
         </div>
 
         <div class="flex items-center justify-end gap-3 pt-2">
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            {theme} 
-            disabled={loading} 
+          <Button
+            variant="secondary"
+            size="sm"
+            theme={theme}
+            disabled={loading}
             on:click={handleCancel}
           >
             {cancelLabel}
           </Button>
 
-          <Button 
-            variant={variant} 
-            size="sm" 
-            {theme} 
-            {loading} 
+          <Button
+            variant={variant}
+            size="sm"
+            theme={theme}
+            loading={loading}
             on:click={handleConfirm}
           >
             {confirmLabel}

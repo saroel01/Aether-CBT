@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -113,6 +115,19 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		validasi = fmt.Sprintf("%d_%s_%d", tenantID, noID, int(sessionID.Int64))
 	}
 
+	// Audit H1 (D8): refuse a late submission synchronously so the client learns about it
+	// instead of receiving 200 and the result being dropped later by the worker. The
+	// rejection is also recorded once per attempt in submission_failure so the supervisor
+	// sees it (review Tahap 1 sisa a); the client may retry, so duplicates are skipped.
+	submittedAt := time.Now().UTC()
+	if err := submission.CheckGrace(c.Context(), db.DB, tenantID, attemptToken, submittedAt); err != nil {
+		if errors.Is(err, submission.ErrGraceExceeded) {
+			recordGraceRejection(tenantID, noID, validasi, attemptToken, submittedAt)
+			return c.Status(fiber.StatusConflict).SendString("grace period exceeded")
+		}
+		return c.Status(fiber.StatusInternalServerError).SendString("session lookup failed")
+	}
+
 	// P0-2: Immutability check - if already submitted, acknowledge idempotently without re-queuing
 	var existingStatus string
 	_ = db.DB.QueryRowContext(c.Context(), `
@@ -130,6 +145,7 @@ func ISpringWebhook(c *fiber.Ctx) error {
 		DetailXML:    detailXML,
 		AttemptToken: attemptToken,
 		Validasi:     validasi,
+		SubmittedAt:  submittedAt,
 	}
 	if err := SubmissionQueue.Enqueue(c.Context(), job); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to queue result")
@@ -137,43 +153,66 @@ func ISpringWebhook(c *fiber.Ctx) error {
 	return c.SendString("Result received successfully")
 }
 
+// graceRejectedMessage is the submission_failure.error_message for a webhook refused by
+// CheckGrace.
+const graceRejectedMessage = "grace period exceeded"
+
+// recordGraceRejection writes one submission_failure row per attempt for a late webhook.
+// Errors are logged only: the 409 response must not change because of a reporting failure.
+func recordGraceRejection(tenantID int, noID, validasi, attemptToken string, submittedAt time.Time) {
+	var exists int
+	if err := db.DB.QueryRow(`
+		SELECT COUNT(*) FROM submission_failure
+		WHERE tenant_id = ? AND attempt_token = ? AND error_message = ?
+	`, tenantID, attemptToken, graceRejectedMessage).Scan(&exists); err != nil {
+		log.Printf("[WEBHOOK] grace rejection lookup failed (tenant=%d no_id=%s): %v", tenantID, noID, err)
+		return
+	}
+	if exists > 0 {
+		return
+	}
+	if err := submission.RecordFailure(db.DB, &submission.SubmissionJob{
+		TenantID:     tenantID,
+		NoID:         noID,
+		Validasi:     validasi,
+		AttemptToken: attemptToken,
+		LastError:    graceRejectedMessage,
+		SubmittedAt:  submittedAt,
+	}); err != nil {
+		log.Printf("[WEBHOOK] %v", err)
+	}
+}
+
 // GetEducationalAnalysis returns educational breakdowns for mapels
 func GetEducationalAnalysis(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
 
-	rows, err := db.DB.Query(`
-		SELECT hd.question_id, hd.question_text, hd.question_type,
-		       SUM(CASE WHEN hd.status = 'correct' THEN 1 ELSE 0 END) as correct_count,
-		       COUNT(hd.id) as total_attempts
-		FROM hasil_tes_detail hd
-		JOIN hasil_tes h ON hd.hasil_tes_id = h.id
-		WHERE h.tenant_id = ?
-		GROUP BY hd.question_id, hd.question_text, hd.question_type
-	`, tenantID)
-
+	stats, err := queryItemStats(c, tenantID)
+	if err == errScopeForbidden {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "Unauthorized access")
+	}
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to load question analytics")
 	}
-	defer rows.Close()
 
 	type QuestionMetric struct {
-		QuestionID   string `json:"question_id"`
-		QuestionText string `json:"question_text"`
-		QuestionType string `json:"question_type"`
-		CorrectCount int    `json:"correct_count"`
-		TotalCount   int    `json:"total_count"`
+		SoalPackageID int    `json:"soal_package_id"`
+		PackageNama   string `json:"package_nama"`
+		MapelID       int    `json:"mapel_id"`
+		QuestionID    string `json:"question_id"`
+		QuestionText  string `json:"question_text"`
+		QuestionType  string `json:"question_type"`
+		CorrectCount  int    `json:"correct_count"`
+		TotalCount    int    `json:"total_count"`
 	}
 
 	var list []QuestionMetric
-	for rows.Next() {
-		var q QuestionMetric
-		if err := rows.Scan(&q.QuestionID, &q.QuestionText, &q.QuestionType, &q.CorrectCount, &q.TotalCount); err != nil {
-			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read question analytics")
-		}
-		list = append(list, q)
-	}
-	if err := rows.Err(); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate question analytics")
+	for _, s := range stats {
+		list = append(list, QuestionMetric{
+			SoalPackageID: s.SoalPackageID, PackageNama: s.PackageNama, MapelID: s.MapelID,
+			QuestionID: s.QuestionID, QuestionText: s.QuestionText, QuestionType: s.QuestionType,
+			CorrectCount: s.CorrectCount, TotalCount: s.TotalCount,
+		})
 	}
 
 	return utils.SuccessResponse(c, list, "Educational analysis retrieved")

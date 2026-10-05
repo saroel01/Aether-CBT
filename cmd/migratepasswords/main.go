@@ -36,7 +36,7 @@ func main() {
 	defer db.Close()
 
 	// Ensure the schema is current (peserta.password column exists, etc.).
-	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
+	if err := db.RunMigrations(db.DB, os.Getenv("MIGRATIONS_DIR")); err != nil {
 		log.Fatalf("run migrations: %v", err)
 	}
 

@@ -11,7 +11,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div 
-  class="aether-table-container w-full overflow-x-auto rounded-xl border shadow-sm transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-cobalt-500
+  class="aether-table-container w-full overflow-x-auto rounded-xl border shadow-xs transition-colors focus:outline-hidden focus-visible:ring-1 focus-visible:ring-cobalt-500
   {activeTheme === 'dark' ? 'bg-slate-900/90 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'} 
   {stickyHeader ? 'has-sticky-header' : ''}
   density-{currentDensity} 

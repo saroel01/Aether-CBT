@@ -3,9 +3,10 @@ package submission
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -100,7 +101,8 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		job.NoID, sanitizedNoID, job.TenantID,
 	).Scan(&pesertaID)
 	if err != nil {
-		return fmt.Errorf("peserta not found (no_id=%s, tenant=%d): %w", job.NoID, job.TenantID, err)
+		err = fmt.Errorf("peserta not found (no_id=%s, tenant=%d): %w", job.NoID, job.TenantID, err)
+		return permanentIfNoRows(err)
 	}
 
 	// P0-2: Immutability check if validasi is already known.
@@ -111,21 +113,20 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		var existingID int
 		var existingStatus string
 		var existingXML sql.NullString
-		var existingScore sql.NullFloat64
 		errHT := tx.QueryRowContext(ctx, `
-			SELECT id, status, detail_xml, skor
+			SELECT id, status, detail_xml
 			FROM hasil_tes
 			WHERE tenant_id = ? AND validasi = ?
-		`, job.TenantID, validasi).Scan(&existingID, &existingStatus, &existingXML, &existingScore)
+		`, job.TenantID, validasi).Scan(&existingID, &existingStatus, &existingXML)
 		if errHT == nil && existingStatus == "submitted" {
-			cScore, pErr := strconv.ParseFloat(job.Score, 64)
-			scoreMatch := pErr == nil && existingScore.Valid && (existingScore.Float64 == cScore || math.Abs(existingScore.Float64-cScore) <= 0.05)
-			if existingXML.Valid && existingXML.String == job.DetailXML && scoreMatch {
+			// The stored score is derived from detail_xml on the server (audit C1), so an
+			// identical detail_xml is an identical submission whatever sp the client sent.
+			if existingXML.Valid && existingXML.String == job.DetailXML {
 				// Exact identical replay: clean up cek_login if present and return nil (idempotent no-op)
 				_, _ = tx.ExecContext(ctx, "DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?", pesertaID, job.TenantID, job.AttemptToken)
 				return nil
 			}
-			return fmt.Errorf("hasil_tes for validasi %s is already submitted; overwrite rejected", validasi)
+			return Permanent(fmt.Errorf("hasil_tes for validasi %s is already submitted; overwrite rejected", validasi))
 		}
 	}
 
@@ -146,7 +147,7 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		_ = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cek_login WHERE peserta_id = ? AND tenant_id = ?", pesertaID, job.TenantID).Scan(&samePesertaAnyMapel)
 		log.Printf("[PROCESSOR] cek_login miss: peserta=%d tenant=%d sessions_for_peserta=%d total_sessions_in_tenant=%d sql_err=%v",
 			pesertaID, job.TenantID, samePesertaAnyMapel, sameTenant, err)
-		return fmt.Errorf("active session not found for peserta %d (tenant %d): %w", pesertaID, job.TenantID, err)
+		return permanentIfNoRows(fmt.Errorf("active session not found for peserta %d (tenant %d): %w", pesertaID, job.TenantID, err))
 	}
 
 	if !mapelID.Valid && sessionID.Valid {
@@ -171,89 +172,97 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 		var existingID int
 		var existingStatus string
 		var existingXML sql.NullString
-		var existingScore sql.NullFloat64
 		errHT := tx.QueryRowContext(ctx, `
-			SELECT id, status, detail_xml, skor
+			SELECT id, status, detail_xml
 			FROM hasil_tes
 			WHERE tenant_id = ? AND validasi = ?
-		`, job.TenantID, validasi).Scan(&existingID, &existingStatus, &existingXML, &existingScore)
+		`, job.TenantID, validasi).Scan(&existingID, &existingStatus, &existingXML)
 		if errHT == nil && existingStatus == "submitted" {
-			cScore, pErr := strconv.ParseFloat(job.Score, 64)
-			scoreMatch := pErr == nil && existingScore.Valid && (existingScore.Float64 == cScore || math.Abs(existingScore.Float64-cScore) <= 0.05)
-			if existingXML.Valid && existingXML.String == job.DetailXML && scoreMatch {
+			// The stored score is derived from detail_xml on the server (audit C1), so an
+			// identical detail_xml is an identical submission whatever sp the client sent.
+			if existingXML.Valid && existingXML.String == job.DetailXML {
 				_, _ = tx.ExecContext(ctx, "DELETE FROM cek_login WHERE peserta_id = ? AND tenant_id = ? AND attempt_token = ?", pesertaID, job.TenantID, job.AttemptToken)
 				return nil
 			}
-			return fmt.Errorf("hasil_tes for validasi %s is already submitted; overwrite rejected", validasi)
+			return Permanent(fmt.Errorf("hasil_tes for validasi %s is already submitted; overwrite rejected", validasi))
 		}
 	}
 
-	// Step 3: check grace period (durasi_menit + 5 minutes).
-	var durasiMenit int = 90
-	_ = tx.QueryRowContext(ctx, `
-		SELECT COALESCE(ex.durasi_menit, m.durasi_menit, 90)
-		FROM cek_login cl
-		LEFT JOIN exam_session es ON es.id = cl.session_id AND es.tenant_id = cl.tenant_id
-		LEFT JOIN exam ex ON ex.id = es.exam_id AND ex.tenant_id = es.tenant_id
-		LEFT JOIN mapel m ON m.id = cl.mapel_id AND m.tenant_id = cl.tenant_id
-		WHERE cl.peserta_id = ? AND cl.tenant_id = ? AND cl.attempt_token = ?
-	`, pesertaID, job.TenantID, job.AttemptToken).Scan(&durasiMenit)
-
-	maxAllowedDuration := time.Duration(durasiMenit)*time.Minute + 5*time.Minute
-	submissionTime := job.EnqueuedAt
-	if submissionTime.IsZero() {
-		submissionTime = time.Now()
-	}
-	actualDuration := submissionTime.UTC().Sub(loginTime.UTC())
-	if actualDuration > maxAllowedDuration {
-		return fmt.Errorf("grace period exceeded for peserta %d (mapel %d)", pesertaID, mapelID.Int64)
+	// Step 3: check grace period (durasi_menit + 5 minutes) against the ORIGINAL submission
+	// time, so retries never push a valid submission out of the window (audit H1, D7).
+	if err := CheckGrace(ctx, tx, job.TenantID, job.AttemptToken, job.submissionTime()); err != nil {
+		return fmt.Errorf("peserta %d (mapel %d): %w", pesertaID, mapelID.Int64, err)
 	}
 
 	// Step 4: parse detail_xml - mandatory (P0-1).
 	if strings.TrimSpace(job.DetailXML) == "" {
-		return fmt.Errorf("detail XML is required")
+		return Permanent(fmt.Errorf("detail XML is required"))
 	}
 	detailReport, err := ispringparser.ParseDetailedResults(job.DetailXML)
 	if err != nil {
 		log.Printf("[PROCESSOR] Invalid iSpring detail XML for job %d: %v", job.ID, err)
-		return fmt.Errorf("invalid detail XML: %w", err)
+		return Permanent(fmt.Errorf("invalid detail XML: %w", err))
 	}
 	if detailReport == nil {
-		return fmt.Errorf("detail report is nil")
+		return Permanent(fmt.Errorf("detail report is nil"))
 	}
 
-	// Step 4b: verify score and derive authoritative max score (P0-1).
-	derivedScore, derivedMax := ispringparser.DerivedScore(detailReport)
-	if derivedMax <= 0 {
-		return fmt.Errorf("derived max score must be positive, got %.2f", derivedMax)
+	// Step 4b: grade on the server from the package answer key when one exists (audit C1).
+	// sp/awardedPoints from the client are then ignored for every gradable question.
+	key, err := loadAnswerKey(ctx, tx, job.TenantID, sessionID)
+	if err != nil {
+		return err
 	}
-	clientScore, parseErr := strconv.ParseFloat(job.Score, 64)
-	if parseErr != nil {
-		return fmt.Errorf("invalid client score %q: %w", job.Score, parseErr)
-	}
-	const scoreTolerance = 0.05
-	if !ispringparser.ScoresConsistent(clientScore, derivedScore, scoreTolerance) {
-		log.Printf("[PROCESSOR] score mismatch: client=%.2f derived=%.2f job_id=%d peserta=%d tenant=%d",
-			clientScore, derivedScore, job.ID, pesertaID, job.TenantID)
-		return fmt.Errorf("score mismatch (client=%.2f, derived=%.2f) for peserta %d",
-			clientScore, derivedScore, pesertaID)
+	var graded ispringparser.GradeResult
+	if key != nil {
+		graded = ispringparser.Grade(key, detailReport)
+		if graded.MaxScore <= 0 {
+			return fmt.Errorf("answer key max score must be positive, got %.2f", graded.MaxScore)
+		}
+		if graded.Source == ispringparser.ScoreSourceUnmatched {
+			log.Printf("[GRADE] tenant=%d no_id=%s validasi=%s: answer key present but no dr question matched (%d questions)",
+				job.TenantID, job.NoID, job.Validasi, len(detailReport.Questions))
+		}
+	} else {
+		// No key (legacy package or session-less attempt): keep the client-derived score,
+		// cross-checked against sp, and label it as client-reported (D5).
+		derivedScore, derivedMax := ispringparser.DerivedScore(detailReport)
+		if derivedMax <= 0 {
+			return fmt.Errorf("derived max score must be positive, got %.2f", derivedMax)
+		}
+		clientScore, parseErr := strconv.ParseFloat(job.Score, 64)
+		if parseErr != nil {
+			return Permanent(fmt.Errorf("invalid client score %q: %w", job.Score, parseErr))
+		}
+		const scoreTolerance = 0.05
+		if !ispringparser.ScoresConsistent(clientScore, derivedScore, scoreTolerance) {
+			log.Printf("[PROCESSOR] score mismatch: client=%.2f derived=%.2f job_id=%d peserta=%d tenant=%d",
+				clientScore, derivedScore, job.ID, pesertaID, job.TenantID)
+			return Permanent(fmt.Errorf("score mismatch (client=%.2f, derived=%.2f) for peserta %d",
+				clientScore, derivedScore, pesertaID))
+		}
+		graded = ispringparser.GradeResult{
+			Score: derivedScore, MaxScore: derivedMax,
+			Source: ispringparser.ScoreSourceClient, Questions: detailReport.Questions,
+		}
 	}
 
-	// Authoritative server-derived scores for UPSERT (ignore client-controlled MaxScore)
-	job.Score = strconv.FormatFloat(derivedScore, 'f', 2, 64)
-	job.MaxScore = strconv.FormatFloat(derivedMax, 'f', 2, 64)
+	// Authoritative server-side scores for UPSERT (ignore client-controlled MaxScore)
+	job.Score = strconv.FormatFloat(graded.Score, 'f', 2, 64)
+	job.MaxScore = strconv.FormatFloat(graded.MaxScore, 'f', 2, 64)
 
 	// Step 6: UPSERT hasil_tes using ON CONFLICT(tenant_id, validasi) DO UPDATE.
 	// exam_session_id is set so each result is attributable to its wave (Task 37). The replay
 	// guard (Task 38) only bumps waktu_selesai when the prior value is NULL or within a
 	// 10-minute (600s) admin-replay window, so a stale replay cannot rewrite the finish time.
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, exam_session_id, skor, skor_maks, detail_xml, status, validasi, waktu_selesai)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
+		INSERT INTO hasil_tes (tenant_id, peserta_id, mapel_id, exam_session_id, skor, skor_maks, score_source, detail_xml, status, validasi, waktu_selesai)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'submitted', ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(tenant_id, validasi) DO UPDATE SET
 			exam_session_id = COALESCE(excluded.exam_session_id, hasil_tes.exam_session_id),
 			skor = excluded.skor,
 			skor_maks = excluded.skor_maks,
+			score_source = excluded.score_source,
 			detail_xml = excluded.detail_xml,
 			status = 'submitted',
 			waktu_selesai = CASE
@@ -262,7 +271,7 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 				THEN CURRENT_TIMESTAMP
 				ELSE hasil_tes.waktu_selesai
 			END
-	`, job.TenantID, pesertaID, mapelID, sessionID, job.Score, job.MaxScore, job.DetailXML, validasi)
+	`, job.TenantID, pesertaID, mapelID, sessionID, job.Score, job.MaxScore, graded.Source, job.DetailXML, validasi)
 	if err != nil {
 		return fmt.Errorf("upsert hasil_tes: %w", err)
 	}
@@ -285,8 +294,8 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	}
 
 	// Step 9: INSERT N new hasil_tes_detail rows.
-	if detailReport != nil && hasilTesID > 0 {
-		for _, q := range detailReport.Questions {
+	if hasilTesID > 0 {
+		for _, q := range graded.Questions {
 			questionText := q.Text
 			if questionText == "" {
 				questionText = "Teks soal tidak tersedia"
@@ -314,6 +323,39 @@ func (p *Processor) processOneInTx(ctx context.Context, tx *sql.Tx, job *Submiss
 	}
 
 	return nil
+}
+
+// loadAnswerKey returns the answer key of the soal_package behind the attempt's exam session,
+// or nil when the attempt has no session, the exam has no package, or the package has no
+// stored key (audit C1, D1). A corrupt key is treated as absent so the result is still
+// recorded, labelled as client-reported.
+func loadAnswerKey(ctx context.Context, tx *sql.Tx, tenantID int, sessionID sql.NullInt64) (*ispringparser.AnswerKey, error) {
+	if !sessionID.Valid {
+		return nil, nil
+	}
+	var raw sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT sp.answer_key
+		FROM exam_session es
+		JOIN exam e ON e.id = es.exam_id AND e.tenant_id = es.tenant_id
+		JOIN soal_package sp ON sp.id = e.soal_package_id AND sp.tenant_id = e.tenant_id
+		WHERE es.id = ? AND es.tenant_id = ?
+	`, sessionID.Int64, tenantID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load answer key (session %d): %w", sessionID.Int64, err)
+	}
+	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return nil, nil
+	}
+	var key ispringparser.AnswerKey
+	if err := json.Unmarshal([]byte(raw.String), &key); err != nil || len(key.Questions) == 0 {
+		log.Printf("[PROCESSOR] unusable answer key for session %d: %v", sessionID.Int64, err)
+		return nil, nil
+	}
+	return &key, nil
 }
 
 // Process is a convenience wrapper around ProcessBatch for single-job callers: with a batch of

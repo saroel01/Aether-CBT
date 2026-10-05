@@ -35,14 +35,15 @@ func Login(c *fiber.Ctx) error {
 
 	var user models.User
 	var passwordHash string
+	var tokenVersion int
 	err := db.DB.QueryRow(`
-		SELECT id, tenant_id, username, password_hash, role, full_name, is_active, last_login, created_at, updated_at
+		SELECT id, tenant_id, username, password_hash, role, full_name, is_active, last_login, created_at, updated_at, token_version
 		FROM users 
 		WHERE username = ? AND tenant_id = ? AND is_active = TRUE AND deleted_at IS NULL
 	`, req.Username, tenantID).Scan(
 		&user.ID, &user.TenantID, &user.Username, &passwordHash,
 		&user.Role, &user.FullName, &user.IsActive, &user.LastLogin,
-		&user.CreatedAt, &user.UpdatedAt,
+		&user.CreatedAt, &user.UpdatedAt, &tokenVersion,
 	)
 
 	if err != nil {
@@ -58,7 +59,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	// Generate JWT token
-	token, err := utils.GenerateToken(user.ID, user.TenantID, user.Role)
+	token, err := utils.GenerateTokenWithVersion(user.ID, user.TenantID, user.Role, tokenVersion)
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to generate token")
 	}

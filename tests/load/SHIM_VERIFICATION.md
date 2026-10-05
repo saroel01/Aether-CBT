@@ -22,7 +22,7 @@ covered by `internal/submission/property10_test.go`. This checklist covers the
 2. In QuizMaker → **Reporting**, enable **"Send quiz result to server"** at export. The
    server *address field can be any placeholder* — the shim overrides it at runtime to
    `/api/ispring/webhook`. (See `design.md` AD-3 and HANDOFF §3.6.)
-3. The backend running (`go run cmd/server/main.go`) and the frontend built
+3. The backend running (`go run ./cmd/server`) and the frontend built
    (`npm run build` inside `web/`).
 
 ## Setup

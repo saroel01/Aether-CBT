@@ -9,7 +9,7 @@
     "dev:frontend": "cd web && npm run dev",
     "dev:backend-only": "air",
     "dev:frontend-only": "cd web && npm run dev",
-    "dev:backend:noreload": "go run cmd/server/main.go",
+    "dev:backend:noreload": "go run ./cmd/server",
     "seed": "go run cmd/seed/main.go",
     "build": "cd web && npm run build",
     "clean": "rm -rf web/.svelte-kit web/node_modules bin"

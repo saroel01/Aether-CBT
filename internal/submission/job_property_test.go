@@ -70,6 +70,7 @@ func genSubmissionJob(t *rapid.T) *SubmissionJob {
 		MaxScore:     maxScore,
 		AttemptToken: attemptToken,
 		EnqueuedAt:   enqueuedAt,
+		SubmittedAt:  enqueuedAt.Add(-time.Duration(retryCount) * time.Second),
 		RetryCount:   retryCount,
 		LastError:    lastError,
 		DetailXML:    detailXML,
@@ -102,9 +103,11 @@ func TestPropertyRoundTripSerialization(t *testing.T) {
 		// but ensure monotonic clock is stripped for DeepEqual)
 		originalNormalized := *original
 		originalNormalized.EnqueuedAt = original.EnqueuedAt.UTC().Truncate(time.Second)
+		originalNormalized.SubmittedAt = original.SubmittedAt.UTC().Truncate(time.Second)
 
 		restoredNormalized := *restored
 		restoredNormalized.EnqueuedAt = restored.EnqueuedAt.UTC().Truncate(time.Second)
+		restoredNormalized.SubmittedAt = restored.SubmittedAt.UTC().Truncate(time.Second)
 
 		// Compare field-by-field using reflect.DeepEqual
 		if !reflect.DeepEqual(originalNormalized, restoredNormalized) {
@@ -136,6 +139,7 @@ func TestPropertyMarshalJobFormat(t *testing.T) {
 		"max_score",
 		"attempt_token",
 		"enqueued_at",
+		"submitted_at",
 		"retry_count",
 		"last_error",
 		"detail_xml",

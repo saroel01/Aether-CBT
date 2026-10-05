@@ -15,6 +15,8 @@ type LoadClient struct {
 	BaseURL    string
 	TenantID   int
 	HTTPClient *http.Client
+	// ExamToken is sent with /student/start (M1: the session token must match).
+	ExamToken string
 }
 
 func NewLoadClient(baseURL string, tenantID int) *LoadClient {
@@ -104,9 +106,10 @@ func (c *LoadClient) StudentLogin(noID, password, token string) (StudentLoginRes
 }
 
 func (c *LoadClient) StartExam(jwtToken string, pesertaID, mapelID int) (StartExamResponse, int, error) {
-	body, _ := json.Marshal(map[string]int{
+	body, _ := json.Marshal(map[string]any{
 		"peserta_id": pesertaID,
 		"mapel_id":   mapelID,
+		"token":      c.ExamToken,
 	})
 
 	req, err := http.NewRequest("POST", c.BaseURL+"/api/student/start", bytes.NewReader(body))

@@ -505,6 +505,7 @@ func TestMigrationsRepairSentinelZeroForeignKeys(t *testing.T) {
 	}
 
 	// The upgrade: migrations run again on the existing database.
+	forgetAppliedMigrations(t, testDB)
 	if err := RunMigrations(testDB, dir); err != nil {
 		t.Fatalf("rerun migrations over legacy sentinel data: %v", err)
 	}
@@ -551,6 +552,7 @@ func TestMigrationsRepairSentinelZeroForeignKeys(t *testing.T) {
 	}
 
 	// Idempotency: a third run must neither fail nor re-dirty the database.
+	forgetAppliedMigrations(t, testDB)
 	if err := RunMigrations(testDB, dir); err != nil {
 		t.Fatalf("third migration run over repaired data: %v", err)
 	}

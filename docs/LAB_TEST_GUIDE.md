@@ -37,8 +37,8 @@ Pengujian ini mencakup:
 
 ### 3.2 Perangkat Lunak
 
-- Go 1.22+
-- Node.js 18+
+- Go 1.26+ (toolchain go1.26.8 diunduh otomatis bila online)
+- Node.js 22.12+ (atau 20.19+)
 - Git
 - Browser: Chrome atau Edge terbaru
 - Terminal/PowerShell

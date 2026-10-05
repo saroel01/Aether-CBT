@@ -2,13 +2,13 @@
 
 # Legacy Make targets (npm run dev is recommended)
 run:
-	go run cmd/server/main.go
+	go run ./cmd/server
 
 seed:
 	go run cmd/seed/main.go
 
 build:
-	go build -o bin/aether-cbt cmd/server/main.go
+	go build -o bin/aether-cbt ./cmd/server
 
 clean:
 	rm -rf bin/

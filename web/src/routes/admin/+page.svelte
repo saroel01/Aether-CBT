@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { authStore } from '$lib/stores/auth';
-  import { api, apiUrl, authHeaders, qrCodeUrl, studentLoginQrUrl, auth as apiAuth } from '$lib/api';
+  import { authStore } from '#lib/stores/auth.js';
+  import { api, apiUrl, authHeaders, qrCodeUrl, studentLoginQrUrl, auth as apiAuth } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import SubmissionFailures from '#lib/components/SubmissionFailures.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   let username = import.meta.env.DEV ? 'admin' : '';
   let password = import.meta.env.DEV ? 'admin123' : '';
@@ -173,7 +174,7 @@
               variant="primary" 
               size="lg" 
               theme="light"
-              class="w-full font-semibold mt-6 shadow-sm" 
+              class="w-full font-semibold mt-6 shadow-xs" 
               {loading}
             >
               {loading ? 'Masuk...' : 'Sign In'}
@@ -189,6 +190,9 @@
       </div>
     </div>
   {:else}
+    <!-- Dead-lettered submissions (audit H1) -->
+    <SubmissionFailures />
+
     <!-- Dashboard Overview Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-6">
       <div>
@@ -197,18 +201,18 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-sm" on:click={loadStats}>
+        <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-xs" on:click={loadStats}>
           Segarkan Data
         </Button>
-        <Button variant="primary" size="sm" theme="light" class="font-semibold shadow-sm" on:click={downloadResultsCSV}>
+        <Button variant="primary" size="sm" theme="light" class="font-semibold shadow-xs" on:click={downloadResultsCSV}>
           Ekspor Skor (CSV)
         </Button>
       </div>
     </div>
 
     <!-- Pusat Kontrol Operasional -->
-    <Card padding="lg" class="border-slate-200 bg-white shadow-sm relative overflow-hidden rounded-2xl">
-      <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+    <Card padding="lg" class="border-slate-200 bg-white shadow-xs relative overflow-hidden rounded-2xl">
+      <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
       
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-slate-100">
         <div>
@@ -254,8 +258,8 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
       <!-- Quick actions & Info (2/3) -->
       <div class="lg:col-span-2 flex flex-col gap-6">
-        <Card padding="lg" class="border-slate-200 bg-white shadow-sm relative overflow-hidden rounded-2xl">
-          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+        <Card padding="lg" class="border-slate-200 bg-white shadow-xs relative overflow-hidden rounded-2xl">
+          <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
           <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-4 pb-2 border-b border-slate-100">Pintasan Manajemen</h3>
           
@@ -290,8 +294,8 @@
           </div>
         </Card>
 
-        <Card padding="lg" class="border-slate-200 bg-white shadow-sm relative overflow-hidden rounded-2xl">
-          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+        <Card padding="lg" class="border-slate-200 bg-white shadow-xs relative overflow-hidden rounded-2xl">
+          <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
           <h3 class="text-sm font-bold text-slate-800 uppercase tracking-widest font-mono mb-4 pb-2 border-b border-slate-100">Informasi Teknis Server</h3>
           
@@ -321,8 +325,8 @@
 
       <!-- Live Token QR (1/3) -->
       <div class="lg:col-span-1 flex flex-col gap-6">
-        <Card padding="md" class="border-slate-200 bg-white text-center shadow-sm relative overflow-hidden rounded-2xl">
-          <div class="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+        <Card padding="md" class="border-slate-200 bg-white text-center shadow-xs relative overflow-hidden rounded-2xl">
+          <div class="absolute top-0 left-0 w-full h-px bg-slate-100"></div>
 
           <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 font-mono">Token Ujian Aktif</div>
           
@@ -332,7 +336,7 @@
 
           <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3 font-mono">QR Code Ujian Resmi</div>
           
-          <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-3 shadow-sm">
+          <div class="bg-white p-3 border border-slate-200 rounded-2xl inline-block mx-auto mb-3 shadow-xs">
             <img src={studentLoginQrUrl(activeToken)} alt="QR Token" class="h-40 w-40 mx-auto" />
           </div>
 

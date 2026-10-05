@@ -22,10 +22,10 @@ Write-Host ""
 Write-Host "[1/5] Memeriksa dependensi sistem..." -ForegroundColor Yellow
 
 if (-not (Get-Command "go" -ErrorAction SilentlyContinue)) {
-    Write-Error "Error: Go compiler (go) tidak ditemukan. Silakan pasang Go 1.22+."
+    Write-Error "Error: Go compiler (go) tidak ditemukan. Silakan pasang Go 1.26+ (toolchain go1.26.8 diunduh otomatis)."
 }
 if (-not (Get-Command "npm" -ErrorAction SilentlyContinue)) {
-    Write-Error "Error: Node.js/npm tidak ditemukan. Silakan pasang Node.js 18+."
+    Write-Error "Error: Node.js/npm tidak ditemukan. Silakan pasang Node.js 22.17+."
 }
 
 $GoVersion = (go version).Split(" ")[2]
@@ -89,7 +89,7 @@ Write-Host "[4/5] Memulai kompilasi Backend (Go)..." -ForegroundColor Yellow
 
 $ExeName = "aether-cbt.exe"
 Write-Host "Mengompilasi Go binary dengan optimasi ukuran..." -ForegroundColor Gray
-go build -ldflags="-s -w" -o $ExeName cmd/server/main.go
+go build -ldflags="-s -w" -o $ExeName ./cmd/server
 
 if (-not (Test-Path $ExeName)) {
     Write-Error "Error: Kompilasi backend gagal. Berkas '$ExeName' tidak terbentuk."

@@ -58,10 +58,17 @@ Agar aplikasi Aether CBT berjalan otomatis di latar belakang (*background servic
     ExecStart=/var/www/aether-cbt/aether-cbt
     Restart=always
     RestartSec=5
-    Environment=PORT=3000 DATABASE_URL=data/cbt_aether.db JWT_SECRET=IsiDenganSecretPanjangAcakMinimal32Karakter CORS_ALLOWED_ORIGINS=https://cbt.sekolah.sch.id
-
-# PENTING: JWT_SECRET HARUS sangat kuat dan acak. Aplikasi akan menolak start jika kosong atau lemah.
-# CORS_ALLOWED_ORIGINS wajib diisi di produksi untuk mencegah akses dari origin lain.
+    Environment=ENV=production PORT=3000 DATABASE_URL=data/cbt_aether.db
+    # Ganti dengan hasil: openssl rand -hex 32  (min. 32 karakter; nilai lemah ditolak)
+    Environment=JWT_SECRET=GANTI_DENGAN_OUTPUT_OPENSSL_RAND_HEX_32
+    # Wajib di produksi: tanpa ini server berhenti saat start
+    Environment=CORS_ALLOWED_ORIGINS=https://cbt.sekolah.sch.id
+    # Admin pertama (hanya dipakai bila belum ada admin); hapus setelah login pertama
+    Environment=SETUP_ADMIN_PASSWORD=GantiPasswordAdminPertama
+    # Nginx di mesin yang sama: percayai X-Forwarded-For dari loopback (rate limit login per IP klien)
+    Environment=TRUSTED_PROXIES=127.0.0.1
+    # Satu sekolah per server: tenant untuk request tanpa identitas tenant
+    Environment=DEFAULT_TENANT_ID=1
 
     [Install]
     WantedBy=multi-user.target
@@ -189,3 +196,13 @@ SQLite berkinerja tinggi dalam mode WAL, namun berkas database tidak boleh langs
     ```bash
     (sudo crontab -l 2>/dev/null; echo "0 0 * * * /var/www/aether-cbt/backup.sh") | sudo crontab -
     ```
+
+---
+
+## 5. CATATAN OPERASIONAL
+
+*   **Migrasi database** berjalan otomatis saat start dari berkas yang di-embed di biner. Setiap berkas tercatat di tabel `schema_migrations` dan hanya dijalankan sekali, dalam satu transaksi. Database lama (sebelum ada `schema_migrations`) di-bootstrap sekali secara otomatis. `MIGRATIONS_DIR` hanya diisi bila ingin memakai folder migrasi di disk.
+*   **Data lama dengan password plaintext** tidak bisa login. Jalankan `go run ./cmd/migratepasswords` (atau biner yang setara) sekali sebelum ujian.
+*   **Resolusi tenant (wildcard subdomain)**: setelah login tenant diambil dari JWT. Sebelum login urutannya `X-Tenant-ID`, `X-Tenant-Slug`, subdomain pertama host (harus sama dengan `tenants.slug`), lalu `DEFAULT_TENANT_ID`; tanpa semua itu request ditolak 400 di produksi. Tenant baru dibuat superadmin lewat `POST /api/tenants`.
+*   **Rate limit login** dihitung per akun + IP (`AUTH_RATE_LIMIT_PER_MIN`, default 10) dan per IP (`AUTH_IP_RATE_LIMIT_PER_MIN`, default 100). Di balik Nginx, `TRUSTED_PROXIES` wajib diisi agar IP klien terbaca.
+*   **Reset data uji beban** (`scripts/reset_queue.go`) wajib menyebut tenant: `go run scripts/reset_queue.go -tenant 1`. Hanya baris tenant itu yang dihapus.

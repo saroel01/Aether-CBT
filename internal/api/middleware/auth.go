@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"database/sql"
+	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,6 +50,18 @@ func AuthMiddleware() fiber.Handler {
 		role, ok := claims["role"].(string)
 		if !ok {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+		// Tokens issued before claim "tv" existed count as version 0.
+		tv := 0
+		if v, ok := claims["tv"].(float64); ok {
+			tv = int(v)
+		}
+		current, err := accountTokenVersion(c.UserContext(), role, int(tenantID), int(userID))
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, errUnknownRole) || (err == nil && current != tv) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session revoked or account inactive"})
+		}
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to verify session"})
 		}
 		c.Locals("user_id", int(userID))
 		c.Locals("tenant_id", int(tenantID))

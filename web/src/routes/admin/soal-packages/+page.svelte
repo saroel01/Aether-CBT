@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { api, apiUrl, authHeaders } from '$lib/api';
+  import { api, apiUrl, authHeaders } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   // Requirement 3.8/3.9/3.10: list, upload (with progress), delete unlinked packages.
   let items: any[] = [];
@@ -174,6 +174,11 @@
                 <td class="font-mono text-slate-400 font-bold">{p.id}</td>
                 <td class="font-semibold text-slate-800">
                   {p.nama}
+                  {#if p.answer_key_status === 'none'}
+                    <Badge theme="light" variant="danger" class="ml-1" title="Paket diunggah sebelum fitur kunci jawaban; skor akan berlabel dilaporkan klien">Tanpa kunci — unggah ulang</Badge>
+                  {:else if p.answer_key_status === 'partial'}
+                    <Badge theme="light" variant="warning" class="ml-1" title="Sebagian soal tidak dapat dinilai server">Kunci sebagian</Badge>
+                  {/if}
                   <div class="text-[10px] font-mono text-slate-400">{p.package_uuid}</div>
                 </td>
                 <td>
@@ -207,7 +212,7 @@
 
     <!-- Upload panel (1/3) -->
     <div class="lg:col-span-1">
-      <Card padding="md" class="border-slate-200/50 bg-white shadow-sm">
+      <Card padding="md" class="border-slate-200/50 bg-white shadow-xs">
         <h3 class="text-base font-bold text-slate-800 mb-4 pb-2 border-b">Unggah Paket Baru</h3>
 
         <div class="space-y-4">
@@ -264,8 +269,8 @@
     show={showDeleteModal}
     title="Hapus Paket Soal"
     message={`Hapus paket soal "${pkgToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
-    confirmText="Hapus Paket"
-    cancelText="Batal"
+    confirmLabel="Hapus Paket"
+    cancelLabel="Batal"
     variant="danger"
     loading={deleteLoading}
     on:confirm={confirmDeletePackage}

@@ -34,6 +34,11 @@ type Question struct {
 	UsedAttempts      int
 	UserAnswer        string
 	CorrectAnswer     string
+	// Structured user answers for server-side grading (audit C1, D2), so the grader does not
+	// have to split the "a; b" display strings. Filled for MC/TF/MR, matching and sequence.
+	UserChoices []string    // selected option texts (MC/TF/MR)
+	UserPairs   [][2]string // premise -> response chosen by the student (matching)
+	UserOrder   []string    // item texts in the order the student arranged them (sequence)
 }
 
 type quizReportXML struct {
@@ -289,7 +294,33 @@ func parseQuestion(raw rawQuestionXML) Question {
 	q.MaxAttempts, _ = parseInt(raw.MaxAttempts)
 	q.UsedAttempts, _ = parseInt(raw.UsedAttempts)
 	q.UserAnswer, q.CorrectAnswer = resolveAnswers(raw)
+	resolveStructuredAnswers(raw, &q)
 	return q
+}
+
+// resolveStructuredAnswers fills the structured user-answer fields next to the display
+// strings from resolveAnswers (whose output is left unchanged).
+func resolveStructuredAnswers(raw rawQuestionXML, q *Question) {
+	switch raw.XMLName.Local {
+	case "multipleChoiceQuestion", "trueFalseQuestion":
+		if a := answerByIndex(raw.Answers.List, raw.Answers.UserAnswerIndex); a != "" {
+			q.UserChoices = []string{a}
+		}
+	case "multipleResponseQuestion":
+		for _, answer := range raw.Answers.List {
+			if parseBool(answer.Selected) {
+				if a := answerText(answer); a != "" {
+					q.UserChoices = append(q.UserChoices, a)
+				}
+			}
+		}
+	case "matchingQuestion":
+		q.UserPairs = matchPairList(raw.UserAnswerNode.Matches, raw.Premises, raw.Responses, matchModePremiseResponse)
+	case "sequenceQuestion":
+		for _, item := range sequenceUserItems(raw.Answers.List) {
+			q.UserOrder = append(q.UserOrder, clean(item.text))
+		}
+	}
 }
 
 func defaultEvaluationEnabled(questionType string) bool {
@@ -398,8 +429,17 @@ const (
 )
 
 func matchPairs(matches []matchXML, left []richTextXML, right []richTextXML, mode matchMode) string {
+	var out []string
+	for _, p := range matchPairList(matches, left, right, mode) {
+		out = append(out, p[0]+" - "+p[1])
+	}
+	return strings.Join(cleanStrings(out), "; ")
+}
+
+// matchPairList resolves match indexes into (left, right) text pairs ordered by left index.
+func matchPairList(matches []matchXML, left []richTextXML, right []richTextXML, mode matchMode) [][2]string {
 	if len(matches) == 0 {
-		return ""
+		return nil
 	}
 
 	type pair struct {
@@ -424,16 +464,21 @@ func matchPairs(matches []matchXML, left []richTextXML, right []richTextXML, mod
 	}
 	sort.SliceStable(pairs, func(i, j int) bool { return pairs[i].leftIndex < pairs[j].leftIndex })
 
-	var out []string
+	var out [][2]string
 	for _, pair := range pairs {
 		if pair.leftIndex >= 0 && pair.leftIndex < len(left) && pair.rightIndex >= 0 && pair.rightIndex < len(right) {
-			out = append(out, clean(left[pair.leftIndex].Text)+" - "+clean(right[pair.rightIndex].Text))
+			out = append(out, [2]string{clean(left[pair.leftIndex].Text), clean(right[pair.rightIndex].Text)})
 		}
 	}
-	return strings.Join(cleanStrings(out), "; ")
+	return out
 }
 
 func sequenceUserAnswer(answers []answerXML) string {
+	return numbered(sequenceUserItems(answers))
+}
+
+// sequenceUserItems returns the sequence items ordered by the student's chosen position.
+func sequenceUserItems(answers []answerXML) []sequenceItem {
 	var items []sequenceItem
 	for index, answer := range answers {
 		position, ok := parseInt(answer.UserDefinedPosition)
@@ -443,7 +488,7 @@ func sequenceUserAnswer(answers []answerXML) string {
 		items = append(items, sequenceItem{position: position, text: answerText(answer)})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].position < items[j].position })
-	return numbered(items)
+	return items
 }
 
 func sequenceCorrectAnswer(answers []answerXML) string {

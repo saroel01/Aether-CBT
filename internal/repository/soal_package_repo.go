@@ -18,6 +18,11 @@ type SoalPackageInput struct {
 	TotalSize      int64
 	Checksum       *string
 	UploadedBy     *int
+	// AnswerKeyJSON is the serialized ispring.AnswerKey (audit C1, D1); empty stores NULL.
+	// It is written here but never read back into models.SoalPackage, so it cannot leak to
+	// clients through package listings.
+	AnswerKeyJSON   string `json:"-"`
+	AnswerKeyStatus string // full|partial|none; defaults to "none" when empty
 }
 
 // SoalPackageRepository manages metadata for uploaded iSpring packages. The package
@@ -32,7 +37,7 @@ func NewSoalPackageRepository(db *sql.DB) *SoalPackageRepository {
 	return &SoalPackageRepository{db: db}
 }
 
-const soalPackageColumns = `id, tenant_id, nama, package_uuid, entry_path, ispring_version, total_size, checksum, uploaded_by, created_at, updated_at, deleted_at`
+const soalPackageColumns = `id, tenant_id, nama, package_uuid, entry_path, ispring_version, total_size, checksum, uploaded_by, answer_key_status, created_at, updated_at, deleted_at`
 
 func scanSoalPackage(s scanner) (*models.SoalPackage, error) {
 	p := &models.SoalPackage{}
@@ -41,7 +46,7 @@ func scanSoalPackage(s scanner) (*models.SoalPackage, error) {
 	var deletedAt sql.NullTime
 	if err := s.Scan(
 		&p.ID, &p.TenantID, &p.Nama, &p.PackageUUID, &p.EntryPath,
-		&ispringVersion, &p.TotalSize, &checksum, &uploadedBy,
+		&ispringVersion, &p.TotalSize, &checksum, &uploadedBy, &p.AnswerKeyStatus,
 		&p.CreatedAt, &p.UpdatedAt, &deletedAt,
 	); err != nil {
 		return nil, err
@@ -59,10 +64,18 @@ func (r *SoalPackageRepository) Create(tenantID int, in SoalPackageInput) (*mode
 	if entryPath == "" {
 		entryPath = "index.html"
 	}
+	keyStatus := in.AnswerKeyStatus
+	if keyStatus == "" {
+		keyStatus = "none"
+	}
+	var answerKey any // NULL when no key was extracted
+	if in.AnswerKeyJSON != "" {
+		answerKey = in.AnswerKeyJSON
+	}
 	res, err := r.db.Exec(`
-		INSERT INTO soal_package (tenant_id, nama, package_uuid, entry_path, ispring_version, total_size, checksum, uploaded_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, tenantID, in.Nama, in.PackageUUID, entryPath, in.IspringVersion, in.TotalSize, in.Checksum, in.UploadedBy)
+		INSERT INTO soal_package (tenant_id, nama, package_uuid, entry_path, ispring_version, total_size, checksum, uploaded_by, answer_key, answer_key_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, tenantID, in.Nama, in.PackageUUID, entryPath, in.IspringVersion, in.TotalSize, in.Checksum, in.UploadedBy, answerKey, keyStatus)
 	if err != nil {
 		return nil, err
 	}

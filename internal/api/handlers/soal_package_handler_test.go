@@ -3,9 +3,13 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"database/sql"
+	"encoding/base64"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -73,6 +77,50 @@ func TestUploadSoalPackage_HappyPath(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("expected 1 package row, got %d", n)
+	}
+}
+
+// Audit C1/D1: the answer key is stored server-side at upload and never echoed to the client.
+func TestUploadSoalPackage_StoresAnswerKeyWithoutLeaking(t *testing.T) {
+	SetSoalStorageDir(t.TempDir())
+	app, adminOnly, database, cleanup := newAdminTestApp(t, "admin")
+	defer cleanup()
+	app.Post("/api/admin/soal-packages/upload", adminOnly, UploadSoalPackage)
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+
+	data := `{"d":{"sl":{"g":[{"s":{"st":"allQuestions"},"S":[{"i":"q1","tp":"MultipleChoice","D":{"d":["Q"]},"s":{"e":{"t":"byQuestion","pt":5}},"C":{"chs":[{"c":true,"t":{"d":["RahasiaBenar"]}},{"c":false,"t":{"d":["Salah"]}}]}}]}]}}}`
+	index := `<html><script>var data = "` + base64.StdEncoding.EncodeToString([]byte(data)) + `";</script></html>`
+	resp := newMultipartUpload(t, app, "/api/admin/soal-packages/upload", "kunci.zip", buildZipBytes(t, map[string]string{"index.html": index}))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), `"answer_key"`) || strings.Contains(string(body), "RahasiaBenar") {
+		t.Fatalf("upload response leaks the answer key: %s", body)
+	}
+	if !strings.Contains(string(body), `"answer_key_status":"full"`) {
+		t.Fatalf("upload response lacks answer_key_status=full: %s", body)
+	}
+
+	var status string
+	var key sql.NullString
+	if err := database.QueryRow(`SELECT answer_key_status, answer_key FROM soal_package WHERE tenant_id = 1`).Scan(&status, &key); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if status != "full" || !strings.Contains(key.String, "RahasiaBenar") {
+		t.Fatalf("stored status=%q key=%q", status, key.String)
+	}
+
+	// A package without player data still uploads, with status none and a NULL key.
+	resp = newMultipartUpload(t, app, "/api/admin/soal-packages/upload", "polos.zip", buildZipBytes(t, map[string]string{"index.html": "<html></html>"}))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("plain upload status = %d, want 200", resp.StatusCode)
+	}
+	if err := database.QueryRow(`SELECT answer_key_status, answer_key FROM soal_package WHERE nama = 'polos'`).Scan(&status, &key); err != nil {
+		t.Fatalf("query plain: %v", err)
+	}
+	if status != "none" || key.Valid {
+		t.Fatalf("plain package status=%q key valid=%v", status, key.Valid)
 	}
 }
 

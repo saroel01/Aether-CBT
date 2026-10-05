@@ -45,19 +45,20 @@ func StudentLogin(c *fiber.Ctx) error {
 
 	var pesertaID int
 	var storedPassword string
+	var tokenVersion int
 	rawNoID := strings.TrimSpace(req.NoID)
 	sanitizedNoID := SanitizeFormulaField(rawNoID)
 	err := db.DB.QueryRow(`
-		SELECT id, password FROM peserta
+		SELECT id, password, token_version FROM peserta
 		WHERE (no_id = ? OR no_id = ?) AND tenant_id = ? AND deleted_at IS NULL
 		LIMIT 1
-	`, rawNoID, sanitizedNoID, tenantID).Scan(&pesertaID, &storedPassword)
+	`, rawNoID, sanitizedNoID, tenantID).Scan(&pesertaID, &storedPassword, &tokenVersion)
 
 	if err != nil || !utils.CheckPasswordHash(req.Password, storedPassword) {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
-	jwtToken, err := utils.GenerateToken(pesertaID, tenantID, "student")
+	jwtToken, err := utils.GenerateTokenWithVersion(pesertaID, tenantID, "student", tokenVersion)
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to generate student session token")
 	}

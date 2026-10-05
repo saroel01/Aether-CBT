@@ -35,8 +35,13 @@ func GetUsers(c *fiber.Ctx) error {
 	var users []UserResponse
 	for rows.Next() {
 		var u UserResponse
-		rows.Scan(&u.ID, &u.Username, &u.Role, &u.FullName, &u.IsActive, &u.CreatedAt)
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.FullName, &u.IsActive, &u.CreatedAt); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to read user")
+		}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate users")
 	}
 
 	return utils.SuccessResponse(c, users, "Users retrieved")

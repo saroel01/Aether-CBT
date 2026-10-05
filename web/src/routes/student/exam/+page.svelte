@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { api, apiUrl } from '$lib/api';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import { toast } from '$lib/stores/toast';
-  import { makeCountdown, deadlineFromServerRemaining, formatHMS } from '$lib/timer';
+  import { api, apiUrl } from '#lib/api.js';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import { toast } from '#lib/stores/toast.js';
+  import { makeCountdown, deadlineFromServerRemaining, formatHMS } from '#lib/timer.js';
 
   // Task 14: replace the hardcoded question simulator with the real iSpring package served
   // same-origin via the content-session cookie. The iSpring player (inside the iframe) sends
@@ -25,7 +25,7 @@
   // Anti-cheat + lock state (Requirement 10). The authoritative lock is server-side; we mirror
   // it client-side only to show an immediate overlay.
   //
-  // Detection uses `document.visibilitychange` (not `window.blur`): `blur` fires on any focus
+  // Detection uses `document.visibilitychange` (not `window.blur-sm`): `blur-sm` fires on any focus
   // loss, including legitimate interactions with the iSpring iframe (clicking buttons,
   // opening dialogs, requesting fullscreen), which caused false-positive infractions. Only a
   // real tab/window switch flips `document.visibilityState` to 'hidden'. A debounce coalesces
@@ -56,9 +56,26 @@
   let submissionPending = false;
   let pendingPayload: string | null = null;
   let retryCount = 0;
+  let retryLimitWarned = false;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let isSubmitting = false;
   const PENDING_SUBMISSION_KEY = 'aether_pending_submission';
+  // The webhook refused the result as late (409 grace period exceeded). Retrying cannot
+  // help, the server already logged it for the supervisor, so the payload is dropped and a
+  // persistent notice replaces the retry overlay (review Tahap 1 sisa a).
+  let lateRejected = false;
+
+  function markLateRejected() {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    try { localStorage.removeItem(PENDING_SUBMISSION_KEY); } catch {}
+    pendingPayload = null;
+    submissionPending = false;
+    isSubmitting = false;
+    lateRejected = true;
+  }
 
   // Time-warning thresholds (P3). The server is authoritative for remaining time (wall-clock,
   // resynced every 60s); these are pure UI signals so the student is alerted at the 10/5/1 minute
@@ -293,9 +310,11 @@
       return;
     }
 
-    if (retryCount >= MAX_RETRY_ATTEMPTS) {
-      toast.error('Gagal mengirim hasil setelah beberapa percobaan. Hubungi pengawas ruangan.');
-      return;
+    // Audit H1: never give up permanently. After MAX_RETRY_ATTEMPTS warn once, then keep
+    // retrying every 30s so the result is not lost while the network is flaky.
+    if (retryCount >= MAX_RETRY_ATTEMPTS && !retryLimitWarned) {
+      retryLimitWarned = true;
+      toast.error('Gagal mengirim hasil setelah beberapa percobaan. Sistem tetap mencoba otomatis; hubungi pengawas ruangan.');
     }
 
     isSubmitting = true;
@@ -321,6 +340,12 @@
       // P1-10/P1-11: Stop retry on non-retryable 4xx errors
       if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
         console.warn(`Submission rejected with terminal status ${res.status}`);
+        const bodyText = await res.text().catch(() => '');
+        if (res.status === 409 && bodyText.includes('grace period exceeded')) {
+          // Webhook refused a late submission synchronously (audit H1); retrying cannot help.
+          markLateRejected();
+          return;
+        }
         if (res.status === 409) {
           localStorage.removeItem(PENDING_SUBMISSION_KEY);
           pendingPayload = null;
@@ -340,10 +365,13 @@
       isSubmitting = false;
     }
 
-    if (submissionPending && retryCount < MAX_RETRY_ATTEMPTS) {
+    if (submissionPending) {
       if (retryTimer) clearTimeout(retryTimer);
-      // Exponential backoff with jitter: base 2s, factor 1.5, max 30s, + 0-1s random jitter
-      const backoffMs = Math.min(30000, Math.pow(1.5, Math.min(retryCount, 8)) * 2000 + Math.random() * 1000);
+      // Exponential backoff with jitter: base 2s, factor 1.5, max 30s, + 0-1s random jitter;
+      // a flat 30s once MAX_RETRY_ATTEMPTS is reached.
+      const backoffMs = retryCount >= MAX_RETRY_ATTEMPTS
+        ? 30000
+        : Math.min(30000, Math.pow(1.5, Math.min(retryCount, 8)) * 2000 + Math.random() * 1000);
       retryTimer = setTimeout(retrySubmission, backoffMs);
     }
   }
@@ -416,6 +444,9 @@
     resyncFromServer();
     flushProgress();
     if (submissionPending) {
+      // Fresh connection, fresh retry budget (audit H1).
+      retryCount = 0;
+      retryLimitWarned = false;
       retrySubmission();
     }
   }
@@ -597,12 +628,9 @@
         submissionPending = true;
         if (d.status === 403 || d.status === 409) {
           if (d.status === 409) {
-            localStorage.removeItem(PENDING_SUBMISSION_KEY);
-            pendingPayload = null;
-            submissionPending = false;
-            submitted = true;
-            showResultModal = true;
-            toast.info('Hasil ujian Anda sudah tercatat di server.');
+            // The webhook's only 409 is "grace period exceeded" (an already-submitted
+            // result is acknowledged with 200), so this is a late rejection.
+            markLateRejected();
           } else {
             toast.error('Sesi ujian telah terkunci atau tidak aktif. Hubungi pengawas.');
           }
@@ -739,7 +767,7 @@
     // Give shim up to 6 seconds to deliver confirmed aether_result; if not yet submitted,
     // transition to submissionPending and initiate retry.
     setTimeout(() => {
-      if (!submitted) {
+      if (!submitted && !lateRejected) {
         submissionPending = true;
         retrySubmission();
       }
@@ -761,7 +789,7 @@
     // P1-11: Do NOT set submitted = true or showResultModal = true immediately;
     // wait for verified response from backend before showing completion.
     setTimeout(() => {
-      if (!submitted) {
+      if (!submitted && !lateRejected) {
         submissionPending = true;
         retrySubmission();
       }
@@ -796,9 +824,9 @@
     </div>
 
     <div class="flex items-center gap-4">
-      <!-- Fixed Tabular Countdown Timer with min-w-[7.5rem] -->
+      <!-- Fixed Tabular Countdown Timer with min-w-30 -->
       <div 
-        class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl min-w-[7.5rem] font-mono transition-colors duration-150 {remainingSeconds < 60 ? 'border border-ruby-800/60 bg-ruby-950/40' : remainingSeconds < 300 ? 'border border-amber-800/60 bg-amber-950/40' : 'border border-slate-800 bg-slate-900/60'}"
+        class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl min-w-30 font-mono transition-colors duration-150 {remainingSeconds < 60 ? 'border border-ruby-800/60 bg-ruby-950/40' : remainingSeconds < 300 ? 'border border-amber-800/60 bg-amber-950/40' : 'border border-slate-800 bg-slate-900/60'}"
       >
         <svg class="h-4 w-4 shrink-0 {remainingSeconds < 60 ? 'text-ruby-400' : remainingSeconds < 300 ? 'text-amber-400' : 'text-cobalt-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -816,7 +844,7 @@
 
   <!-- Calming Network Connectivity Banner (Phase 2 R1) -->
   {#if !isOnline}
-    <div class="bg-amber-950/90 border-b border-amber-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-sm transition-all duration-200">
+    <div class="bg-amber-950/90 border-b border-amber-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-xs transition-all duration-200">
       <div class="flex items-center gap-3">
         <div class="h-8 w-8 rounded-lg bg-amber-900/60 border border-amber-700/60 flex items-center justify-center text-amber-400 shrink-0">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -843,7 +871,7 @@
       </div>
     </div>
   {:else if showReconnectedBanner}
-    <div class="bg-emerald-950/90 border-b border-emerald-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-sm transition-all duration-200">
+    <div class="bg-emerald-950/90 border-b border-emerald-800/60 px-6 py-2.5 flex items-center justify-between z-20 shadow-xs transition-all duration-200">
       <div class="flex items-center gap-3">
         <div class="h-8 w-8 rounded-lg bg-emerald-900/60 border border-emerald-700/60 flex items-center justify-center text-emerald-400 shrink-0">
           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -872,7 +900,7 @@
     bind:clientHeight={contentH}
   >
     {#if iframeError}
-      <div class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-30">
+      <div class="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center text-center p-6 z-30">
         <div class="bg-slate-900 border border-ruby-800/60 rounded-2xl p-8 max-w-md shadow-xl">
           <div class="h-14 w-14 bg-ruby-950/40 text-ruby-400 rounded-xl flex items-center justify-center mx-auto mb-4 border border-ruby-800/50">
             <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -932,7 +960,7 @@
   <!-- Result acknowledgement modal -->
   <Modal theme="dark" bind:show={showResultModal} title="Sesi Ujian Selesai" size="sm">
     <div class="text-center py-6 text-slate-300 px-4">
-      <div class="h-14 w-14 bg-emerald-950/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-800/50 shadow-sm">
+      <div class="h-14 w-14 bg-emerald-950/40 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-800/50 shadow-xs">
         <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
@@ -952,7 +980,7 @@
   <!-- Anti-cheat infraction warning -->
   <Modal theme="dark" bind:show={showCheatModal} title="Peringatan Keamanan Ujian" size="sm">
     <div class="text-center py-4 text-slate-300 px-4">
-      <div class="h-14 w-14 bg-ruby-950/40 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-ruby-800/50 shadow-sm">
+      <div class="h-14 w-14 bg-ruby-950/40 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-ruby-800/50 shadow-xs">
         <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
@@ -972,7 +1000,7 @@
   {#if locked}
     <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none">
       <div class="bg-slate-900 border border-ruby-800/60 p-8 rounded-2xl max-w-md w-full text-center shadow-xl space-y-6">
-        <div class="h-16 w-16 bg-ruby-950/50 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto border border-ruby-800/60 shadow-sm">
+        <div class="h-16 w-16 bg-ruby-950/50 text-ruby-400 rounded-2xl flex items-center justify-center mx-auto border border-ruby-800/60 shadow-xs">
           <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
@@ -990,11 +1018,22 @@
     </div>
   {/if}
 
+  {#if lateRejected}
+    <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center z-50 p-4" role="alertdialog" aria-labelledby="late-rejected-title">
+      <div class="bg-slate-900 border border-red-700/60 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl space-y-5">
+        <h3 id="late-rejected-title" class="text-xl font-bold text-red-200 font-display">Hasil Ditolak Server</h3>
+        <p class="text-slate-300 text-sm leading-relaxed text-pretty">
+          Hasil dikirim setelah batas waktu (+5 menit) dan ditolak server. Laporan sudah tercatat untuk pengawas; hubungi pengawas ruangan.
+        </p>
+        <Button variant="secondary" size="md" class="w-full" on:click={finishExam}>Keluar</Button>
+      </div>
+    </div>
+  {/if}
   <!-- Reassuring Submission Pending Overlay (Phase 2 R1) -->
   {#if submissionPending}
     <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none">
       <div class="bg-slate-900 border border-amber-700/60 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl space-y-6">
-        <div class="h-16 w-16 bg-amber-950/50 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-700/60 shadow-sm">
+        <div class="h-16 w-16 bg-amber-950/50 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-700/60 shadow-xs">
           <svg class="h-8 w-8 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>

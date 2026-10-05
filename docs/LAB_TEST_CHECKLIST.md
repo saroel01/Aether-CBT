@@ -14,8 +14,8 @@ Menguji kesiapan aplikasi Aether CBT sebelum pilot sekolah atau deployment nyata
 ## 2. Persiapan Lab
 
 - [ ] Server/lab siap dipakai
-- [ ] Go 1.22+ terinstall
-- [ ] Node.js 18+ terinstall
+- [ ] Go 1.26+ (toolchain go1.26.8 diunduh otomatis bila online) terinstall
+- [ ] Node.js 22.12+ (atau 20.19+) terinstall
 - [ ] Browser tersedia (Chrome/Edge)
 - [ ] Variabel lingkungan siap:
   - `JWT_SECRET`

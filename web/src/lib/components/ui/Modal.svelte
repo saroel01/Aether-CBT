@@ -1,8 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { fade, scale } from 'svelte/transition';
-  import { browser } from '$app/environment';
-  
+  import { browser } from '$app/env';
+
   export let show = false;
   export let title = '';
   export let size: 'sm' | 'md' | 'lg' | 'xl' = 'md';
@@ -53,7 +53,7 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown}></svelte:window>
 
 {#if show}
   <div 
@@ -85,28 +85,36 @@
           <button 
             type="button" 
             aria-label="Tutup dialog"
-            class="transition-colors duration-150 p-1.5 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 {activeTheme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}" 
+            class="transition-colors duration-150 p-1.5 rounded-xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-cobalt-500 {activeTheme === 'dark' ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}" 
             on:click={close}
           >
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
             </svg>
           </button>
         </div>
       {/if}
 
       <!-- Body -->
-      <div class="p-6 flex-1 overflow-y-auto">
-        <slot />
-      </div>
-
+      <div class="p-6 flex-1 overflow-y-auto"><slot></slot></div>
       <!-- Footer -->
       {#if $$slots.footer}
-        <div class="px-6 py-4 border-t shrink-0 flex items-center justify-end gap-3 
-          {activeTheme === 'dark' ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'}"
-        >
-          <slot name="footer" />
-        </div>
+        <div
+          class="px-6 py-4 border-t shrink-0 flex items-center justify-end gap-3 
+          {activeTheme === 'dark'
+            ? 'bg-slate-950/40 border-slate-800'
+            : 'bg-slate-50 border-slate-200'}"
+        ><slot name="footer"></slot></div>
       {/if}
     </div>
   </div>

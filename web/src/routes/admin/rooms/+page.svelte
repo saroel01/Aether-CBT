@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import PasswordGenerator from '#lib/components/PasswordGenerator.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   let items: any[] = [];
   let searchQuery = '';
@@ -252,7 +252,7 @@
 
     <!-- Create card (1/3) -->
     <div class="lg:col-span-1">
-      <Card padding="md" class="border-slate-200/50 bg-white shadow-sm">
+      <Card padding="md" class="border-slate-200/50 bg-white shadow-xs">
         <h3 class="text-base font-bold text-slate-800 mb-4 pb-2 border-b">Tambah Ruangan Baru</h3>
         
         <div class="space-y-4">
@@ -301,8 +301,8 @@
     show={showDeleteModal}
     title="Hapus Ruang Ujian"
     message={`Apakah Anda yakin ingin menghapus ruangan "${roomToDelete?.name || ''}"? Tindakan ini tidak dapat dibatalkan.`}
-    confirmText="Hapus Ruangan"
-    cancelText="Batal"
+    confirmLabel="Hapus Ruangan"
+    cancelLabel="Batal"
     variant="danger"
     loading={deleteLoading}
     on:confirm={confirmDeleteRoom}

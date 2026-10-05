@@ -49,7 +49,7 @@
       <div class="animate-rise animate-rise-3 mt-10 flex flex-col gap-3 w-full max-w-sm mx-auto" role="group" aria-label="Pilih portal masuk">
         <a
           href={studentLoginHref}
-          class="group flex items-center gap-4 px-5 py-4 bg-cobalt-600 hover:bg-cobalt-500 active:scale-[0.98] text-white rounded-2xl font-semibold shadow-glow-cobalt transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          class="group flex items-center gap-4 px-5 py-4 bg-cobalt-600 hover:bg-cobalt-500 active:scale-[0.98] text-white rounded-2xl font-semibold shadow-glow-cobalt transition-premium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cobalt-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           <span class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0" aria-hidden="true">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0v6" /></svg>
@@ -61,7 +61,7 @@
         </a>
         <a
           href="/supervisor/login"
-          class="group flex items-center gap-4 px-5 py-4 bg-slate-900 hover:bg-slate-800 hover:border-slate-700 active:scale-[0.98] text-slate-100 rounded-2xl font-semibold border border-slate-800 transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          class="group flex items-center gap-4 px-5 py-4 bg-slate-900 hover:bg-slate-800 hover:border-slate-700 active:scale-[0.98] text-slate-100 rounded-2xl font-semibold border border-slate-800 transition-premium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           <span class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0" aria-hidden="true">
             <svg class="w-5 h-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.05 12c1.5-3.5 5-6 9.95-6s8.45 2.5 9.95 6c-1.5 3.5-5 6-9.95 6s-8.45-2.5-9.95-6z" /></svg>
@@ -73,7 +73,7 @@
         </a>
         <a
           href="/admin"
-          class="group flex items-center gap-4 px-5 py-4 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700 active:scale-[0.98] text-slate-200 rounded-2xl font-semibold border border-slate-800/80 transition-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          class="group flex items-center gap-4 px-5 py-4 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700 active:scale-[0.98] text-slate-200 rounded-2xl font-semibold border border-slate-800/80 transition-premium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cobalt-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           <span class="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-center shrink-0" aria-hidden="true">
             <svg class="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.6-4A11.9 11.9 0 0112 3a11.9 11.9 0 01-8.6 3.1A12 12 0 003 9c0 5.6 3.8 10.3 9 11.6 5.2-1.3 9-6 9-11.6 0-1-.1-2-.4-3z" /></svg>

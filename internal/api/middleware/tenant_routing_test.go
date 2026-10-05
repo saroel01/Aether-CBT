@@ -6,7 +6,75 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/saroel01/aether-cbt/internal/db"
+	"github.com/saroel01/aether-cbt/internal/testutil"
+	"github.com/saroel01/aether-cbt/internal/utils"
 )
+
+// TestTenantMiddleware_SubdomainAndSlugWithoutTenantID verifies (H4) that when the
+// frontend sends no X-Tenant-ID, subdomain and X-Tenant-Slug resolution still work,
+// and that AuthMiddleware overrides the request tenant with the JWT claim.
+func TestTenantMiddleware_SubdomainAndSlugWithoutTenantID(t *testing.T) {
+	t.Setenv("ENV", "production")
+	database, cleanup := testutil.NewMigratedDB(t)
+	t.Cleanup(cleanup)
+	prev := db.DB
+	db.DB = database
+	t.Cleanup(func() { db.DB = prev })
+	testutil.SeedTenant(t, database, 1, "default", "Default School")
+	testutil.SeedTenant(t, database, 2, "sekolahb", "Sekolah B")
+	testutil.SeedTenant(t, database, 3, "sekolahc", "Sekolah C")
+	// AuthMiddleware checks the account behind the JWT is live (M5).
+	if _, err := database.Exec(`INSERT INTO users (id, tenant_id, username, password_hash, role, full_name, is_active)
+		VALUES (7, 3, 'admin_c', 'x', 'admin', 'Admin C', TRUE)`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	app := fiber.New()
+	app.Use(TenantMiddleware())
+	var got int
+	app.Get("/api/data", func(c *fiber.Ctx) error {
+		got = GetTenantID(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+	app.Get("/api/me", AuthMiddleware(), func(c *fiber.Ctx) error {
+		got = GetTenantID(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	utils.SetJWTSecret("tenant-routing-test-secret")
+	token, err := utils.GenerateToken(7, 3, "admin")
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	cases := []struct {
+		desc, path, host string
+		headers          map[string]string
+		want             int
+	}{
+		{"subdomain", "/api/data", "sekolahb.ujiancbt.id", nil, 2},
+		{"slug header", "/api/data", "localhost", map[string]string{"X-Tenant-Slug": "sekolahc"}, 3},
+		{"jwt overrides header tenant", "/api/me", "localhost",
+			map[string]string{"X-Tenant-ID": "2", "Authorization": "Bearer " + token}, 3},
+	}
+	for _, tc := range cases {
+		got = 0
+		req := httptest.NewRequest("GET", tc.path, nil)
+		req.Host = tc.host
+		for k, v := range tc.headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.desc, err)
+		}
+		if resp.StatusCode != http.StatusOK || got != tc.want {
+			t.Errorf("%s: status=%d tenant=%d, want 200 tenant=%d", tc.desc, resp.StatusCode, got, tc.want)
+		}
+	}
+}
 
 // TestTenantMiddleware_NonAPIRoutesPassThrough verifies that non-API routes
 // (frontend browser pages and static assets) are never blocked by TenantMiddleware,

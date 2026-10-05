@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { api, apiUrl, authHeaders } from '$lib/api';
+  import { api, apiUrl, authHeaders } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import PasswordGenerator from '$lib/components/PasswordGenerator.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import Modal from '#lib/components/ui/Modal.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import PasswordGenerator from '#lib/components/PasswordGenerator.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   let students: any[] = [];
   let classesList: any[] = [];
@@ -76,6 +76,10 @@
   async function createStudent() {
     if (!newNoID || !newNama || !newKelas || !newRuang) {
       toast.warning('Harap lengkapi seluruh kolom wajib!');
+      return;
+    }
+    if (!newPass || newPass.length < 6) {
+      toast.warning('Password siswa wajib diisi (minimal 6 karakter).');
       return;
     }
 
@@ -207,14 +211,14 @@
     <!-- Header Action Buttons with theme="light" -->
     <div class="flex items-center gap-3">
       <a href="/admin/students/print-cards" target="_blank">
-        <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-sm">
+        <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-xs">
           Cetak Kartu Ujian
         </Button>
       </a>
-      <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-sm" on:click={() => showCSVModal = true}>
+      <Button variant="secondary" size="sm" theme="light" class="font-semibold shadow-xs" on:click={() => showCSVModal = true}>
         Impor CSV Massal
       </Button>
-      <Button variant="primary" size="sm" theme="light" class="font-semibold shadow-sm" on:click={() => showAddModal = true}>
+      <Button variant="primary" size="sm" theme="light" class="font-semibold shadow-xs" on:click={() => showAddModal = true}>
         Tambah Siswa
       </Button>
     </div>
@@ -234,7 +238,7 @@
     </div>
   {:else}
     <!-- Instant Search & Quick Stats Toolbar -->
-    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
       <div class="relative flex-1 max-w-md">
         <Input 
           type="search"
@@ -364,7 +368,7 @@
       <div class="grid grid-cols-2 gap-4">
         <div class="flex flex-col gap-1.5">
           <label for="kelas_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Kelas *</label>
-          <select id="kelas_select" bind:value={newKelas} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
+          <select id="kelas_select" bind:value={newKelas} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-hidden hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
             {#each classesList as c}
               <option value={c.id}>{c.nama_kelas}</option>
             {/each}
@@ -373,7 +377,7 @@
 
         <div class="flex flex-col gap-1.5">
           <label for="ruang_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Ruang Ujian *</label>
-          <select id="ruang_select" bind:value={newRuang} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
+          <select id="ruang_select" bind:value={newRuang} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-hidden hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
             {#each roomsList as r}
               <option value={r.id}>{r.nama_ruang}</option>
             {/each}
@@ -384,7 +388,7 @@
       <div class="grid grid-cols-2 gap-4 items-end">
         <div class="flex flex-col gap-1.5">
           <label for="jk_select" class="text-xs font-semibold text-slate-500 uppercase tracking-widest block mb-1">Jenis Kelamin *</label>
-          <select id="jk_select" bind:value={newJK} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
+          <select id="jk_select" bind:value={newJK} class="w-full h-12 px-4 border border-slate-200 rounded-xl outline-hidden hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
             <option value="L">Laki-laki</option>
             <option value="P">Perempuan</option>
           </select>
@@ -403,7 +407,7 @@
 
     <div slot="footer" class="flex gap-3 justify-end">
       <Button variant="secondary" size="sm" theme="light" on:click={() => showAddModal = false} disabled={createLoading}>Batal</Button>
-      <Button variant="primary" size="sm" theme="light" class="shadow-sm" on:click={createStudent} {createLoading}>Simpan</Button>
+      <Button variant="primary" size="sm" theme="light" class="shadow-xs" on:click={createStudent} {createLoading}>Simpan</Button>
     </div>
   </Modal>
 
@@ -414,26 +418,28 @@
         Anda dapat mendaftarkan siswa secara sekaligus dengan mengunggah lembar spreadsheet dalam format CSV (.csv). 
       </p>
 
-      <div class="bg-cobalt-50/50 border border-cobalt-100 p-4 rounded-xl text-xs space-y-3 text-slate-800 font-medium shadow-sm">
+      <div class="bg-cobalt-50/50 border border-cobalt-100 p-4 rounded-xl text-xs space-y-3 text-slate-800 font-medium shadow-xs">
         <div class="font-bold uppercase tracking-wider text-cobalt-700 mb-1 flex items-center gap-1.5">
           <span>📋</span> Skema Kolom CSV Resmi:
         </div>
         <div class="flex flex-wrap gap-1 font-mono text-[11px] bg-white p-2 border border-cobalt-100 rounded-xl shadow-inner">
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">no_id</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">no_id</span>
           <span class="text-slate-300">,</span>
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">nama_peserta</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">nama_peserta</span>
           <span class="text-slate-300">,</span>
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">kelas_id</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">kelas_id</span>
           <span class="text-slate-300">,</span>
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">ruang_id</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">ruang_id</span>
           <span class="text-slate-300">,</span>
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">jenis_kelamin</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">jenis_kelamin</span>
           <span class="text-slate-300">,</span>
-          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded font-semibold">password</span>
+          <span class="px-1.5 py-0.5 bg-cobalt-50 text-cobalt-700 rounded-sm font-semibold">password</span>
         </div>
         <div class="text-slate-500 text-[11px] leading-relaxed pt-1 space-y-1">
           <p>• <strong>kelas_id</strong> dan <strong>ruang_id</strong> diisi berdasarkan angka ID relational database.</p>
           <p>• <strong>jenis_kelamin</strong> wajib diisi <strong>"L"</strong> atau <strong>"P"</strong>.</p>
+          <p>• Kolom ke-6 <strong>password</strong> wajib untuk siswa baru. Siswa lama dengan kolom kosong tetap memakai password lamanya. Password minimal 6 karakter.</p>
+          <p class="text-amber-700 dark:text-amber-400">• <strong>Perhatian:</strong> siswa lama yang kolom password-nya diisi akan otomatis logout (sesinya dicabut) walaupun password-nya sama. Jangan impor ulang CSV berpassword saat ujian sedang berlangsung; kosongkan kolom password bila hanya memperbarui data.</p>
           <p>• Baris pertama berkas CSV bertindak sebagai tajuk/header dan dilewati otomatis oleh sistem.</p>
         </div>
       </div>
@@ -464,7 +470,7 @@
 
     <div slot="footer" class="flex gap-3 justify-end">
       <Button variant="secondary" size="sm" theme="light" on:click={() => showCSVModal = false} disabled={importLoading}>Batal</Button>
-      <Button variant="primary" size="sm" theme="light" class="shadow-sm" on:click={uploadCSV} {importLoading}>Unggah & Proses</Button>
+      <Button variant="primary" size="sm" theme="light" class="shadow-xs" on:click={uploadCSV} {importLoading}>Unggah & Proses</Button>
     </div>
   </Modal>
 

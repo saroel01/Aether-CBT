@@ -64,10 +64,12 @@ func getSettingsForTenant(tenantID int) (SettingsResponse, error) {
 			if genErr != nil {
 				return SettingsResponse{}, fmt.Errorf("generate default exam token: %w", genErr)
 			}
-			_, _ = db.DB.Exec(`
+			if _, err := db.DB.Exec(`
 				INSERT INTO settings (tenant_id, exam_title, token, is_exam_active)
 				VALUES (?, 'Ujian Akhir Semester 2025/2026', ?, TRUE)
-			`, tenantID, randomToken)
+			`, tenantID, randomToken); err != nil {
+				return SettingsResponse{}, fmt.Errorf("seed default settings: %w", err)
+			}
 
 			s.ExamTitle = "Ujian Akhir Semester 2025/2026"
 			s.Token = randomToken

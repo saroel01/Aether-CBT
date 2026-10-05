@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Card from '$lib/components/ui/Card.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-  import { toast } from '$lib/stores/toast';
+  import Button from '#lib/components/ui/Button.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Input from '#lib/components/ui/Input.svelte';
+  import Table from '#lib/components/ui/Table.svelte';
+  import Badge from '#lib/components/ui/Badge.svelte';
+  import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+  import { toast } from '#lib/stores/toast.js';
 
   let items: any[] = [];
   let allSubjects: any[] = [];
@@ -196,7 +196,7 @@
       <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 font-mono">Daftar Kelas</h3>
 
       {#if loading}
-        <div class="bg-white border border-slate-200 rounded-2xl p-16 flex flex-col items-center justify-center gap-3 shadow-sm">
+        <div class="bg-white border border-slate-200 rounded-2xl p-16 flex flex-col items-center justify-center gap-3 shadow-xs">
           <svg class="animate-spin h-6 w-6 text-cobalt-600" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -218,7 +218,7 @@
               {@const isSelected = selectedClass?.id === c.id}
               <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
               <tr
-                class="cursor-pointer transition-colors duration-150 {isSelected ? 'bg-cobalt-50 text-cobalt-900 font-semibold ring-1 ring-cobalt-200 shadow-sm' : 'hover:bg-slate-50/50'}"
+                class="cursor-pointer transition-colors duration-150 {isSelected ? 'bg-cobalt-50 text-cobalt-900 font-semibold ring-1 ring-cobalt-200 shadow-xs' : 'hover:bg-slate-50/50'}"
                 on:click={() => selectClass(c)}
               >
                 <td class="font-mono text-slate-500 font-bold tabular-nums">{c.id}</td>
@@ -226,7 +226,7 @@
                 <td on:click|stopPropagation>
                   <div class="flex items-center gap-2">
                     <select
-                      class="h-9 px-3 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-xs font-semibold"
+                      class="h-9 px-3 border border-slate-200 rounded-xl outline-hidden hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-xs font-semibold"
                       value={c.tingkat ?? ''}
                       on:change={(e) => { editingTingkat[c.id] = e.currentTarget.value; updateTingkat(c.id, c.nama_kelas); }}
                       disabled={tingkatLoading[c.id]}
@@ -270,7 +270,7 @@
     <!-- Right Panels (1/3) -->
     <div class="lg:col-span-1 flex flex-col gap-6">
       <!-- Create Class Panel -->
-      <Card padding="md" class="border-slate-200 bg-white shadow-sm rounded-2xl">
+      <Card padding="md" class="border-slate-200 bg-white shadow-xs rounded-2xl">
         <h3 class="text-base font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 font-display">Tambah Kelas Baru</h3>
         
         <div class="space-y-4">
@@ -287,7 +287,7 @@
             variant="primary" 
             size="sm" 
             theme="light"
-            class="w-full shadow-sm" 
+            class="w-full shadow-xs" 
             on:click={createClass}
             loading={createLoading}
           >
@@ -298,7 +298,7 @@
 
       <!-- Mapping Curriculum Panel (Only when selected) -->
       {#if selectedClass}
-        <Card padding="md" class="border-slate-200 bg-white shadow-sm rounded-2xl">
+        <Card padding="md" class="border-slate-200 bg-white shadow-xs rounded-2xl">
           <div slot="header">
             <h3 class="text-base font-bold text-slate-800 font-display">Pemetaan Soal: {selectedClass.nama_kelas}</h3>
             <p class="text-xs text-slate-500 mt-1">Petakan mata pelajaran aktif untuk kelas ini.</p>
@@ -343,7 +343,7 @@
             <div class="flex flex-col gap-2 pt-2">
               <label for="link_subject_select" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Petakan Baru</label>
               <div class="flex gap-2">
-                <select id="link_subject_select" bind:value={selectedSubjectToLink} class="w-full h-11 px-4 border border-slate-200 rounded-xl outline-none hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
+                <select id="link_subject_select" bind:value={selectedSubjectToLink} class="w-full h-11 px-4 border border-slate-200 rounded-xl outline-hidden hover:border-slate-300 focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-600 bg-white transition-colors duration-150 text-slate-800 text-sm font-semibold">
                   <option value={0}>Pilih Mata Pelajaran...</option>
                   {#each allSubjects as sub}
                     <!-- Hide if already linked -->
@@ -352,7 +352,7 @@
                     {/if}
                   {/each}
                 </select>
-                <Button variant="primary" size="sm" theme="light" class="shadow-sm" on:click={linkSubject}>
+                <Button variant="primary" size="sm" theme="light" class="shadow-xs" on:click={linkSubject}>
                   Petakan
                 </Button>
               </div>

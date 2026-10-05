@@ -29,9 +29,9 @@ type EssayAnswerResponse struct {
 // GetEssayAnswers returns all essay questions answered by students, with dynamic class & subject filters
 func GetEssayAnswers(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(int)
-	role := c.Locals("role").(string)
 
-	if role != "admin" && role != "supervisor" {
+	scope, scopeArgs, err := resultScope(c)
+	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusForbidden, "Unauthorized access")
 	}
 
@@ -47,9 +47,10 @@ func GetEssayAnswers(c *fiber.Ctx) error {
 		LEFT JOIN kelas k ON p.kelas_id = k.id
 		LEFT JOIN mapel m ON ht.mapel_id = m.id
 		WHERE ht.tenant_id = ? AND htd.question_type = 'essayQuestion'
-	`
+	` + scope
 	var args []interface{}
 	args = append(args, tenantID)
+	args = append(args, scopeArgs...)
 
 	if kelasID > 0 {
 		query += " AND p.kelas_id = ?"
@@ -60,7 +61,8 @@ func GetEssayAnswers(c *fiber.Ctx) error {
 		args = append(args, mapelID)
 	}
 
-	query += " ORDER BY p.nama_peserta ASC, htd.id ASC"
+	query += " ORDER BY p.nama_peserta ASC, htd.id ASC LIMIT ?"
+	args = append(args, maxEssayListRows+1)
 
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -69,7 +71,12 @@ func GetEssayAnswers(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	var list []EssayAnswerResponse
+	truncated := false
 	for rows.Next() {
+		if len(list) >= maxEssayListRows {
+			truncated = true
+			break
+		}
 		var r EssayAnswerResponse
 		if err := rows.Scan(
 			&r.DetailID, &r.HasilTesID, &r.QuestionID, &r.QuestionText, &r.AwardedPoints, &r.MaxPoints, &r.UserAnswer, &r.CorrectAnswer,
@@ -83,6 +90,10 @@ func GetEssayAnswers(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to iterate essay answers")
 	}
 
+	if truncated {
+		c.Set("X-Result-Truncated", "true")
+		return utils.SuccessResponse(c, list, fmt.Sprintf("Essay answers retrieved (dibatasi %d baris; persempit filter kelas/mapel)", maxEssayListRows))
+	}
 	return utils.SuccessResponse(c, list, "Essay answers retrieved successfully")
 }
 

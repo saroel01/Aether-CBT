@@ -97,6 +97,13 @@ func TenantMiddleware() fiber.Handler {
 			}
 		}
 
+		// Optional single-tenant default (e.g. a school server reached by LAN IP), so the
+		// frontend no longer has to hardcode X-Tenant-ID. Unset keeps the 400 below.
+		if n, err := parseInt(os.Getenv("DEFAULT_TENANT_ID")); err == nil && n > 0 {
+			c.Locals("tenant_id", n)
+			return c.Next()
+		}
+
 		// Default only allowed in development for convenience
 		// Consistent with config.go: fallback to tenant 1 if ENV is unset or "development"/"dev"
 		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))

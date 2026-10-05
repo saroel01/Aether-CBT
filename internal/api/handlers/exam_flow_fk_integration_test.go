@@ -184,7 +184,7 @@ func TestExamFlowStudentLoginAndSessionStartUnderForeignKeys(t *testing.T) {
 	}
 
 	startResp := doJSON(t, fixture.app, "POST", "/api/student/start",
-		strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+		strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOKENFLOW"}`))
 	if startResp.StatusCode != http.StatusOK {
 		t.Fatalf("start status = %d, want 200 (body=%v)", startResp.StatusCode, decodeJSON(t, startResp))
 	}
@@ -218,25 +218,19 @@ func TestExamFlowStudentLoginAndSessionStartUnderForeignKeys(t *testing.T) {
 // that persists a student's result — with enforcement active: webhook, queue, processor,
 // hasil_tes, hasil_tes_detail, cek_login cleanup, and the admin export that reads it all back.
 //
-// The attempt is registered through the mapel-bound start path rather than the session-based one.
-// That is not a convenience: an attempt created by the session-based path stores cek_login with
-// mapel_id = NULL, and both ISpringWebhook and Processor scan that column into a non-nullable
-// int, so submission fails before any of the writes below are reached. That defect is unrelated
-// to foreign keys and is recorded in TestExamFlowSessionBasedSubmissionBlockedByNullMapelID.
+// The attempt is a mapel-bound cek_login row seeded directly: the legacy mapel_id start path
+// was removed (audit M6), and this test is about the persistence half of the chain.
 func TestExamFlowSubmissionToExportUnderForeignKeys(t *testing.T) {
 	fixture, cleanup := newExamFlowFixture(t)
 	defer cleanup()
 	seedExamFlowMasterData(t, fixture.database)
 
-	startResp := doJSON(t, fixture.app, "POST", "/api/student/start",
-		strings.NewReader(`{"peserta_id":1,"mapel_id":1}`))
-	if startResp.StatusCode != http.StatusOK {
-		t.Fatalf("start status = %d, want 200 (body=%v)", startResp.StatusCode, decodeJSON(t, startResp))
-	}
-	startData, _ := decodeJSON(t, startResp)["data"].(map[string]interface{})
-	attemptToken, _ := startData["attempt_token"].(string)
-	if attemptToken == "" {
-		t.Fatalf("start did not return an attempt_token: %v", startData)
+	attemptToken := "flow-attempt-token"
+	if _, err := fixture.database.Exec(
+		`INSERT INTO cek_login (tenant_id, peserta_id, mapel_id, attempt_token, login_time, last_activity)
+		 VALUES (1, 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, attemptToken,
+	); err != nil {
+		t.Fatalf("seed cek_login: %v", err)
 	}
 
 	webhookResp := submitViaWebhook(t, fixture, "2026001", attemptToken)
@@ -342,7 +336,7 @@ func TestExamFlowSessionBasedSubmissionBlockedByNullMapelID(t *testing.T) {
 	seedExamFlowMasterData(t, fixture.database)
 
 	startResp := doJSON(t, fixture.app, "POST", "/api/student/start",
-		strings.NewReader(`{"peserta_id":1,"session_id":1}`))
+		strings.NewReader(`{"peserta_id":1,"session_id":1,"token":"TOKENFLOW"}`))
 	if startResp.StatusCode != http.StatusOK {
 		t.Fatalf("start status = %d, want 200", startResp.StatusCode)
 	}

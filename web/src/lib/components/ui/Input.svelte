@@ -8,7 +8,7 @@
   export let id = '';
   export let name = '';
   export let required = false;
-  export let autocomplete = '';
+  export let autocomplete: any = '';
   export let theme: 'light' | 'dark' = 'dark';
 
   const defaultId = `input-${Math.random().toString(36).slice(2, 9)}`;
@@ -55,7 +55,7 @@
       {autocomplete}
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? `${inputId}-error` : undefined}
-      class="w-full h-11 px-3.5 border rounded-xl outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm
+      class="w-full h-11 px-3.5 border rounded-xl outline-hidden transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs text-sm
       {$$slots.iconLeft ? 'pl-10' : ''} 
       {$$slots.iconRight ? 'pr-10' : ''} 
       {activeTheme === 'dark' ? 'focus-visible:ring-offset-slate-950' : 'focus-visible:ring-offset-white'}

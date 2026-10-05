@@ -69,7 +69,7 @@ func main() {
 		password = genPW
 		generated = true
 	} else if isProd && isWeakAdminPassword(password) {
-		log.Fatalf("FATAL: Password admin di environment production minimal 8 karakter dan tidak boleh menggunakan password default/lemah: %q", password)
+		log.Fatal("FATAL: Password admin di environment production minimal 8 karakter dan tidak boleh menggunakan password default/lemah.")
 	}
 
 	// Connect to database using standard pool & DSN with verified pragmas (P1-15, P2-37)
@@ -79,7 +79,7 @@ func main() {
 	defer db.Close()
 
 	// Ensure tables exist
-	if err := db.RunMigrations(db.DB, "internal/db/migrations"); err != nil {
+	if err := db.RunMigrations(db.DB, os.Getenv("MIGRATIONS_DIR")); err != nil {
 		log.Fatalf("run migrations: %v", err)
 	}
 
@@ -99,7 +99,7 @@ func main() {
 	if existingID > 0 {
 		_, err = db.DB.Exec(`
 			UPDATE users 
-			SET password_hash = ?, is_active = TRUE, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+			SET password_hash = ?, is_active = TRUE, deleted_at = NULL, token_version = token_version + 1, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?
 		`, hash, existingID)
 	} else {

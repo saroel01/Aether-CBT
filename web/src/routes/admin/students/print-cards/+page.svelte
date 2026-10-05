@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { api, studentLoginQrUrl } from '$lib/api';
+  import { api, studentLoginQrUrl } from '#lib/api.js';
   import { onMount } from 'svelte';
-  import Button from '$lib/components/ui/Button.svelte';
+  import Button from '#lib/components/ui/Button.svelte';
 
   let students: any[] = [];
   let classesList: any[] = [];
@@ -54,7 +54,7 @@
 
 <div class="min-h-screen bg-white text-black p-4 font-sans antialiased">
   <!-- floating print controller (hidden on print) -->
-  <div class="no-print mb-6 p-4 bg-slate-100 border rounded-2xl flex justify-between items-center max-w-5xl mx-auto shadow-sm">
+  <div class="no-print mb-6 p-4 bg-slate-100 border rounded-2xl flex justify-between items-center max-w-5xl mx-auto shadow-xs">
     <div>
       <h3 class="text-sm font-bold text-slate-800">Pratinjau Kartu Peserta Ujian</h3>
       <p class="text-xs text-slate-500">Gunakan pintasan browser Ctrl+P jika printer dialog tidak terbuka secara otomatis.</p>
@@ -63,7 +63,7 @@
       variant="primary" 
       size="sm"
       theme="light"
-      class="font-semibold shadow-sm"
+      class="font-semibold shadow-xs"
       on:click={() => window.print()}
     >
       Cetak Halaman
@@ -78,7 +78,7 @@
     <!-- Exam Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
       {#each students as s}
-        <div class="border-2 border-dashed border-slate-400 p-5 rounded-2xl relative bg-white flex flex-col justify-between h-[230px] shadow-sm select-none break-inside-avoid">
+        <div class="border-2 border-dashed border-slate-400 p-5 rounded-2xl relative bg-white flex flex-col justify-between h-[230px] shadow-xs select-none break-inside-avoid">
           <!-- Card Header -->
           <div class="flex items-center justify-between border-b pb-2 mb-3">
             <div class="text-left">
@@ -126,7 +126,7 @@
           </div>
 
           <!-- Dotted cut guide line -->
-          <div class="absolute -bottom-[1px] left-4 right-4 h-0 border-t border-dashed border-slate-200 no-print"></div>
+          <div class="absolute -bottom-px left-4 right-4 h-0 border-t border-dashed border-slate-200 no-print"></div>
         </div>
       {/each}
     </div>

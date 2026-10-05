@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"embed"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,21 +15,17 @@ import (
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
 
-// RunMigrations executes all .sql files in migrationsDir in lexical order against the
-// given database, one statement at a time. The directory and database are passed
-// explicitly so callers (CLI entrypoints, tests) are not coupled to package-global
-// state or the process working directory (Requirement 16.7).
+// RunMigrations applies every .sql migration not yet recorded in schema_migrations,
+// in lexical order, each file inside one transaction that also records its version,
+// so a file runs exactly once and a failing file leaves no partial schema behind.
 //
-// If migrationsDir does not exist on disk (e.g. running standalone binary), it falls
-// back to embedded migrations automatically.
+// migrationsDir == "" uses the migrations embedded in the binary (default). A
+// non-empty migrationsDir must exist on disk; a missing directory is an error.
 //
-// Each statement is executed independently so that a migration applied only partially
-// (an interrupted startup, or a column added manually without the companion index)
-// self-heals on the next run: idempotency errors ("duplicate column name" /
-// "already exists") are swallowed per-statement rather than aborting the rest of the
-// file, so a re-run can no longer leave the schema silently incomplete while
-// RunMigrations reports success (Requirement 14.6, design AD-8). Files must still be
-// written idempotently ("CREATE TABLE IF NOT EXISTS", "INSERT OR IGNORE").
+// A pre-versioning database (schema_migrations empty, tenants present) is
+// bootstrapped by running every file once in tolerant mode ("duplicate column name" /
+// "already exists" are skipped per statement), which matches the historical boot
+// behaviour, and recording each one. Files should still be written idempotently.
 func RunMigrations(database *sql.DB, migrationsDir string) error {
 	// Gate 0 prerequisite (codebase-bug-sweep clause 2.2): an existing database may still
 	// declare peserta.kelas_id / peserta.ruang_id NOT NULL, which is what forced every write
@@ -38,63 +35,50 @@ func RunMigrations(database *sql.DB, migrationsDir string) error {
 		return err
 	}
 
-	type migrationFile struct {
-		name    string
-		content []byte
-	}
-	var migFiles []migrationFile
-
-	// Check if migrationsDir exists on the filesystem (e.g. during local tests or dev)
-	if migrationsDir != "" {
-		if fi, err := os.Stat(migrationsDir); err == nil && fi.IsDir() {
-			entries, err := os.ReadDir(migrationsDir)
-			if err != nil {
-				return err
-			}
-			var files []string
-			for _, e := range entries {
-				if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-					files = append(files, e.Name())
-				}
-			}
-			sort.Strings(files)
-			for _, f := range files {
-				content, err := os.ReadFile(filepath.Join(migrationsDir, f))
-				if err != nil {
-					return err
-				}
-				migFiles = append(migFiles, migrationFile{name: f, content: content})
-			}
-		}
+	if _, err := database.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version TEXT PRIMARY KEY,
+		applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	// Fallback to embedded migrations if no files loaded from disk
-	if len(migFiles) == 0 {
-		entries, err := embeddedMigrations.ReadDir("migrations")
-		if err != nil {
+	migFiles, err := loadMigrationFiles(migrationsDir)
+	if err != nil {
+		return err
+	}
+
+	applied := map[string]bool{}
+	rows, err := database.Query(`SELECT version FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
 			return err
 		}
-		var files []string
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-				files = append(files, e.Name())
-			}
-		}
-		sort.Strings(files)
-		for _, f := range files {
-			content, err := embeddedMigrations.ReadFile("migrations/" + f)
-			if err != nil {
-				return err
-			}
-			migFiles = append(migFiles, migrationFile{name: f, content: content})
+		applied[v] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(applied) == 0 {
+		var n int
+		if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tenants'`).Scan(&n); err == nil && n > 0 {
+			// Pre-versioning database: every file runs once in tolerant mode (exactly the
+			// historical boot behaviour), then is recorded so it never runs again.
+			log.Println("bootstrapping schema_migrations on pre-versioning database")
 		}
 	}
 
 	for _, mf := range migFiles {
-		for _, stmt := range splitSQLStatements(string(mf.content)) {
-			if err := execMigrationStatement(database, mf.name, stmt); err != nil {
-				return err
-			}
+		if applied[mf.name] {
+			continue
+		}
+		if err := applyMigrationFile(database, mf); err != nil {
+			return err
 		}
 		log.Printf("Applied migration: %s", mf.name)
 	}
@@ -110,6 +94,94 @@ func RunMigrations(database *sql.DB, migrationsDir string) error {
 	logForeignKeyViolations(database)
 
 	return nil
+}
+
+type migrationFile struct {
+	name    string
+	content []byte
+}
+
+// loadMigrationFiles returns the .sql files in lexical order. An empty migrationsDir
+// selects the embedded set; a non-empty one must exist on disk (no silent fallback).
+func loadMigrationFiles(migrationsDir string) ([]migrationFile, error) {
+	var (
+		names []string
+		read  func(string) ([]byte, error)
+	)
+	if migrationsDir != "" {
+		fi, err := os.Stat(migrationsDir)
+		if err != nil {
+			return nil, fmt.Errorf("migrations dir %q: %w", migrationsDir, err)
+		}
+		if !fi.IsDir() {
+			return nil, fmt.Errorf("migrations dir %q is not a directory", migrationsDir)
+		}
+		entries, err := os.ReadDir(migrationsDir)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+				names = append(names, e.Name())
+			}
+		}
+		read = func(f string) ([]byte, error) { return os.ReadFile(filepath.Join(migrationsDir, f)) }
+	} else {
+		entries, err := embeddedMigrations.ReadDir("migrations")
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+				names = append(names, e.Name())
+			}
+		}
+		read = func(f string) ([]byte, error) { return embeddedMigrations.ReadFile("migrations/" + f) }
+	}
+	sort.Strings(names)
+	files := make([]migrationFile, 0, len(names))
+	for _, f := range names {
+		content, err := read(f)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, migrationFile{name: f, content: content})
+	}
+	return files, nil
+}
+
+// applyMigrationFile runs one file inside a single transaction and records it in
+// schema_migrations. SQLITE_BUSY rolls back and retries the whole file (max 3 times).
+func applyMigrationFile(database *sql.DB, mf migrationFile) error {
+	const maxRetries = 3
+	for attempt := 0; ; attempt++ {
+		err := applyMigrationFileOnce(database, mf)
+		if err == nil {
+			return nil
+		}
+		if !isBusyErr(err) || attempt >= maxRetries {
+			return fmt.Errorf("migration %s: %w", mf.name, err)
+		}
+		time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
+	}
+}
+
+func applyMigrationFileOnce(database *sql.DB, mf migrationFile) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	for _, stmt := range splitSQLStatements(string(mf.content)) {
+		if err := execMigrationStatement(tx, mf.name, stmt); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations(version) VALUES (?)`, mf.name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // logForeignKeyViolations runs PRAGMA foreign_key_check and logs one warning line per
@@ -151,12 +223,12 @@ func logForeignKeyViolations(database *sql.DB) {
 
 // execMigrationStatement executes a single migration statement. Idempotency errors
 // that legitimate re-runnable migrations are expected to surface ("duplicate column
-// name" / "already exists") and transient SQLITE_BUSY are swallowed so a partially
-// applied migration can self-heal on rerun (Requirement 14.6, AD-8). Any other error
-// is fatal and is returned so the caller aborts with a clear message rather than
-// leaving a half-applied migration.
-func execMigrationStatement(database *sql.DB, file, stmt string) error {
-	err := execWithBusyRetry(database, stmt)
+// name" / "already exists") are swallowed (SQLite rolls back only the failing
+// statement, the transaction stays usable) so a database whose schema was partly
+// created before versioning still converges. Any other error is returned; the caller
+// rolls back the whole file. SQLITE_BUSY is retried per file by applyMigrationFile.
+func execMigrationStatement(ex execer, file, stmt string) error {
+	_, err := ex.Exec(stmt)
 	if err == nil {
 		return nil
 	}
@@ -170,21 +242,9 @@ func execMigrationStatement(database *sql.DB, file, stmt string) error {
 	return err
 }
 
-// execWithBusyRetry runs stmt, retrying transient SQLITE_BUSY errors with a short backoff so
-// a concurrent writer cannot make a migration silently skip (review data finding #2, Task 32).
-func execWithBusyRetry(database *sql.DB, stmt string) error {
-	const maxRetries = 3
-	var err error
-	for i := 0; ; i++ {
-		_, err = database.Exec(stmt)
-		if err == nil || !isBusyErr(err) {
-			return err
-		}
-		if i >= maxRetries {
-			return err
-		}
-		time.Sleep(time.Duration(100*(i+1)) * time.Millisecond)
-	}
+// execer is satisfied by *sql.DB and *sql.Tx.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
 }
 
 // isBusyErr reports whether err is a SQLite SQLITE_BUSY error.

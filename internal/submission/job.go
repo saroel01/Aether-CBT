@@ -21,7 +21,7 @@ const (
 // Field yang ditulis ke Job_File (urutan sesuai Requirement 10.1):
 //
 //	validasi, tenant_id, no_id, score, max_score, attempt_token,
-//	enqueued_at, retry_count, last_error, detail_xml
+//	enqueued_at, submitted_at, retry_count, last_error, detail_xml
 //
 // Field internal (tidak di-serialize ke Job_File, ditandai json:"-"):
 //
@@ -35,9 +35,14 @@ type SubmissionJob struct {
 	MaxScore     string    `json:"max_score"` // tp
 	AttemptToken string    `json:"attempt_token"`
 	EnqueuedAt   time.Time `json:"enqueued_at"`
-	RetryCount   int       `json:"retry_count"`
-	LastError    string    `json:"last_error"`
-	DetailXML    string    `json:"detail_xml"` // dr
+	// SubmittedAt is the time the webhook first accepted the submission. It is stamped once
+	// by Enqueue and never touched by MarkFailed, so the grace-period check survives retries
+	// (audit H1, D7). Zero for job files written by an older binary: callers fall back to
+	// EnqueuedAt.
+	SubmittedAt time.Time `json:"submitted_at"`
+	RetryCount  int       `json:"retry_count"`
+	LastError   string    `json:"last_error"`
+	DetailXML   string    `json:"detail_xml"` // dr
 
 	// Field internal — tidak di-serialize ke Job_File
 	ID          int64     `json:"-"`
@@ -60,6 +65,18 @@ type FailedSubmission struct {
 	ErrorMessage  string    `json:"error_message"`
 	DetailXML     string    `json:"detail_xml"` // simpan untuk investigasi manual
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+// submissionTime is the time the grace check is evaluated at: SubmittedAt, falling back to
+// EnqueuedAt for job files written before SubmittedAt existed, then to now.
+func (job *SubmissionJob) submissionTime() time.Time {
+	if !job.SubmittedAt.IsZero() {
+		return job.SubmittedAt
+	}
+	if !job.EnqueuedAt.IsZero() {
+		return job.EnqueuedAt
+	}
+	return time.Now()
 }
 
 // MarshalJob menghasilkan JSON pretty-printed (indent 2 spasi) dengan urutan field
