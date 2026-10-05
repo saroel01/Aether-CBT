@@ -19,6 +19,16 @@ jobs:
         run: test -z "$(gofmt -l cmd internal scripts tests)"
       - name: go vet
         run: go vet ./...
+      # cmd/server routing tests serve the SPA from web/build (gitignored),
+      # so the frontend must be built before go test.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: build frontend for routing tests
+        working-directory: web
+        run: npm ci && npm run build
       - name: go test
         run: go test -count=1 -timeout 900s ./...
 
